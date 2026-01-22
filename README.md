@@ -1,36 +1,135 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BULLSEYE
 
-## Getting Started
+Agentic Script Intelligence Platform — multi-agent screenplay analysis powered by Claude.
 
-First, run the development server:
+## What It Does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+BULLSEYE uses multiple AI agents to analyze screenplays the way a professional script coverage team would:
+
+1. **Scout** orchestrates the workflow, communicating with users and coordinating sub-agents
+2. **Three Reader Agents** (Maya the Optimist, Colton the Skeptic, Devon the Craftsman) independently analyze scripts from distinct perspectives
+3. **Harmonization Engine** synthesizes reader analyses into unified coverage with consensus/divergence points
+4. **Focus Groups** run live streaming conversations between readers, moderated by Scout
+5. **Executive Pitch Simulation** models how industry executives would evaluate the project (PURSUE/PASS)
+6. **Studio Intelligence** calibrates scores against historical corpus data
+7. **Memory Architecture** maintains per-reader context across drafts and sessions
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router, Turbopack)
+- **AI**: Anthropic Claude API (Sonnet for analysis, Haiku for utilities)
+- **Database**: PostgreSQL via Supabase
+- **ORM**: Prisma 7
+- **Auth**: Supabase Auth (email/password)
+- **UI**: Tailwind CSS, shadcn/ui components
+- **State**: Zustand
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── analyze/       # Script analysis endpoint
+│   │   ├── chat/          # Scout chat endpoint
+│   │   ├── executive/     # Executive evaluation endpoint
+│   │   ├── focus-group/   # Focus group streaming endpoint
+│   │   └── studio/        # Studio intelligence endpoint
+│   ├── auth/              # Auth callbacks and signout
+│   ├── login/             # Login/signup page
+│   └── (dashboard)/       # Main app (auth-protected)
+├── components/
+│   ├── chat/              # Chat interface
+│   ├── coverage/          # Coverage report view
+│   ├── focus/             # Focus group view
+│   ├── layout/            # App shell, navigation
+│   ├── pitch/             # Executive pitch view
+│   ├── revisions/         # Draft revision tracking
+│   ├── scout/             # Scout orchestrator view
+│   ├── shared/            # Reader cards, score indicators
+│   ├── studio/            # Studio intelligence view
+│   └── ui/                # shadcn/ui primitives
+├── lib/
+│   ├── agents/            # Reader personas, analysis orchestration, harmonization
+│   ├── executive/         # Executive profiles and evaluation engine
+│   ├── focus-group/       # Focus group conversation engine
+│   ├── harmonization/     # Score harmonization logic
+│   ├── memory/            # Three-layer memory (Resources, Items, Narratives)
+│   ├── studio-intelligence/ # Calibration and percentile engine
+│   ├── supabase/          # Supabase client utilities (server, browser, middleware)
+│   ├── auth.ts            # getCurrentUser / requireUser helpers
+│   ├── db.ts              # Prisma client singleton
+│   └── utils.ts           # Shared utilities
+├── stores/                # Zustand state management
+├── types/                 # TypeScript type definitions
+└── middleware.ts          # Auth redirect middleware
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Prerequisites
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Node.js 18+
+- A Supabase project (free tier works)
+- An Anthropic API key
 
-## Learn More
+### Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+Create a `.env` file:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+DATABASE_URL="postgresql://..."          # Supabase pooler connection string
+ANTHROPIC_API_KEY="sk-ant-..."           # Anthropic API key
+NEXT_PUBLIC_SUPABASE_URL="https://..."   # Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY="..."      # Supabase anon/public key
+SUPABASE_SERVICE_ROLE_KEY="..."          # Supabase service role key
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Install & Run
 
-## Deploy on Vercel
+```bash
+npm install
+npx prisma db push    # Push schema to database
+npm run dev           # Start dev server (localhost:3000)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Architecture
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Agent System
+
+Each reader agent has a distinct persona and evaluation lens:
+
+| Reader | Perspective | Focuses On |
+|--------|-------------|------------|
+| Maya Chen | The Optimist | Potential, emotional resonance, audience connection |
+| Colton Rivers | The Skeptic | Logical consistency, market reality, execution gaps |
+| Devon Park | The Craftsman | Technical craft, structure, dialogue quality |
+
+Readers analyze independently, then their perspectives are harmonized into a single coverage report that preserves both consensus and divergence.
+
+### Scoring System
+
+Five dimensions scored on a 5-point scale (excellent/very_good/good/so_so/not_good) with 0-100 numeric precision:
+
+- **Premise** — concept originality and hook
+- **Character** — depth, arcs, castability
+- **Dialogue** — voice, subtext, authenticity
+- **Structure** — pacing, act breaks, momentum
+- **Commerciality** — market positioning, audience appeal
+
+### Memory Architecture
+
+Three layers maintain agent continuity:
+
+1. **Resources (L1)** — archived full outputs (coverage, transcripts)
+2. **Items (L2)** — queryable atomic facts extracted from events
+3. **Narratives (L3)** — evolving first-person summaries injected into prompts
+
+### Multi-User Support
+
+Each authenticated user gets their own Studio with isolated projects, drafts, and analysis history. Supabase Auth handles sessions; Prisma manages user-scoped data.
+
+## License
+
+Private — all rights reserved.
