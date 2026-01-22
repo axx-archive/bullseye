@@ -1,0 +1,500 @@
+// BULLSEYE - Agentic Script Intelligence Platform
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+model Studio {
+  id                    String              @id @default(cuid())
+  name                  String
+  slug                  String              @unique
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  projects              Project[]
+  studioIntelligence    StudioIntelligence?
+  users                 User[]
+  readerPersonas        ReaderPersona[]
+  executiveProfiles     ExecutiveProfile[]
+}
+
+model User {
+  id                    String              @id @default(cuid())
+  supabaseAuthId        String              @unique   // Links to Supabase Auth user
+  email                 String              @unique
+  name                  String?
+  avatarUrl             String?
+  role                  UserRole            @default(MEMBER)
+  studioId              String
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  projects              Project[]
+  chatMessages          ChatMessage[]
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Project {
+  id                    String              @id @default(cuid())
+  title                 String
+  logline               String?
+  genre                 String
+  format                ProjectFormat
+  status                ProjectStatus       @default(ACTIVE)
+  studioId              String
+  createdByUserId       String
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  createdBy             User                @relation(fields: [createdByUserId], references: [id])
+  drafts                Draft[]
+  chatMessages          ChatMessage[]
+}
+
+enum ProjectFormat {
+  FEATURE
+  TV_PILOT
+  TV_EPISODE
+  SHORT
+  LIMITED_SERIES
+  DOCUMENTARY
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+}
+
+model Draft {
+  id                    String              @id @default(cuid())
+  projectId             String
+  draftNumber           Int
+  scriptUrl             String              // URL to stored script file
+  scriptText            String?             // Extracted text (optional, can be large)
+  pageCount             Int?
+  notes                 String?
+  status                DraftStatus         @default(PENDING)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  project               Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverable           DraftDeliverable?
+  focusSessions         FocusSession[]
+  readerMemories        ReaderMemory[]
+  executiveEvaluations  ExecutiveEvaluation[]
+
+  @@unique([projectId, draftNumber])
+}
+
+enum DraftStatus {
+  PENDING
+  ANALYZING
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// DELIVERABLES
+// ============================================
+
+model DraftDeliverable {
+  id                    String              @id @default(cuid())
+  draftId               String              @unique
+
+  // Harmonized outputs
+  harmonizedCoverage    Json                // CoverageReport
+  harmonizedIntake      Json                // IntakeReport
+  harmonizedScores      Json                // HarmonizedScores
+
+  // Individual perspectives
+  readerPerspectives    Json                // ReaderPerspective[]
+
+  // Scout synthesis
+  scoutAnalysis         Json                // ScoutAnalysis
+
+  // Calibration
+  studioCalibration     Json                // StudioCalibration
+
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  draft                 Draft               @relation(fields: [draftId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// READER SYSTEM
+// ============================================
+
+model ReaderPersona {
+  id                    String              @id @default(cuid())
+  studioId              String
+
+  // Identity
+  name                  String              // "Maya Chen"
+  displayName           String              // "The Optimist"
+  avatar                String?
+
+  // Persona configuration
+  background            String              // Bio/history
+  favoriteFilms         String[]            // Film references
+  voiceDescription      String              // How they speak
+  analyticalFocus       String[]            // What they prioritize
+
+  // Scoring weights (multipliers)
+  premiseWeight         Float               @default(1.0)
+  characterWeight       Float               @default(1.0)
+  dialogueWeight        Float               @default(1.0)
+  structureWeight       Float               @default(1.0)
+  commercialityWeight   Float               @default(1.0)
+
+  // System prompt components
+  systemPromptBase      String              @db.Text
+
+  isDefault             Boolean             @default(false)
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  memories              ReaderMemory[]
+  focusGroupMessages    FocusGroupMessage[]
+  chatMessages          ChatMessage[]
+}
+
+// ============================================
+// MEMORY SYSTEM (Three-Layer Hierarchy)
+// ============================================
+
+model ReaderMemory {
+  id                    String              @id @default(cuid())
+  draftId               String
+  readerId              String
+
+  // LAYER 3: Narrative (injected into prompts)
+  narrativeSummary      String              @db.Text // Reader's evolved perspective
+
+  // LAYER 2: Items (structured facts)
+  scores                Json                // ReaderScores
+  recommendation        String              // Recommendation enum value
+  keyStrengths          String[]
+  keyConcerns           String[]
+  standoutQuote         String?
+  evidenceStrength      Float               @default(0)
+
+  // Focus group contributions
+  focusGroupItems       Json                @default("[]") // FocusGroupItem[]
+
+  // Chat highlights
+  chatHighlights        Json                @default("[]") // ChatHighlight[]
+
+  // Score deltas from prior draft
+  scoreDeltas           Json?               // ScoreDelta[]
+  evolutionNotes        String?             // Explicit notes on position changes
+
+  // LAYER 1: Resource references (archive)
+  coverageResourceId    String?
+  focusGroupResourceId  String?
+  chatResourceId        String?
+
+  // Memory chain (cross-draft continuity)
+  priorMemoryId         String?             @unique
+
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  draft                 Draft               @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  reader                ReaderPersona       @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  priorMemory           ReaderMemory?       @relation("MemoryChain", fields: [priorMemoryId], references: [id])
+  nextMemory            ReaderMemory?       @relation("MemoryChain")
+
+  @@unique([draftId, readerId])
+}
+
+// ============================================
+// FOCUS GROUPS
+// ============================================
+
+model FocusSession {
+  id                    String              @id @default(cuid())
+  draftId               String
+
+  // Session metadata
+  topic                 String?             // Focus topic/question
+  status                FocusSessionStatus  @default(PENDING)
+
+  // Moderation settings
+  moderatorPrompt       String?             @db.Text
+  questions             String[]            // Pre-defined questions
+
+  // Summary (generated after session)
+  summary               String?             @db.Text
+  consensusPoints       String[]
+  divergencePoints      Json?               // Divergence[]
+
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  draft                 Draft               @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  messages              FocusGroupMessage[]
+}
+
+enum FocusSessionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model FocusGroupMessage {
+  id                    String              @id @default(cuid())
+  sessionId             String
+
+  // Speaker (Scout as moderator, or a reader)
+  speakerType           SpeakerType
+  readerId              String?             // If reader
+
+  // Content
+  content               String              @db.Text
+  topic                 String?
+  sentiment             Sentiment?
+
+  // Ordering
+  sequenceNumber        Int
+
+  createdAt             DateTime            @default(now())
+
+  // Relations
+  session               FocusSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  reader                ReaderPersona?      @relation(fields: [readerId], references: [id])
+
+  @@index([sessionId, sequenceNumber])
+}
+
+enum SpeakerType {
+  MODERATOR   // Scout
+  READER
+  USER
+}
+
+enum Sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+// ============================================
+// EXECUTIVE PITCH SIMULATION
+// ============================================
+
+model ExecutiveProfile {
+  id                    String              @id @default(cuid())
+  studioId              String
+
+  // Identity
+  name                  String              // "Jennifer Salke"
+  title                 String              // "Head of Amazon MGM Studios"
+  company               String              // "Amazon MGM Studios"
+  avatar                String?
+
+  // Track record data
+  filmography           String[]            // Notable films/shows
+  trackRecordSummary    String              @db.Text
+
+  // Context (can be refreshed)
+  recentTradeContext    String[]            // Recent news/deals
+  tradeContextUpdatedAt DateTime?
+
+  // Evaluation tendencies
+  evaluationStyle       String              @db.Text // How they evaluate
+  priorityFactors       String[]            // What they look for
+  dealBreakers          String[]            // What they avoid
+
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  evaluations           ExecutiveEvaluation[]
+}
+
+model ExecutiveEvaluation {
+  id                    String              @id @default(cuid())
+  draftId               String
+  executiveId           String
+
+  // Verdict
+  verdict               ExecutiveVerdict
+  confidence            Float               // 0-100
+
+  // Rationale
+  rationale             String              @db.Text
+  keyFactors            String[]
+  concerns              String[]
+
+  // Grounding
+  groundedInCoverage    Boolean             @default(true)
+  citedElements         String[]            // What from coverage they referenced
+
+  createdAt             DateTime            @default(now())
+
+  // Relations
+  draft                 Draft               @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  executive             ExecutiveProfile    @relation(fields: [executiveId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, executiveId])
+}
+
+enum ExecutiveVerdict {
+  PURSUE
+  PASS
+}
+
+// ============================================
+// STUDIO INTELLIGENCE (Calibration)
+// ============================================
+
+model StudioIntelligence {
+  id                    String              @id @default(cuid())
+  studioId              String              @unique
+
+  // Project summaries (compact historical data)
+  projectSummaries      Json                @default("[]") // ProjectSummary[]
+  totalProjectsAnalyzed Int                 @default(0)
+
+  // Score distributions (for percentile calculation)
+  scoreDistributions    Json                @default("{}") // ScoreDistributions
+
+  // Recommendation breakdown
+  recommendationBreakdown Json              @default("{}") // { recommend: n, consider: n, ... }
+
+  // Genre-specific averages
+  averagesByGenre       Json                @default("{}") // Record<genre, GenreAverages>
+
+  // Top performers (reference for calibration)
+  topPerformerIds       String[]
+
+  // Trend analysis
+  recentTrends          Json?               // TrendAnalysis
+
+  // Institutional narrative (LLM-generated summary)
+  institutionalNarrative String?            @db.Text
+  genreNarratives       Json                @default("{}") // Record<genre, string>
+
+  lastUpdatedAt         DateTime            @default(now())
+  createdAt             DateTime            @default(now())
+
+  // Relations
+  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// CHAT / AGENT MESSAGES
+// ============================================
+
+model ChatMessage {
+  id                    String              @id @default(cuid())
+  projectId             String
+
+  // Message details
+  role                  MessageRole
+  content               String              @db.Text
+
+  // Agent context
+  agentType             AgentType?          // Which agent sent/received
+  readerId              String?             // If reader-specific
+
+  // User context
+  userId                String?
+
+  // Metadata
+  metadata              Json?               // Additional context
+
+  createdAt             DateTime            @default(now())
+
+  // Relations
+  project               Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reader                ReaderPersona?      @relation(fields: [readerId], references: [id])
+  user                  User?               @relation(fields: [userId], references: [id])
+
+  @@index([projectId, createdAt])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum AgentType {
+  SCOUT
+  READER
+  EXECUTIVE
+  MODERATOR
+}
+
+// ============================================
+// RESOURCE ARCHIVE (Layer 1 - Raw Storage)
+// ============================================
+
+model ResourceArchive {
+  id                    String              @id @default(cuid())
+
+  // Resource type
+  resourceType          ResourceType
+
+  // Reference IDs
+  projectId             String?
+  draftId               String?
+  sessionId             String?
+
+  // Content
+  content               String              @db.Text    // Full raw content
+  contentHash           String              // For deduplication
+
+  // Metadata
+  metadata              Json?
+  sizeBytes             Int
+
+  createdAt             DateTime            @default(now())
+
+  @@index([resourceType, draftId])
+  @@index([contentHash])
+}
+
+enum ResourceType {
+  COVERAGE_FULL
+  INTAKE_FULL
+  FOCUS_GROUP_TRANSCRIPT
+  CHAT_TRANSCRIPT
+  SCRIPT_TEXT
+}
