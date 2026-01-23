@@ -214,12 +214,20 @@ export function createSpawnReadersTool(emitEvent: EventEmitter) {
             );
 
             // Emit completion event with analysis data
+            // Transform scores to numeric-only format expected by ReaderStreamState
             emitEvent({
               source,
               type: 'analysis_complete',
               readerId,
               data: {
-                scores: analysis.scores,
+                scores: {
+                  premise: analysis.scores.premiseNumeric,
+                  character: analysis.scores.characterNumeric,
+                  dialogue: analysis.scores.dialogueNumeric,
+                  structure: analysis.scores.structureNumeric,
+                  commerciality: analysis.scores.commercialityNumeric,
+                  overall: analysis.scores.overallNumeric,
+                },
                 recommendation: analysis.recommendation,
                 keyStrengths: analysis.keyStrengths,
                 keyConcerns: analysis.keyConcerns,
