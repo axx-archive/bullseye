@@ -2,10 +2,13 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/stores/app-store';
 import type { ToolCallStatus } from '@/stores/app-store';
 import { ChatInterface, QuickActions, type ChatMessage, type FileAttachment } from '@/components/chat/chat-interface';
 import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
+import { draftKeys } from '@/hooks/use-drafts';
+import { studioKeys } from '@/hooks/use-studio';
 import { Target } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -49,6 +52,7 @@ export function ScoutChat() {
     setExecutiveState,
   } = useAppStore();
 
+  const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
@@ -197,6 +201,15 @@ export function ScoutChat() {
           toolCalls: toolCallsRef.current.length > 0 ? [...toolCallsRef.current] : undefined,
         });
         currentAssistantIdRef.current = null;
+
+        // Invalidate React Query caches for data that may have been persisted
+        const draftId = useAppStore.getState().currentDraft?.id;
+        if (draftId) {
+          queryClient.invalidateQueries({ queryKey: draftKeys.deliverable(draftId) });
+          queryClient.invalidateQueries({ queryKey: draftKeys.evaluations(draftId) });
+          queryClient.invalidateQueries({ queryKey: draftKeys.focusSessions(draftId) });
+        }
+        queryClient.invalidateQueries({ queryKey: studioKeys.intelligence });
       },
       onError: (error) => {
         setStreaming(false);
