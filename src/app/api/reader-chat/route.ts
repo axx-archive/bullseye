@@ -7,6 +7,7 @@ import { db } from '@/lib/db';
 import { memoryReadEngine } from '@/lib/memory';
 import type { SubAgentMemory } from '@/lib/memory';
 import type { Rating } from '@/types';
+import { getCurrentUser, getUserApiKey } from '@/lib/auth';
 
 export const maxDuration = 60; // 1 minute timeout
 
@@ -89,6 +90,23 @@ export async function POST(req: Request) {
   const body = (await req.json()) as ReaderChatRequest;
   const { readerId, message, projectId, draftId, conversationHistory } = body;
 
+  // Authenticate and retrieve API key
+  const user = await getCurrentUser();
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const apiKey = await getUserApiKey(user.id);
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: 'Please add your Claude API key in Settings' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   // Validate reader
   const reader = getReaderById(readerId);
   if (!reader) {
@@ -169,9 +187,9 @@ Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer res
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // Import Anthropic SDK
+        // Import Anthropic SDK with user's API key
         const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
-        const client = new AnthropicSDK();
+        const client = new AnthropicSDK({ apiKey });
 
         // Stream the response
         const response = await client.messages.stream({

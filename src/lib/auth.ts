@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/lib/db';
+import { decrypt } from '@/lib/encryption';
 
 const DEFAULT_STUDIO_ID = 'default-studio-id';
 
@@ -47,4 +48,20 @@ export async function requireUser() {
     throw new Error('Unauthorized');
   }
   return user;
+}
+
+/**
+ * Retrieve the decrypted Claude API key for a user.
+ * Returns the plaintext key or null if not configured.
+ */
+export async function getUserApiKey(userId: string): Promise<string | null> {
+  const settings = await db.userSettings.findUnique({
+    where: { userId },
+  });
+
+  if (!settings?.claudeApiKeyEncrypted || !settings?.claudeApiKeyIv) {
+    return null;
+  }
+
+  return decrypt(settings.claudeApiKeyEncrypted, settings.claudeApiKeyIv);
 }

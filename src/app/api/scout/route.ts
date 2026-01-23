@@ -7,6 +7,7 @@ import { createBullseyeToolServer } from '@/lib/agent-sdk/tools';
 import { setCurrentScript } from '@/lib/agent-sdk/tools/ingest';
 import { SCOUT_AGENT_SYSTEM_PROMPT } from '@/lib/agent-sdk/prompts';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
+import { getCurrentUser, getUserApiKey } from '@/lib/auth';
 
 export const maxDuration = 300; // 5 minute timeout for long analysis runs
 
@@ -22,6 +23,23 @@ export async function POST(req: Request) {
 
   if (!messages || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'No messages provided' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Authenticate and retrieve API key
+  const user = await getCurrentUser();
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const apiKey = await getUserApiKey(user.id);
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: 'Please add your Claude API key in Settings' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -104,6 +122,7 @@ export async function POST(req: Request) {
             includePartialMessages: true,
             tools: [], // Only use MCP tools, no built-in tools
             disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'WebFetch', 'WebSearch'],
+            env: { ...process.env, ANTHROPIC_API_KEY: apiKey },
           },
         });
 

@@ -145,7 +145,16 @@ export function createSSEConnection(
       });
 
       if (!response.ok || !response.body) {
-        callbacks.onError(`HTTP ${response.status}: ${response.statusText}`);
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorBody = await response.json();
+          if (errorBody?.error) {
+            errorMessage = errorBody.error;
+          }
+        } catch {
+          // Use default error message
+        }
+        callbacks.onError(errorMessage);
         return;
       }
 
