@@ -17,16 +17,20 @@ datasource db {
 model Studio {
   id                    String              @id @default(cuid())
   name                  String
-  slug                  String              @unique
+  slug                  String
+  ownerId               String              // User who created this studio
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
   // Relations
+  owner                 User                @relation("OwnedStudios", fields: [ownerId], references: [id], onDelete: Cascade)
   projects              Project[]
   studioIntelligence    StudioIntelligence?
-  users                 User[]
+  activeUsers           User[]              @relation("ActiveStudio")
   readerPersonas        ReaderPersona[]
   executiveProfiles     ExecutiveProfile[]
+
+  @@unique([ownerId, slug])
 }
 
 model User {
@@ -41,7 +45,8 @@ model User {
   updatedAt             DateTime            @updatedAt
 
   // Relations
-  studio                Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  studio                Studio              @relation("ActiveStudio", fields: [studioId], references: [id], onDelete: Cascade)
+  ownedStudios          Studio[]            @relation("OwnedStudios")
   projects              Project[]
   chatMessages          ChatMessage[]
 }
@@ -194,6 +199,7 @@ model ReaderMemory {
   id                    String              @id @default(cuid())
   draftId               String
   readerId              String
+  projectId             String              // Denormalized for easier queries
 
   // LAYER 3: Narrative (injected into prompts)
   narrativeSummary      String              @db.Text // Reader's evolved perspective
@@ -232,8 +238,34 @@ model ReaderMemory {
   reader                ReaderPersona       @relation(fields: [readerId], references: [id], onDelete: Cascade)
   priorMemory           ReaderMemory?       @relation("MemoryChain", fields: [priorMemoryId], references: [id])
   nextMemory            ReaderMemory?       @relation("MemoryChain")
+  items                 MemoryItem[]        // L2 atomic facts
 
   @@unique([draftId, readerId])
+  @@index([projectId, readerId])
+}
+
+// L2 Atomic Facts - queryable memory items
+model MemoryItem {
+  id                    String              @id @default(cuid())
+  memoryId              String
+  
+  // Content
+  content               String              @db.Text
+  topic                 String              // character|structure|dialogue|premise|commerciality|general
+  source                String              // coverage|focus_group|chat
+  importance            String              // high|medium|low
+  
+  // Optional metadata
+  pageReference         String?
+  sentiment             Sentiment?
+  
+  createdAt             DateTime            @default(now())
+  
+  // Relations
+  memory                ReaderMemory        @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  
+  @@index([memoryId, topic])
+  @@index([memoryId, importance])
 }
 
 // ============================================

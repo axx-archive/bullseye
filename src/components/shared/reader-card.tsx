@@ -1,14 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { ChevronDown, MessageSquare } from 'lucide-react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ChevronDown } from 'lucide-react';
 import { MiniScore } from './score-indicator';
 import type { ReaderPerspective, Recommendation } from '@/types';
 import { RECOMMENDATION_LABELS } from '@/types';
@@ -20,18 +14,17 @@ interface ReaderCardProps {
   onStartChat?: () => void;
 }
 
-const RECOMMENDATION_VARIANTS: Record<Recommendation, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  recommend: 'default',
-  consider: 'secondary',
-  low_consider: 'outline',
-  pass: 'destructive',
+const RECOMMENDATION_STYLES: Record<Recommendation, string> = {
+  recommend: 'bg-success/10 text-success',
+  consider: 'bg-bullseye-gold/10 text-bullseye-gold',
+  low_consider: 'bg-surface text-muted-foreground',
+  pass: 'bg-danger/10 text-danger',
 };
 
 export function ReaderCard({
   perspective,
   expanded = false,
   onToggleExpand,
-  onStartChat,
 }: ReaderCardProps) {
   const {
     readerName,
@@ -51,38 +44,40 @@ export function ReaderCard({
     .join('');
 
   return (
-    <Card
-      className="overflow-hidden transition-all duration-200 hover:shadow-md"
-      style={{ borderLeftColor: color, borderLeftWidth: 4 }}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+    <div className="rounded-2xl bg-surface border border-border/50 overflow-hidden transition-all duration-200 hover:border-border">
+      {/* Header */}
+      <div className="p-5 pb-4">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10" style={{ backgroundColor: `${color}20` }}>
-              <AvatarFallback style={{ color }}>{initials}</AvatarFallback>
-            </Avatar>
+            {/* Avatar with reader color */}
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${color}12` }}
+            >
+              <span
+                className="text-xs font-bold"
+                style={{ color }}
+              >
+                {initials}
+              </span>
+            </div>
             <div>
-              <h4 className="font-semibold text-foreground">{readerName}</h4>
-              <span className="text-sm text-muted-foreground">{voiceTag}</span>
+              <h4 className="text-sm font-semibold text-foreground">{readerName}</h4>
+              <span className="text-[11px] text-muted-foreground">{voiceTag}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Badge variant={RECOMMENDATION_VARIANTS[recommendation]}>
-              {RECOMMENDATION_LABELS[recommendation]}
-            </Badge>
-            {onStartChat && (
-              <Button variant="ghost" size="icon" onClick={onStartChat}>
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
+          {/* Recommendation pill */}
+          <span className={cn(
+            'text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full',
+            RECOMMENDATION_STYLES[recommendation]
+          )}>
+            {RECOMMENDATION_LABELS[recommendation]}
+          </span>
         </div>
-      </CardHeader>
 
-      <CardContent className="pt-0">
-        {/* Mini scores grid */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        {/* Mini scores */}
+        <div className="grid grid-cols-2 gap-1.5 mb-4">
           <MiniScore label="Premise" rating={scores.premise} color={color} />
           <MiniScore label="Character" rating={scores.character} color={color} />
           <MiniScore label="Dialogue" rating={scores.dialogue} color={color} />
@@ -91,90 +86,90 @@ export function ReaderCard({
           <MiniScore label="Overall" rating={scores.overall} color={color} />
         </div>
 
-        {/* Evidence strength indicator */}
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs text-muted-foreground">Evidence Strength:</span>
-          <div className="flex-1 h-1.5 bg-elevated rounded-full overflow-hidden">
+        {/* Evidence strength — minimal bar */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">Evidence</span>
+          <div className="flex-1 h-1 bg-elevated rounded-full overflow-hidden">
             <div
-              className="h-full bg-bullseye-gold rounded-full transition-all duration-300"
-              style={{ width: `${evidenceStrength}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${evidenceStrength}%`, backgroundColor: color }}
             />
           </div>
-          <span className="text-xs font-medium">{evidenceStrength}%</span>
+          <span className="text-[10px] font-medium text-muted-foreground">{evidenceStrength}%</span>
         </div>
+      </div>
 
-        {/* Expandable POV section */}
-        <Collapsible open={expanded} onOpenChange={onToggleExpand}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between">
-              <span className="text-sm">Expand POV</span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 transition-transform duration-200',
-                  expanded && 'rotate-180'
-                )}
-              />
-            </Button>
-          </CollapsibleTrigger>
+      {/* Expand trigger */}
+      <button
+        onClick={onToggleExpand}
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 border-t border-border/50 text-[11px] text-muted-foreground hover:text-foreground hover:bg-elevated/50 transition-colors"
+      >
+        <span>{expanded ? 'Collapse' : 'Details'}</span>
+        <ChevronDown
+          className={cn(
+            'w-3 h-3 transition-transform duration-200',
+            expanded && 'rotate-180'
+          )}
+        />
+      </button>
 
-          <CollapsibleContent>
-            <AnimatePresence>
-              {expanded && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="pt-4 space-y-4"
-                >
-                  {/* Standout quote */}
-                  <div
-                    className="p-3 rounded-lg italic text-sm"
-                    style={{ backgroundColor: `${color}10`, borderLeft: `3px solid ${color}` }}
-                  >
-                    "{standoutQuote}"
-                  </div>
+      {/* Expanded content */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 pt-3 space-y-4 border-t border-border/50">
+              {/* Standout quote */}
+              <div
+                className="p-3 rounded-xl text-xs leading-relaxed italic text-foreground/80"
+                style={{ backgroundColor: `${color}08` }}
+              >
+                &ldquo;{standoutQuote}&rdquo;
+              </div>
 
-                  {/* Key strengths */}
-                  <div>
-                    <h5 className="text-xs font-semibold text-muted-foreground mb-2">
-                      KEY STRENGTHS
-                    </h5>
-                    <ul className="space-y-1">
-                      {keyStrengths.map((strength, i) => (
-                        <li key={i} className="text-sm flex items-start gap-2">
-                          <span className="text-success">+</span>
-                          {strength}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              {/* Strengths */}
+              <div>
+                <h5 className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase mb-2">
+                  Strengths
+                </h5>
+                <ul className="space-y-1.5">
+                  {keyStrengths.map((s, i) => (
+                    <li key={i} className="text-xs text-foreground/80 flex items-start gap-2">
+                      <span className="text-success mt-0.5">+</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-                  {/* Key concerns */}
-                  <div>
-                    <h5 className="text-xs font-semibold text-muted-foreground mb-2">
-                      KEY CONCERNS
-                    </h5>
-                    <ul className="space-y-1">
-                      {keyConcerns.map((concern, i) => (
-                        <li key={i} className="text-sm flex items-start gap-2">
-                          <span className="text-danger">-</span>
-                          {concern}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </CollapsibleContent>
-        </Collapsible>
-      </CardContent>
-    </Card>
+              {/* Concerns */}
+              <div>
+                <h5 className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase mb-2">
+                  Concerns
+                </h5>
+                <ul className="space-y-1.5">
+                  {keyConcerns.map((c, i) => (
+                    <li key={i} className="text-xs text-foreground/80 flex items-start gap-2">
+                      <span className="text-danger mt-0.5">-</span>
+                      {c}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
-// Compact reader comparison grid
+// Reader comparison grid
 interface ReaderComparisonProps {
   perspectives: ReaderPerspective[];
   onExpandReader?: (readerId: string) => void;
@@ -187,7 +182,7 @@ export function ReaderComparison({
   expandedReaders = [],
 }: ReaderComparisonProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {perspectives.map((perspective) => (
         <ReaderCard
           key={perspective.readerId}

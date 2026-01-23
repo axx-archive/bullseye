@@ -8,10 +8,8 @@ import type {
   StudioCalibration,
   ScoreDistributions,
   ProjectSummary,
-  Rating,
   HarmonizedScores
 } from '@/types';
-import { RATING_VALUES } from '@/types';
 
 function getAnthropicClient(): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -386,7 +384,7 @@ Write a 3-4 sentence narrative about the studio's script portfolio and standards
 
   private updateTopPerformers(
     summaries: ProjectSummary[],
-    existingTopIds: string[]
+    _existingTopIds: string[]
   ): string[] {
     // Sort by overall score and take top 10%
     const sorted = [...summaries].sort(

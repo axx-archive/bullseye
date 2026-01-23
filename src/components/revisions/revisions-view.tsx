@@ -1,290 +1,346 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { useDrafts } from '@/hooks/use-drafts';
+import { useDeliverable } from '@/hooks/use-studio';
+import { DraftUploadModal } from '@/components/home/draft-upload-modal';
 import {
   GitBranch,
-  ChevronRight,
   ArrowUp,
   ArrowDown,
   Minus,
-  FileText,
   Clock,
   Upload,
+  AlertTriangle,
 } from 'lucide-react';
-import type { Rating } from '@/types';
-import { RATING_LABELS } from '@/types';
 
-// Mock draft data for demonstration
-const MOCK_DRAFTS = [
-  {
-    id: 'draft-1',
-    draftNumber: 1,
-    uploadedAt: new Date('2024-01-15'),
-    pageCount: 112,
-    status: 'completed',
-    scores: {
-      premise: { rating: 'good' as Rating, numeric: 68 },
-      character: { rating: 'very_good' as Rating, numeric: 78 },
-      dialogue: { rating: 'good' as Rating, numeric: 65 },
-      structure: { rating: 'so_so' as Rating, numeric: 52 },
-      commerciality: { rating: 'good' as Rating, numeric: 70 },
-      overall: { rating: 'good' as Rating, numeric: 67 },
-    },
-  },
-  {
-    id: 'draft-2',
-    draftNumber: 2,
-    uploadedAt: new Date('2024-02-20'),
-    pageCount: 108,
-    status: 'completed',
-    scores: {
-      premise: { rating: 'good' as Rating, numeric: 70 },
-      character: { rating: 'very_good' as Rating, numeric: 82 },
-      dialogue: { rating: 'very_good' as Rating, numeric: 75 },
-      structure: { rating: 'good' as Rating, numeric: 64 },
-      commerciality: { rating: 'very_good' as Rating, numeric: 76 },
-      overall: { rating: 'very_good' as Rating, numeric: 73 },
-    },
-  },
-];
+// Default readers for memory display
+const DEFAULT_READERS: Record<string, { name: string; voiceTag: string; color: string }> = {
+  'maya-chen': { name: 'Maya Chen', voiceTag: 'The Optimist', color: '#30D5C8' },
+  'colton-rivers': { name: 'Colton Rivers', voiceTag: 'The Skeptic', color: '#FF7F7F' },
+  'devon-park': { name: 'Devon Park', voiceTag: 'The Craftsman', color: '#B8A9C9' },
+};
+
+interface HarmonizedScores {
+  premise?: { rating: string; numeric: number };
+  character?: { rating: string; numeric: number };
+  dialogue?: { rating: string; numeric: number };
+  structure?: { rating: string; numeric: number };
+  commerciality?: { rating: string; numeric: number };
+  overall?: { rating: string; numeric: number };
+  [key: string]: { rating: string; numeric: number } | undefined;
+}
+
+interface ReaderPerspective {
+  readerId: string;
+  readerName: string;
+  voiceTag?: string;
+  color?: string;
+  recommendation?: string;
+  scores?: Record<string, unknown>;
+  keyStrengths?: string[];
+  keyConcerns?: string[];
+  standoutQuote?: string;
+}
 
 export function RevisionsView() {
-  const { currentProject, currentDeliverable } = useAppStore();
-  const [selectedDraft, setSelectedDraft] = useState<string | null>(
-    MOCK_DRAFTS[MOCK_DRAFTS.length - 1]?.id || null
-  );
+  const { currentProject, setActiveTab } = useAppStore();
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState(false);
-  const [compareDraft, setCompareDraft] = useState<string | null>(null);
+  const [compareDraftId, setCompareDraftId] = useState<string | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
-  const drafts = MOCK_DRAFTS; // In production, this would come from the store/API
+  const { data: drafts, isLoading, error } = useDrafts(currentProject?.id ?? null);
 
-  if (drafts.length === 0) {
-    return <EmptyState />;
+  // Select the latest draft by default
+  const effectiveDraftId = selectedDraftId ?? (drafts && drafts.length > 0 ? drafts[0]?.id : null);
+
+  // Fetch deliverables for selected and comparison drafts
+  const { data: selectedDeliverable, isLoading: isLoadingDeliverable } = useDeliverable(effectiveDraftId ?? null);
+  const { data: compareDeliverable } = useDeliverable(compareMode ? compareDraftId : null);
+
+  if (isLoading) {
+    return <LoadingSkeleton />;
   }
 
-  const currentDraft = drafts.find((d) => d.id === selectedDraft);
-  const comparisonDraft = compareDraft ? drafts.find((d) => d.id === compareDraft) : null;
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load drafts</p>
+        <p className="text-xs text-muted-foreground">{error.message}</p>
+      </div>
+    );
+  }
+
+  if (!drafts || drafts.length === 0) {
+    return (
+      <>
+        <EmptyState onUpload={() => setShowUploadModal(true)} />
+        <DraftUploadModal open={showUploadModal} onClose={() => setShowUploadModal(false)} />
+      </>
+    );
+  }
+
+  const currentDraft = drafts.find((d) => d.id === effectiveDraftId);
+  const comparisonDraft = compareDraftId ? drafts.find((d) => d.id === compareDraftId) : null;
+
+  // Parse deliverable scores
+  const currentScores = selectedDeliverable
+    ? (selectedDeliverable.harmonizedScores as HarmonizedScores | null)
+    : null;
+  const comparisonScores = compareDeliverable
+    ? (compareDeliverable.harmonizedScores as HarmonizedScores | null)
+    : null;
+
+  // Parse reader perspectives for memory narratives
+  const readerPerspectives = selectedDeliverable
+    ? (selectedDeliverable.readerPerspectives as ReaderPerspective[] | null)
+    : null;
 
   return (
-    <div className="h-full flex">
-      {/* Timeline sidebar */}
-      <div className="w-64 border-r border-border bg-surface">
-        <div className="h-16 px-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold flex items-center gap-2">
-            <GitBranch className="w-4 h-4" />
-            Draft Timeline
-          </h3>
-        </div>
+    <>
+      <div className="h-full flex">
+        {/* Timeline sidebar */}
+        <div className="w-64 border-r border-border bg-surface flex flex-col">
+          <div className="h-16 px-4 border-b border-border flex items-center justify-between shrink-0">
+            <h3 className="font-semibold flex items-center gap-2">
+              <GitBranch className="w-4 h-4" />
+              Draft Timeline
+            </h3>
+          </div>
 
-        <ScrollArea className="h-[calc(100%-4rem)]">
-          <div className="p-4 space-y-2">
-            {/* Upload new draft button */}
-            <Button variant="outline" className="w-full gap-2 mb-4">
-              <Upload className="w-4 h-4" />
-              Upload New Draft
-            </Button>
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4 space-y-2">
+              {/* Upload new draft button */}
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-elevated transition-colors mb-4"
+              >
+                <Upload className="w-4 h-4" />
+                Upload New Draft
+              </button>
 
-            {/* Draft timeline */}
-            <div className="relative">
-              {/* Timeline line */}
-              <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+              {/* Draft timeline */}
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
 
-              {drafts
-                .slice()
-                .reverse()
-                .map((draft, index) => {
-                  const isSelected = selectedDraft === draft.id;
-                  const isComparison = compareDraft === draft.id;
+                {drafts
+                  .slice()
+                  .sort((a, b) => b.draftNumber - a.draftNumber)
+                  .map((draft, index) => {
+                    const isSelected = effectiveDraftId === draft.id;
+                    const isComparison = compareDraftId === draft.id;
 
-                  return (
-                    <motion.button
-                      key={draft.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => {
-                        if (compareMode && selectedDraft !== draft.id) {
-                          setCompareDraft(draft.id);
-                        } else {
-                          setSelectedDraft(draft.id);
-                          setCompareDraft(null);
-                        }
-                      }}
-                      className={cn(
-                        'relative w-full flex items-start gap-3 p-3 pl-8 rounded-lg text-left transition-colors',
-                        'hover:bg-elevated',
-                        isSelected && 'bg-elevated ring-1 ring-primary',
-                        isComparison && 'bg-elevated ring-1 ring-info'
-                      )}
-                    >
-                      {/* Timeline dot */}
-                      <div
+                    return (
+                      <motion.button
+                        key={draft.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        onClick={() => {
+                          if (compareMode && effectiveDraftId !== draft.id) {
+                            setCompareDraftId(draft.id);
+                          } else {
+                            setSelectedDraftId(draft.id);
+                            setCompareDraftId(null);
+                          }
+                        }}
                         className={cn(
-                          'absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 bg-background',
-                          isSelected
-                            ? 'border-primary'
-                            : isComparison
-                              ? 'border-info'
-                              : 'border-muted-foreground'
+                          'relative w-full flex items-start gap-3 p-3 pl-8 rounded-lg text-left transition-colors',
+                          'hover:bg-elevated',
+                          isSelected && 'bg-elevated ring-1 ring-primary',
+                          isComparison && 'bg-elevated ring-1 ring-info'
                         )}
-                      />
+                      >
+                        {/* Timeline dot */}
+                        <div
+                          className={cn(
+                            'absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 bg-background',
+                            isSelected
+                              ? 'border-primary'
+                              : isComparison
+                                ? 'border-info'
+                                : 'border-muted-foreground'
+                          )}
+                        />
 
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">Draft {draft.draftNumber}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {draft.scores.overall.rating.replace('_', ' ')}
-                          </Badge>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Draft {draft.draftNumber}</span>
+                            {draft.status === 'COMPLETED' && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success font-medium">
+                                Analyzed
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(draft.createdAt).toLocaleDateString()}
+                          </div>
+                          {draft.pageCount && (
+                            <div className="text-xs text-muted-foreground">
+                              {draft.pageCount} pages
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                          <Clock className="w-3 h-3" />
-                          {draft.uploadedAt.toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {draft.pageCount} pages
-                        </div>
-                      </div>
-                    </motion.button>
-                  );
-                })}
+                      </motion.button>
+                    );
+                  })}
+              </div>
             </div>
           </div>
-        </ScrollArea>
-      </div>
+        </div>
 
-      {/* Main content */}
-      <div className="flex-1">
-        <ScrollArea className="h-full">
+        {/* Main content */}
+        <div className="flex-1 overflow-y-auto">
           <div className="p-6 max-w-4xl mx-auto space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold">
-                  Draft {currentDraft?.draftNumber} Analysis
+                  Draft {currentDraft?.draftNumber} {currentDraft?.status === 'COMPLETED' ? 'Analysis' : ''}
                 </h1>
-                <p className="text-muted-foreground">
-                  Uploaded {currentDraft?.uploadedAt.toLocaleDateString()}
-                </p>
+                {currentDraft && (
+                  <p className="text-muted-foreground">
+                    Uploaded {new Date(currentDraft.createdAt).toLocaleDateString()}
+                    {currentDraft.pageCount ? ` · ${currentDraft.pageCount} pages` : ''}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                <Button
-                  variant={compareMode ? 'default' : 'outline'}
-                  onClick={() => {
-                    setCompareMode(!compareMode);
-                    if (!compareMode) {
-                      setCompareDraft(null);
-                    }
-                  }}
-                >
-                  {compareMode ? 'Exit Compare' : 'Compare Drafts'}
-                </Button>
+                {drafts.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setCompareMode(!compareMode);
+                      if (!compareMode) {
+                        setCompareDraftId(null);
+                      }
+                    }}
+                    className={cn(
+                      'px-4 py-2 rounded-full text-sm font-medium transition-all',
+                      compareMode
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border/50 text-muted-foreground hover:text-foreground hover:bg-elevated'
+                    )}
+                  >
+                    {compareMode ? 'Exit Compare' : 'Compare Drafts'}
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Compare mode instructions */}
-            {compareMode && !compareDraft && (
-              <Card className="border-info">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-center text-muted-foreground">
-                    Select another draft from the timeline to compare
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            <AnimatePresence>
+              {compareMode && !compareDraftId && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-4 rounded-xl border border-info/30 bg-info/5">
+                    <p className="text-sm text-center text-muted-foreground">
+                      Select another draft from the timeline to compare
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Score comparison */}
-            {currentDraft && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">
+            {isLoadingDeliverable ? (
+              <ScoreTableSkeleton />
+            ) : currentScores ? (
+              <div className="rounded-xl border border-border/50 bg-surface overflow-hidden">
+                <div className="px-6 py-4 border-b border-border/30">
+                  <h3 className="text-lg font-semibold">
                     {compareMode && comparisonDraft
-                      ? `Comparing Draft ${currentDraft.draftNumber} vs Draft ${comparisonDraft.draftNumber}`
+                      ? `Comparing Draft ${currentDraft?.draftNumber} vs Draft ${comparisonDraft.draftNumber}`
                       : 'Score Summary'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+                  </h3>
+                </div>
+                <div className="p-6">
                   <ScoreComparison
-                    current={currentDraft.scores}
-                    comparison={comparisonDraft?.scores}
-                    showComparison={compareMode && !!comparisonDraft}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Delta notes */}
-            {currentDraft && currentDraft.draftNumber > 1 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Changes from Previous Draft</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <DeltaNote
-                      type="improved"
-                      title="Structure improved"
-                      description="Second act pacing issues addressed. Readers noted tighter scene transitions and better momentum through pages 35-60."
-                    />
-                    <DeltaNote
-                      type="improved"
-                      title="Dialogue sharpened"
-                      description="Devon noted significant improvement in dialogue rhythm. The restaurant scene on page 45 now crackles."
-                    />
-                    <DeltaNote
-                      type="unchanged"
-                      title="Character concerns persist"
-                      description="Maya still wants deeper exploration of the protagonist's backstory. Consider adding a flashback in Act 1."
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Reader memory browser */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Reader Memory</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  What each reader remembers about this project across drafts.
-                </p>
-
-                <div className="space-y-4">
-                  <ReaderMemoryCard
-                    name="Maya Chen"
-                    voiceTag="The Optimist"
-                    color="#30D5C8"
-                    narrative="I've been following this project since Draft 1. The emotional core has always been strong, but I'm thrilled to see the protagonist's arc gaining depth. The changes to Act 2 addressed my main concerns about pacing. Still hoping to see more of the sibling relationship explored."
-                  />
-                  <ReaderMemoryCard
-                    name="Colton Rivers"
-                    voiceTag="The Skeptic"
-                    color="#FF7F7F"
-                    narrative="This project has come a long way. Initial structural issues were significant, but Draft 2 shows real improvement. Commercial viability is stronger now—the marketing hooks are clearer. I'd still push for a more dynamic opening, but we're moving in the right direction."
-                  />
-                  <ReaderMemoryCard
-                    name="Devon Park"
-                    voiceTag="The Craftsman"
-                    color="#B8A9C9"
-                    narrative="From a craft perspective, the biggest gains are in dialogue and scene construction. The writer clearly took our notes seriously. Pages 45-60 are transformed. I'm cautiously optimistic about where this is heading."
+                    current={currentScores}
+                    comparison={comparisonScores}
+                    showComparison={compareMode && !!comparisonScores}
                   />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            ) : currentDraft?.status !== 'COMPLETED' ? (
+              <div className="p-6 rounded-xl border border-border/30 bg-surface/50 text-center">
+                <p className="text-sm text-muted-foreground">
+                  This draft hasn&apos;t been analyzed yet. Run analysis from Scout to see scores.
+                </p>
+                <button
+                  onClick={() => setActiveTab('scout')}
+                  className="mt-3 px-4 py-2 rounded-full text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                >
+                  Go to Scout →
+                </button>
+              </div>
+            ) : null}
+
+            {/* Compare delta arrows */}
+            <AnimatePresence>
+              {compareMode && comparisonScores && currentScores && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="rounded-xl border border-border/50 bg-surface overflow-hidden"
+                >
+                  <div className="px-6 py-4 border-b border-border/30">
+                    <h3 className="text-lg font-semibold">Score Changes</h3>
+                  </div>
+                  <div className="p-6">
+                    <DeltaSummary current={currentScores} comparison={comparisonScores} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Reader memory / perspectives */}
+            {readerPerspectives && readerPerspectives.length > 0 && (
+              <div className="rounded-xl border border-border/50 bg-surface overflow-hidden">
+                <div className="px-6 py-4 border-b border-border/30">
+                  <h3 className="text-lg font-semibold">Reader Perspectives</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    What each reader noted about this draft.
+                  </p>
+                </div>
+                <div className="p-6 space-y-4">
+                  {readerPerspectives.map((perspective) => {
+                    const readerInfo = Object.values(DEFAULT_READERS).find(
+                      (r) => r.name === perspective.readerName
+                    ) || { name: perspective.readerName, voiceTag: perspective.voiceTag || '', color: perspective.color || '#888' };
+                    return (
+                      <ReaderMemoryCard
+                        key={perspective.readerId}
+                        name={readerInfo.name}
+                        voiceTag={readerInfo.voiceTag}
+                        color={readerInfo.color}
+                        strengths={perspective.keyStrengths}
+                        concerns={perspective.keyConcerns}
+                        quote={perspective.standoutQuote}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
-    </div>
+
+      <DraftUploadModal open={showUploadModal} onClose={() => setShowUploadModal(false)} />
+    </>
   );
 }
 
@@ -294,8 +350,8 @@ function ScoreComparison({
   comparison,
   showComparison,
 }: {
-  current: Record<string, { rating: Rating; numeric: number }>;
-  comparison?: Record<string, { rating: Rating; numeric: number }>;
+  current: HarmonizedScores;
+  comparison: HarmonizedScores | null;
   showComparison: boolean;
 }) {
   const dimensions = [
@@ -312,8 +368,9 @@ function ScoreComparison({
       {dimensions.map(({ key, label }) => {
         const currentScore = current[key];
         const comparisonScore = comparison?.[key];
-        const delta = comparisonScore
-          ? currentScore.numeric - comparisonScore.numeric
+        const numericValue = currentScore?.numeric ?? 0;
+        const delta = showComparison && comparisonScore
+          ? numericValue - (comparisonScore.numeric ?? 0)
           : 0;
 
         return (
@@ -323,18 +380,20 @@ function ScoreComparison({
             {/* Current score bar */}
             <div className="flex-1 flex items-center gap-2">
               <div className="flex-1 h-2 bg-elevated rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-bullseye-gold rounded-full transition-all duration-300"
-                  style={{ width: `${currentScore.numeric}%` }}
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${numericValue}%` }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                  className="h-full bg-bullseye-gold rounded-full"
                 />
               </div>
-              <span className="text-sm font-medium w-20">
-                {RATING_LABELS[currentScore.rating]}
+              <span className="text-sm font-medium w-10 text-right">
+                {numericValue}
               </span>
             </div>
 
             {/* Delta indicator */}
-            {showComparison && comparison && (
+            {showComparison && (
               <div
                 className={cn(
                   'flex items-center gap-1 w-16 text-sm',
@@ -357,35 +416,58 @@ function ScoreComparison({
   );
 }
 
-// Delta note card
-function DeltaNote({
-  type,
-  title,
-  description,
+// Delta summary with directional arrows
+function DeltaSummary({
+  current,
+  comparison,
 }: {
-  type: 'improved' | 'unchanged' | 'declined';
-  title: string;
-  description: string;
+  current: HarmonizedScores;
+  comparison: HarmonizedScores;
 }) {
-  const colors = {
-    improved: 'border-success text-success',
-    unchanged: 'border-warning text-warning',
-    declined: 'border-danger text-danger',
-  };
-
-  const icons = {
-    improved: <ArrowUp className="w-4 h-4" />,
-    unchanged: <Minus className="w-4 h-4" />,
-    declined: <ArrowDown className="w-4 h-4" />,
-  };
+  const dimensions = [
+    { key: 'premise', label: 'Premise' },
+    { key: 'character', label: 'Character' },
+    { key: 'dialogue', label: 'Dialogue' },
+    { key: 'structure', label: 'Structure' },
+    { key: 'commerciality', label: 'Commercial' },
+    { key: 'overall', label: 'Overall' },
+  ];
 
   return (
-    <div className={cn('p-4 rounded-lg border-l-4 bg-elevated', colors[type])}>
-      <div className="flex items-center gap-2 mb-1">
-        {icons[type]}
-        <span className="font-medium">{title}</span>
-      </div>
-      <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      {dimensions.map(({ key, label }) => {
+        const currentValue = current[key]?.numeric ?? 0;
+        const comparisonValue = comparison[key]?.numeric ?? 0;
+        const delta = currentValue - comparisonValue;
+
+        return (
+          <div key={key} className="flex items-center gap-2 p-3 rounded-lg bg-elevated">
+            <div
+              className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center',
+                delta > 0 && 'bg-success/10',
+                delta < 0 && 'bg-danger/10',
+                delta === 0 && 'bg-muted/10'
+              )}
+            >
+              {delta > 0 && <ArrowUp className="w-4 h-4 text-success" />}
+              {delta < 0 && <ArrowDown className="w-4 h-4 text-danger" />}
+              {delta === 0 && <Minus className="w-4 h-4 text-muted-foreground" />}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className={cn(
+                'text-sm font-semibold',
+                delta > 0 && 'text-success',
+                delta < 0 && 'text-danger',
+                delta === 0 && 'text-muted-foreground'
+              )}>
+                {delta > 0 ? '+' : ''}{delta}
+              </p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -395,12 +477,16 @@ function ReaderMemoryCard({
   name,
   voiceTag,
   color,
-  narrative,
+  strengths,
+  concerns,
+  quote,
 }: {
   name: string;
   voiceTag: string;
   color: string;
-  narrative: string;
+  strengths?: string[];
+  concerns?: string[];
+  quote?: string;
 }) {
   return (
     <div
@@ -411,27 +497,131 @@ function ReaderMemoryCard({
         <span className="font-medium" style={{ color }}>
           {name}
         </span>
-        <span className="text-xs text-muted-foreground">({voiceTag})</span>
+        {voiceTag && (
+          <span className="text-xs text-muted-foreground">({voiceTag})</span>
+        )}
       </div>
-      <p className="text-sm text-muted-foreground italic">"{narrative}"</p>
+
+      {strengths && strengths.length > 0 && (
+        <div className="mb-2">
+          <p className="text-xs font-medium text-success mb-1">Strengths</p>
+          <ul className="text-sm text-muted-foreground space-y-0.5">
+            {strengths.map((s, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="text-success mt-0.5">•</span>
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {concerns && concerns.length > 0 && (
+        <div className="mb-2">
+          <p className="text-xs font-medium text-warning mb-1">Concerns</p>
+          <ul className="text-sm text-muted-foreground space-y-0.5">
+            {concerns.map((c, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="text-warning mt-0.5">•</span>
+                {c}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {quote && (
+        <p className="text-sm text-muted-foreground italic mt-2">&quot;{quote}&quot;</p>
+      )}
+    </div>
+  );
+}
+
+// Loading skeleton
+function LoadingSkeleton() {
+  return (
+    <div className="h-full flex">
+      {/* Timeline skeleton */}
+      <div className="w-64 border-r border-border bg-surface">
+        <div className="h-16 px-4 border-b border-border flex items-center">
+          <div className="h-4 w-32 bg-elevated rounded animate-pulse" />
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="h-10 w-full bg-elevated rounded-xl animate-pulse" />
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-start gap-3 p-3 pl-8">
+              <div className="absolute left-2.5 w-3 h-3 rounded-full bg-elevated animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="flex justify-between">
+                  <div className="h-4 w-16 bg-elevated rounded animate-pulse" />
+                  <div className="h-4 w-14 bg-elevated rounded-full animate-pulse" />
+                </div>
+                <div className="h-3 w-24 bg-elevated rounded animate-pulse" />
+                <div className="h-3 w-16 bg-elevated rounded animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main content skeleton */}
+      <div className="flex-1 p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="space-y-2">
+            <div className="h-7 w-48 bg-elevated rounded animate-pulse" />
+            <div className="h-4 w-32 bg-elevated rounded animate-pulse" />
+          </div>
+          <ScoreTableSkeleton />
+          {/* Reader card skeletons */}
+          <div className="rounded-xl border border-border/50 bg-surface p-6 space-y-4">
+            <div className="h-5 w-40 bg-elevated rounded animate-pulse" />
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-4 rounded-lg bg-elevated/50 space-y-2 border-l-[3px] border-muted">
+                <div className="h-4 w-28 bg-elevated rounded animate-pulse" />
+                <div className="h-3 w-full bg-elevated rounded animate-pulse" />
+                <div className="h-3 w-3/4 bg-elevated rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Score table skeleton
+function ScoreTableSkeleton() {
+  return (
+    <div className="rounded-xl border border-border/50 bg-surface p-6 space-y-3">
+      <div className="h-5 w-32 bg-elevated rounded animate-pulse mb-4" />
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div key={i} className="flex items-center gap-4">
+          <div className="h-3 w-20 bg-elevated rounded animate-pulse" />
+          <div className="flex-1 h-2 bg-elevated rounded-full animate-pulse" />
+          <div className="h-3 w-10 bg-elevated rounded animate-pulse" />
+        </div>
+      ))}
     </div>
   );
 }
 
 // Empty state
-function EmptyState() {
+function EmptyState({ onUpload }: { onUpload: () => void }) {
   return (
     <div className="h-full flex items-center justify-center">
       <div className="text-center max-w-md">
-        <GitBranch className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+        <GitBranch className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold mb-2">No Drafts Yet</h2>
         <p className="text-muted-foreground mb-4">
           Upload your first script draft to start tracking revisions across iterations.
         </p>
-        <Button className="gap-2">
+        <button
+          onClick={onUpload}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium bg-gradient-gold text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity"
+        >
           <Upload className="w-4 h-4" />
           Upload First Draft
-        </Button>
+        </button>
       </div>
     </div>
   );

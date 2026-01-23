@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type {
+  Studio,
   Project,
   Draft,
   DraftDeliverable,
@@ -17,7 +18,7 @@ import type {
 // TAB STATE
 // ============================================
 
-export type TabId = 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
+export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
 
 interface TabState {
   activeTab: TabId;
@@ -38,6 +39,21 @@ interface ProjectState {
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   addDraftToProject: (projectId: string, draft: Draft) => void;
+}
+
+// ============================================
+// STUDIO STATE
+// ============================================
+
+interface StudioState {
+  currentStudio: Studio | null;
+  studios: Studio[];
+
+  setCurrentStudio: (studio: Studio | null) => void;
+  setStudios: (studios: Studio[]) => void;
+  addStudio: (studio: Studio) => void;
+  updateStudio: (id: string, updates: Partial<Studio>) => void;
+  removeStudio: (id: string) => void;
 }
 
 // ============================================
@@ -94,26 +110,76 @@ interface ExecutiveState {
 // CHAT STATE
 // ============================================
 
-interface ChatMessage {
+export interface ToolCallStatus {
+  id: string;
+  name: string;
+  displayName: string;
+  status: 'running' | 'complete';
+}
+
+export interface StoreChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   agentType?: 'SCOUT' | 'READER';
   readerId?: string;
-  timestamp: Date;
+  readerName?: string;
+  readerColor?: string;
+  timestamp?: Date;
+  isStreaming?: boolean;
+  attachment?: { name: string; size: number };
+  toolCalls?: ToolCallStatus[];
 }
 
 interface ChatState {
-  chatMessages: ChatMessage[];
+  chatMessages: StoreChatMessage[];
   isStreaming: boolean;
   activeAgent: 'scout' | 'reader' | null;
   activeReaderId: string | null;
 
-  addChatMessage: (message: ChatMessage) => void;
+  addChatMessage: (message: StoreChatMessage) => void;
+  updateChatMessage: (id: string, updates: Partial<StoreChatMessage>) => void;
   updateLastMessage: (content: string) => void;
   setStreaming: (isStreaming: boolean) => void;
   setActiveAgent: (agent: 'scout' | 'reader' | null, readerId?: string) => void;
   clearChat: () => void;
+}
+
+// ============================================
+// SCOUT SESSION STATE (Split-Screen UI)
+// ============================================
+
+import type { RightPanelPhase, ReaderStreamState, FocusGroupUIMessage, ExecutiveStreamState } from '@/lib/agent-sdk/types';
+
+export interface ReaderChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  isStreaming?: boolean;
+}
+
+interface ScoutSessionState {
+  sessionId: string | null;
+  rightPanelMode: RightPanelPhase;
+  readerStates: Map<string, ReaderStreamState>;
+  focusGroupMessages: FocusGroupUIMessage[];
+  focusGroupTypingSpeaker: string | null;
+  activeReaderChatId: string | null; // For 1:1 reader chat
+  readerChatMessages: Record<string, ReaderChatMessage[]>; // Keyed by readerId
+  executiveStates: Map<string, ExecutiveStreamState>; // Live executive eval states
+
+  setSessionId: (id: string | null) => void;
+  setRightPanelMode: (mode: RightPanelPhase) => void;
+  setReaderState: (readerId: string, state: Partial<ReaderStreamState>) => void;
+  clearReaderStates: () => void;
+  addFocusGroupMessage: (message: FocusGroupUIMessage) => void;
+  setFocusGroupTyping: (speaker: string | null, speakerType: 'moderator' | 'reader', readerId?: string) => void;
+  clearFocusGroupMessages: () => void;
+  setActiveReaderChatId: (readerId: string | null) => void;
+  addReaderChatMessage: (readerId: string, message: ReaderChatMessage) => void;
+  updateReaderChatMessage: (readerId: string, messageId: string, updates: Partial<ReaderChatMessage>) => void;
+  setExecutiveState: (executiveId: string, state: Partial<ExecutiveStreamState>) => void;
+  clearExecutiveStates: () => void;
 }
 
 // ============================================
@@ -136,15 +202,40 @@ interface UIState {
 // COMBINED STORE
 // ============================================
 
-interface AppStore extends TabState, ProjectState, AnalysisState, FocusGroupState, ExecutiveState, ChatState, UIState {}
+interface AppStore extends TabState, StudioState, ProjectState, AnalysisState, FocusGroupState, ExecutiveState, ChatState, ScoutSessionState, UIState {}
 
 export const useAppStore = create<AppStore>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set, _get) => ({
         // ============ TAB STATE ============
-        activeTab: 'scout' as TabId,
+        activeTab: 'home' as TabId,
         setActiveTab: (tab) => set({ activeTab: tab }),
+
+        // ============ STUDIO STATE ============
+        currentStudio: null,
+        studios: [],
+
+        setCurrentStudio: (studio) => set({ currentStudio: studio }),
+        setStudios: (studios) => set({ studios }),
+        addStudio: (studio) =>
+          set((state) => ({ studios: [...state.studios, studio] })),
+        updateStudio: (id, updates) =>
+          set((state) => ({
+            studios: state.studios.map((s) =>
+              s.id === id ? { ...s, ...updates } : s
+            ),
+            currentStudio:
+              state.currentStudio?.id === id
+                ? { ...state.currentStudio, ...updates }
+                : state.currentStudio,
+          })),
+        removeStudio: (id) =>
+          set((state) => ({
+            studios: state.studios.filter((s) => s.id !== id),
+            currentStudio:
+              state.currentStudio?.id === id ? null : state.currentStudio,
+          })),
 
         // ============ PROJECT STATE ============
         currentProject: null,
@@ -236,6 +327,12 @@ export const useAppStore = create<AppStore>()(
 
         addChatMessage: (message) =>
           set((state) => ({ chatMessages: [...state.chatMessages, message] })),
+        updateChatMessage: (id, updates) =>
+          set((state) => ({
+            chatMessages: state.chatMessages.map((m) =>
+              m.id === id ? { ...m, ...updates } : m
+            ),
+          })),
         updateLastMessage: (content) =>
           set((state) => {
             const chatMessages = [...state.chatMessages];
@@ -252,6 +349,57 @@ export const useAppStore = create<AppStore>()(
           set({ activeAgent: agent, activeReaderId: readerId || null }),
         clearChat: () =>
           set({ chatMessages: [], activeAgent: null, activeReaderId: null }),
+
+        // ============ SCOUT SESSION STATE ============
+        sessionId: null,
+        rightPanelMode: 'idle' as RightPanelPhase,
+        readerStates: new Map<string, ReaderStreamState>(),
+        focusGroupMessages: [] as FocusGroupUIMessage[],
+        focusGroupTypingSpeaker: null,
+        activeReaderChatId: null,
+        readerChatMessages: {} as Record<string, ReaderChatMessage[]>,
+        executiveStates: new Map<string, ExecutiveStreamState>(),
+
+        setSessionId: (id) => set({ sessionId: id }),
+        setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
+        setReaderState: (readerId, state) =>
+          set((s) => {
+            const newMap = new Map(s.readerStates);
+            const existing = newMap.get(readerId) || { readerId, status: 'pending' as const };
+            newMap.set(readerId, { ...existing, ...state } as ReaderStreamState);
+            return { readerStates: newMap };
+          }),
+        clearReaderStates: () => set({ readerStates: new Map() }),
+        addFocusGroupMessage: (message) =>
+          set((s) => ({ focusGroupMessages: [...s.focusGroupMessages, message] })),
+        setFocusGroupTyping: (speaker) =>
+          set({ focusGroupTypingSpeaker: speaker }),
+        clearFocusGroupMessages: () => set({ focusGroupMessages: [], focusGroupTypingSpeaker: null }),
+        setActiveReaderChatId: (readerId) => set({ activeReaderChatId: readerId }),
+        addReaderChatMessage: (readerId, message) =>
+          set((s) => ({
+            readerChatMessages: {
+              ...s.readerChatMessages,
+              [readerId]: [...(s.readerChatMessages[readerId] || []), message],
+            },
+          })),
+        updateReaderChatMessage: (readerId, messageId, updates) =>
+          set((s) => ({
+            readerChatMessages: {
+              ...s.readerChatMessages,
+              [readerId]: (s.readerChatMessages[readerId] || []).map((m) =>
+                m.id === messageId ? { ...m, ...updates } : m
+              ),
+            },
+          })),
+        setExecutiveState: (executiveId, state) =>
+          set((s) => {
+            const newMap = new Map(s.executiveStates);
+            const existing = newMap.get(executiveId) || { executiveId, executiveName: '', status: 'evaluating' as const };
+            newMap.set(executiveId, { ...existing, ...state } as ExecutiveStreamState);
+            return { executiveStates: newMap };
+          }),
+        clearExecutiveStates: () => set({ executiveStates: new Map() }),
 
         // ============ UI STATE ============
         sidebarOpen: true,
@@ -278,9 +426,10 @@ export const useAppStore = create<AppStore>()(
         name: 'bullseye-storage',
         partialize: (state) => ({
           // Only persist certain state
+          studios: state.studios,
+          currentStudio: state.currentStudio,
           projects: state.projects,
           activeTab: state.activeTab,
-          sidebarOpen: state.sidebarOpen,
           showCalibration: state.showCalibration,
         }),
       }
@@ -292,6 +441,10 @@ export const useAppStore = create<AppStore>()(
 // SELECTORS
 // ============================================
 
+export const selectCurrentStudio = (state: AppStore) => state.currentStudio;
+export const selectStudios = (state: AppStore) => state.studios;
+export const selectStudioProjects = (state: AppStore) =>
+  state.projects.filter((p) => p.studioId === state.currentStudio?.id);
 export const selectCurrentProject = (state: AppStore) => state.currentProject;
 export const selectCurrentDraft = (state: AppStore) => state.currentDraft;
 export const selectIsAnalyzing = (state: AppStore) => state.isAnalyzing;

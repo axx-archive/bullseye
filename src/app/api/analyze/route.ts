@@ -2,16 +2,12 @@
 // Orchestrates full script analysis with reader panel
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
 import {
   runParallelReaderAnalysis,
-  harmonizeAnalyses,
   analysisToReaderPerspective,
 } from '@/lib/agents';
 import {
   harmonizeScores,
-  detectDivergence,
-  detectConsensus,
   synthesizeCoverage,
   synthesizeIntake,
   generateScoutAnalysis,
@@ -25,13 +21,11 @@ import type { StudioIntelligenceData } from '@/lib/studio-intelligence';
 import type {
   DraftDeliverable,
   ReaderPerspective,
-  HarmonizedScores,
   StudioCalibration,
 } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
     const { scriptText, metadata, readerIds, studioId } = await req.json();
 
     if (!scriptText || !metadata) {

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/lib/db';
 
+const DEFAULT_STUDIO_ID = 'default-studio-id';
+
 /**
  * Get the current authenticated user from Supabase and ensure
  * they have a corresponding record in our database.
@@ -18,20 +20,15 @@ export async function getCurrentUser() {
     include: { studio: true },
   });
 
-  // If not, create them with a default studio
+  // If not, create them linked to the default seed studio
   if (!user) {
     user = await db.user.create({
       data: {
         supabaseAuthId: authUser.id,
         email: authUser.email!,
         name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-        role: 'OWNER',
-        studio: {
-          create: {
-            name: `${authUser.email?.split('@')[0]}'s Studio`,
-            slug: `studio-${authUser.id.slice(0, 8)}`,
-          },
-        },
+        role: 'MEMBER',
+        studioId: DEFAULT_STUDIO_ID,
       },
       include: { studio: true },
     });

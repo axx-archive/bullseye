@@ -1,93 +1,156 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useExecutiveProfiles, useEvaluations } from '@/hooks/use-studio';
+import { useDeliverable } from '@/hooks/use-studio';
+import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import {
-  Presentation,
+  Briefcase,
   Play,
   ThumbsUp,
   ThumbsDown,
   Building2,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
-import { DEFAULT_EXECUTIVES } from '@/lib/executive';
-import type { ExecutiveEvaluationResult, ExecutiveVerdict } from '@/types';
 
 export function PitchView() {
   const {
+    currentDraft,
     currentDeliverable,
-    evaluations,
-    isEvaluating,
-    currentExecutive,
-    startEvaluation,
-    addEvaluation,
-    setCurrentExecutive,
-    clearEvaluations,
-    endEvaluation,
+    executiveStates,
+    setExecutiveState,
+    clearExecutiveStates,
+    setRightPanelMode,
+    setActiveTab,
   } = useAppStore();
 
-  const [selectedExecutives, setSelectedExecutives] = useState<string[]>([]);
+  const connectionRef = useRef<{ abort: () => void } | null>(null);
 
-  const handleToggleExecutive = (execId: string) => {
-    setSelectedExecutives((prev) =>
-      prev.includes(execId)
-        ? prev.filter((id) => id !== execId)
-        : [...prev, execId]
-    );
+  // Fetch real executive profiles from DB
+  const { data: executives, isLoading: executivesLoading, error: executivesError } = useExecutiveProfiles();
+
+  // Fetch persisted evaluations for current draft
+  const { data: evaluations, isLoading: evaluationsLoading, error: evaluationsError } = useEvaluations(currentDraft?.id ?? null);
+
+  // Fetch deliverable to know if coverage analysis has been run
+  const { data: apiDeliverable, isLoading: deliverableLoading } = useDeliverable(currentDraft?.id ?? null);
+
+  // Use Zustand currentDeliverable (live) or API fetched data
+  const hasDeliverable = !!currentDeliverable || (apiDeliverable !== null && apiDeliverable !== undefined);
+
+  // Check if currently evaluating (any executive in 'evaluating' state)
+  const isEvaluating = Array.from(executiveStates.values()).some(
+    (state) => state.status === 'evaluating'
+  );
+
+  const handleRunSimulation = () => {
+    if (!currentDraft || !executives || executives.length === 0) return;
+
+    clearExecutiveStates();
+
+    // Build the SSE callbacks — only wire executive callbacks
+    const callbacks: EventRouterCallbacks = {
+      onScoutTextDelta: () => {},
+      onScoutTextComplete: () => {},
+      onReaderStart: () => {},
+      onReaderProgress: () => {},
+      onReaderComplete: () => {},
+      onReaderError: () => {},
+      onDeliverableReady: () => {},
+      onFocusGroupMessage: () => {},
+      onFocusGroupTyping: () => {},
+      onFocusGroupComplete: () => {},
+      onExecutiveStart: (executiveId, executiveName) => {
+        setExecutiveState(executiveId, { executiveId, executiveName, status: 'evaluating' });
+      },
+      onExecutiveComplete: (executiveId, data) => {
+        setExecutiveState(executiveId, {
+          status: 'complete',
+          verdict: data.verdict,
+          confidence: data.confidence,
+          rationale: data.rationale,
+          keyFactors: data.keyFactors,
+          concerns: data.concerns,
+        });
+      },
+      onPhaseChange: (phase) => {
+        if (phase === 'executive') {
+          setRightPanelMode('executive');
+        }
+      },
+      onToolStart: () => {},
+      onToolEnd: () => {},
+      onResult: () => {},
+      onError: () => {},
+    };
+
+    // Send message to Scout requesting executive evaluation
+    const requestPayload = {
+      messages: [
+        {
+          role: 'user' as const,
+          content: 'Run executive evaluation on the current draft.',
+        },
+      ],
+    };
+
+    connectionRef.current = createSSEConnection('/api/scout', requestPayload, callbacks);
   };
 
-  const handleRunSimulation = async () => {
-    if (selectedExecutives.length === 0) return;
-
-    startEvaluation();
-    clearEvaluations();
-
-    // Simulate evaluations
-    for (const execId of selectedExecutives) {
-      setCurrentExecutive(execId);
-      await delay(2000);
-
-      const exec = DEFAULT_EXECUTIVES.find((e) => e.id === execId);
-      if (!exec) continue;
-
-      // Generate mock evaluation
-      const verdict: ExecutiveVerdict = Math.random() > 0.4 ? 'pursue' : 'pass';
-      const evaluation: ExecutiveEvaluationResult = {
-        executiveId: exec.id,
-        executiveName: exec.name,
-        executiveTitle: exec.title,
-        company: exec.company,
-        verdict,
-        confidence: Math.floor(60 + Math.random() * 35),
-        rationale:
-          verdict === 'pursue'
-            ? `This project aligns well with our current slate strategy. The character work is exceptional, and I see strong potential for ${exec.priorityFactors[0].toLowerCase()}. The structural concerns raised in the coverage are addressable in development.`
-            : `While the premise is intriguing, I have concerns about market positioning. The structural issues would require significant development investment, and given our current priorities around ${exec.priorityFactors[0].toLowerCase()}, this isn't the right fit for us at this time.`,
-        keyFactors: exec.priorityFactors.slice(0, 3),
-        concerns: exec.dealBreakers.slice(0, 2),
-        groundedInCoverage: true,
-        citedElements: ['Character analysis', 'Commerciality assessment', 'Structure concerns'],
-      };
-
-      addEvaluation(evaluation);
-    }
-
-    endEvaluation();
-  };
-
-  if (!currentDeliverable) {
-    return <EmptyState />;
+  // Loading state
+  if (executivesLoading || evaluationsLoading || deliverableLoading) {
+    return <LoadingSkeleton />;
   }
+
+  // Error state
+  if (executivesError || evaluationsError) {
+    const errorMsg = executivesError?.message || evaluationsError?.message || 'Unknown error';
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load evaluation data</p>
+        <p className="text-xs text-muted-foreground">{errorMsg}</p>
+      </div>
+    );
+  }
+
+  // Empty state: no draft selected
+  if (!currentDraft) {
+    return (
+      <EmptyState
+        title="Select a Project"
+        description="Choose a project and draft from Home to run executive evaluations."
+        onAction={() => setActiveTab('home')}
+        actionLabel="Go to Home"
+      />
+    );
+  }
+
+  // Empty state: no deliverable (coverage not run yet)
+  if (!hasDeliverable) {
+    return (
+      <EmptyState
+        title="No Evaluations Yet"
+        description="Complete coverage analysis first, then run executive evaluations from here."
+        onAction={() => setActiveTab('scout')}
+        actionLabel="Go to Scout"
+      />
+    );
+  }
+
+  // Merge persisted evaluations with live streaming states
+  const liveExecStates = Array.from(executiveStates.entries());
+  const hasLiveResults = liveExecStates.some(([, state]) => state.status === 'complete');
 
   return (
     <div className="h-full">
@@ -97,7 +160,7 @@ export function PitchView() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-3">
-                <Presentation className="w-7 h-7 text-primary" />
+                <Briefcase className="w-7 h-7 text-primary" />
                 Executive Pitch Simulation
               </h1>
               <p className="text-muted-foreground mt-1">
@@ -106,73 +169,14 @@ export function PitchView() {
             </div>
           </div>
 
-          {/* Executive selection */}
+          {/* Executive grid + Run button */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Select Executives</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {DEFAULT_EXECUTIVES.map((exec) => {
-                  const isSelected = selectedExecutives.includes(exec.id);
-                  const hasEvaluation = evaluations.find((e) => e.executiveId === exec.id);
-                  const isCurrentlyEvaluating = currentExecutive === exec.id;
-
-                  return (
-                    <div
-                      key={exec.id}
-                      className={cn(
-                        'relative p-4 rounded-lg border-2 transition-all cursor-pointer',
-                        isSelected
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50',
-                        hasEvaluation && 'opacity-80'
-                      )}
-                      onClick={() => !isEvaluating && handleToggleExecutive(exec.id)}
-                    >
-                      {isCurrentlyEvaluating && (
-                        <div className="absolute inset-0 bg-background/80 rounded-lg flex items-center justify-center">
-                          <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                        </div>
-                      )}
-
-                      {hasEvaluation && (
-                        <div className="absolute top-2 right-2">
-                          {hasEvaluation.verdict === 'pursue' ? (
-                            <ThumbsUp className="w-5 h-5 text-success" />
-                          ) : (
-                            <ThumbsDown className="w-5 h-5 text-danger" />
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={isSelected}
-                          className="mt-1"
-                          disabled={isEvaluating}
-                        />
-                        <div>
-                          <h4 className="font-semibold">{exec.name}</h4>
-                          <p className="text-sm text-muted-foreground">{exec.title}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                            <Building2 className="w-3 h-3" />
-                            {exec.company}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  {selectedExecutives.length} executive(s) selected
-                </span>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Executive Panel</h2>
                 <Button
                   onClick={handleRunSimulation}
-                  disabled={selectedExecutives.length === 0 || isEvaluating}
+                  disabled={isEvaluating || !executives || executives.length === 0}
                   className="gap-2"
                 >
                   {isEvaluating ? (
@@ -188,60 +192,57 @@ export function PitchView() {
                   )}
                 </Button>
               </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {executives?.map((exec) => {
+                  const liveState = executiveStates.get(exec.id);
+                  const isCurrentlyEvaluating = liveState?.status === 'evaluating';
+
+                  return (
+                    <div
+                      key={exec.id}
+                      className="relative p-4 rounded-lg border border-border"
+                    >
+                      {isCurrentlyEvaluating && (
+                        <div className="absolute inset-0 bg-background/80 rounded-lg flex items-center justify-center z-10">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-elevated text-sm">
+                            {exec.name
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h4 className="font-semibold">{exec.name}</h4>
+                          <p className="text-sm text-muted-foreground">{exec.title}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                            <Building2 className="w-3 h-3" />
+                            {exec.company}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
 
-          {/* Evaluation results */}
-          {evaluations.length > 0 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Evaluation Results</h2>
+          {/* Live streaming results */}
+          {hasLiveResults && (
+            <LiveResults executiveStates={executiveStates} />
+          )}
 
-              {/* Summary */}
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-8">
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-success">
-                        {evaluations.filter((e) => e.verdict === 'pursue').length}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Pursue</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-danger">
-                        {evaluations.filter((e) => e.verdict === 'pass').length}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Pass</div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm text-muted-foreground mb-2">
-                        Success Rate
-                      </div>
-                      <Progress
-                        value={
-                          (evaluations.filter((e) => e.verdict === 'pursue').length /
-                            evaluations.length) *
-                          100
-                        }
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Individual evaluations */}
-              <AnimatePresence>
-                {evaluations.map((evaluation, index) => (
-                  <motion.div
-                    key={evaluation.executiveId}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <ExecutiveEvaluationCard evaluation={evaluation} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+          {/* Persisted evaluation results */}
+          {evaluations && evaluations.length > 0 && !hasLiveResults && (
+            <PersistedResults evaluations={evaluations} />
           )}
         </div>
       </ScrollArea>
@@ -249,9 +250,73 @@ export function PitchView() {
   );
 }
 
-// Executive evaluation card
-function ExecutiveEvaluationCard({ evaluation }: { evaluation: ExecutiveEvaluationResult }) {
-  const isPursue = evaluation.verdict === 'pursue';
+// ============================================
+// LIVE RESULTS (from streaming executive states)
+// ============================================
+
+interface ExecutiveStreamState {
+  executiveId: string;
+  executiveName: string;
+  status: 'evaluating' | 'complete';
+  verdict?: string;
+  confidence?: number;
+  rationale?: string;
+  keyFactors?: string[];
+  concerns?: string[];
+}
+
+function LiveResults({ executiveStates }: { executiveStates: Map<string, ExecutiveStreamState> }) {
+  const completedStates = Array.from(executiveStates.values()).filter(
+    (s) => s.status === 'complete'
+  );
+  const pursueCount = completedStates.filter((s) => s.verdict === 'pursue' || s.verdict === 'PURSUE').length;
+  const passCount = completedStates.filter((s) => s.verdict === 'pass' || s.verdict === 'PASS').length;
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Evaluation Results</h2>
+
+      {completedStates.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-8">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-success">{pursueCount}</div>
+                <div className="text-sm text-muted-foreground">Pursue</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-danger">{passCount}</div>
+                <div className="text-sm text-muted-foreground">Pass</div>
+              </div>
+              {completedStates.length > 0 && (
+                <div className="flex-1">
+                  <div className="text-sm text-muted-foreground mb-2">Success Rate</div>
+                  <Progress value={(pursueCount / completedStates.length) * 100} />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <AnimatePresence>
+        {completedStates.map((state, index) => (
+          <motion.div
+            key={state.executiveId}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+          >
+            <LiveEvaluationCard state={state} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LiveEvaluationCard({ state }: { state: ExecutiveStreamState }) {
+  const isPursue = state.verdict === 'pursue' || state.verdict === 'PURSUE';
 
   return (
     <Card>
@@ -260,16 +325,168 @@ function ExecutiveEvaluationCard({ evaluation }: { evaluation: ExecutiveEvaluati
           <div className="flex items-center gap-4">
             <Avatar className="h-12 w-12">
               <AvatarFallback className={isPursue ? 'bg-success/20' : 'bg-danger/20'}>
-                {evaluation.executiveName
+                {state.executiveName
                   .split(' ')
                   .map((n) => n[0])
                   .join('')}
               </AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-semibold">{evaluation.executiveName}</h3>
+              <h3 className="font-semibold">{state.executiveName}</h3>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Badge
+              variant={isPursue ? 'default' : 'destructive'}
+              className="text-lg px-4 py-1 gap-2"
+            >
+              {isPursue ? (
+                <ThumbsUp className="w-4 h-4" />
+              ) : (
+                <ThumbsDown className="w-4 h-4" />
+              )}
+              {isPursue ? 'PURSUE' : 'PASS'}
+            </Badge>
+            {state.confidence !== undefined && (
+              <div className="text-right">
+                <span className="text-sm text-muted-foreground">Confidence</span>
+                <p className="font-bold">{state.confidence}%</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {state.rationale && (
+          <div className="p-4 rounded-lg bg-elevated">
+            <p className="text-sm leading-relaxed">{state.rationale}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {state.keyFactors && state.keyFactors.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-success">Key Factors</h4>
+              <ul className="space-y-1">
+                {state.keyFactors.map((factor, i) => (
+                  <li key={i} className="text-sm flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                    {factor}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {state.concerns && state.concerns.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-danger">Concerns</h4>
+              <ul className="space-y-1">
+                {state.concerns.map((concern, i) => (
+                  <li key={i} className="text-sm flex items-start gap-2">
+                    <span className="text-danger">-</span>
+                    {concern}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// PERSISTED RESULTS (from API)
+// ============================================
+
+interface EvaluationData {
+  id: string;
+  draftId: string;
+  executiveId: string;
+  verdict: 'PURSUE' | 'PASS';
+  confidence: number;
+  rationale: string;
+  keyFactors: string[];
+  concerns: string[];
+  groundedInCoverage: boolean;
+  citedElements: string[];
+  createdAt: string;
+  executive: {
+    id: string;
+    name: string;
+    title: string;
+    company: string;
+    avatar: string | null;
+  };
+}
+
+function PersistedResults({ evaluations }: { evaluations: EvaluationData[] }) {
+  const pursueCount = evaluations.filter((e) => e.verdict === 'PURSUE').length;
+  const passCount = evaluations.filter((e) => e.verdict === 'PASS').length;
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Evaluation Results</h2>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-8">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-success">{pursueCount}</div>
+              <div className="text-sm text-muted-foreground">Pursue</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-danger">{passCount}</div>
+              <div className="text-sm text-muted-foreground">Pass</div>
+            </div>
+            <div className="flex-1">
+              <div className="text-sm text-muted-foreground mb-2">Success Rate</div>
+              <Progress value={(pursueCount / evaluations.length) * 100} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AnimatePresence>
+        {evaluations.map((evaluation, index) => (
+          <motion.div
+            key={evaluation.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+          >
+            <PersistedEvaluationCard evaluation={evaluation} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PersistedEvaluationCard({ evaluation }: { evaluation: EvaluationData }) {
+  const isPursue = evaluation.verdict === 'PURSUE';
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-12 w-12">
+              <AvatarFallback className={isPursue ? 'bg-success/20' : 'bg-danger/20'}>
+                {evaluation.executive.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h3 className="font-semibold">{evaluation.executive.name}</h3>
               <p className="text-sm text-muted-foreground">
-                {evaluation.executiveTitle}, {evaluation.company}
+                {evaluation.executive.title}, {evaluation.executive.company}
               </p>
             </div>
           </div>
@@ -284,7 +501,7 @@ function ExecutiveEvaluationCard({ evaluation }: { evaluation: ExecutiveEvaluati
               ) : (
                 <ThumbsDown className="w-4 h-4" />
               )}
-              {evaluation.verdict.toUpperCase()}
+              {evaluation.verdict}
             </Badge>
             <div className="text-right">
               <span className="text-sm text-muted-foreground">Confidence</span>
@@ -295,40 +512,41 @@ function ExecutiveEvaluationCard({ evaluation }: { evaluation: ExecutiveEvaluati
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Rationale */}
         <div className="p-4 rounded-lg bg-elevated">
           <p className="text-sm leading-relaxed">{evaluation.rationale}</p>
         </div>
 
-        {/* Key factors and concerns */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-sm font-semibold mb-2 text-success">Key Factors</h4>
-            <ul className="space-y-1">
-              {evaluation.keyFactors.map((factor, i) => (
-                <li key={i} className="text-sm flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
-                  {factor}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {evaluation.keyFactors.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-success">Key Factors</h4>
+              <ul className="space-y-1">
+                {evaluation.keyFactors.map((factor, i) => (
+                  <li key={i} className="text-sm flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                    {factor}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          <div>
-            <h4 className="text-sm font-semibold mb-2 text-danger">Concerns</h4>
-            <ul className="space-y-1">
-              {evaluation.concerns.map((concern, i) => (
-                <li key={i} className="text-sm flex items-start gap-2">
-                  <span className="text-danger">-</span>
-                  {concern}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {evaluation.concerns.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-danger">Concerns</h4>
+              <ul className="space-y-1">
+                {evaluation.concerns.map((concern, i) => (
+                  <li key={i} className="text-sm flex items-start gap-2">
+                    <span className="text-danger">-</span>
+                    {concern}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
-        {/* Cited elements */}
-        {evaluation.groundedInCoverage && (
+        {evaluation.groundedInCoverage && evaluation.citedElements.length > 0 && (
           <div className="pt-2 border-t border-border">
             <span className="text-xs text-muted-foreground">
               Grounded in: {evaluation.citedElements.join(', ')}
@@ -340,23 +558,88 @@ function ExecutiveEvaluationCard({ evaluation }: { evaluation: ExecutiveEvaluati
   );
 }
 
-// Empty state
-function EmptyState() {
+// ============================================
+// LOADING SKELETON
+// ============================================
+
+function LoadingSkeleton() {
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center max-w-md">
-        <Presentation className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold mb-2">No Coverage Available</h2>
-        <p className="text-muted-foreground mb-4">
-          Run a script analysis first to enable executive pitch simulations.
-        </p>
-        <Button variant="outline">Go to Scout</Button>
+    <div className="h-full">
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        {/* Header skeleton */}
+        <div className="space-y-2">
+          <div className="h-8 w-72 rounded bg-elevated animate-pulse" />
+          <div className="h-5 w-96 rounded bg-elevated animate-pulse" />
+        </div>
+
+        {/* Executive grid skeleton */}
+        <div className="rounded-lg border border-border p-6 space-y-4">
+          <div className="h-6 w-40 rounded bg-elevated animate-pulse" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-4 rounded-lg border border-border space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-full bg-elevated animate-pulse" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-32 rounded bg-elevated animate-pulse" />
+                    <div className="h-3 w-24 rounded bg-elevated animate-pulse" />
+                    <div className="h-3 w-40 rounded bg-elevated animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Results skeleton */}
+        <div className="space-y-4">
+          <div className="h-6 w-44 rounded bg-elevated animate-pulse" />
+          {[1, 2].map((i) => (
+            <div key={i} className="rounded-lg border border-border p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-elevated animate-pulse" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-36 rounded bg-elevated animate-pulse" />
+                    <div className="h-3 w-48 rounded bg-elevated animate-pulse" />
+                  </div>
+                </div>
+                <div className="h-8 w-24 rounded bg-elevated animate-pulse" />
+              </div>
+              <div className="h-20 rounded bg-elevated animate-pulse" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-// Helper
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// ============================================
+// EMPTY STATE
+// ============================================
+
+function EmptyState({
+  title,
+  description,
+  onAction,
+  actionLabel,
+}: {
+  title: string;
+  description: string;
+  onAction: () => void;
+  actionLabel: string;
+}) {
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className="text-center max-w-md">
+        <Briefcase className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold mb-2">{title}</h2>
+        <p className="text-muted-foreground mb-4">{description}</p>
+        <Button variant="outline" onClick={onAction}>
+          {actionLabel}
+        </Button>
+      </div>
+    </div>
+  );
 }
