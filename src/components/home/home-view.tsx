@@ -143,7 +143,7 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 transition-all duration-200 group"
+      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -152,7 +152,7 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
             {FORMAT_LABELS[project.format] || project.format}
           </span>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out" />
       </div>
 
       <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>

@@ -23,7 +23,7 @@ function RightPanelContent() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.58, 1] }}
           className="h-full flex items-center justify-center p-8"
         >
           <div className="text-center max-w-sm">
@@ -43,7 +43,7 @@ function RightPanelContent() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.58, 1] }}
           className="h-full"
         >
           <ReaderAnalysisPanel />
@@ -56,7 +56,7 @@ function RightPanelContent() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.58, 1] }}
           className="h-full"
         >
           <FocusGroupPanel />
@@ -69,7 +69,7 @@ function RightPanelContent() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.58, 1] }}
           className="h-full"
         >
           <ReaderChatPanel />
@@ -82,7 +82,7 @@ function RightPanelContent() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.58, 1] }}
           className="h-full"
         >
           <ExecutiveEvalPanel />
@@ -101,7 +101,7 @@ export function ScoutLayout() {
       <div className="flex md:hidden border-b border-border/30 shrink-0">
         <button
           onClick={() => setMobilePanel('chat')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors duration-150 ease-out relative ${
             mobilePanel === 'chat'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground/70'
@@ -119,7 +119,7 @@ export function ScoutLayout() {
         </button>
         <button
           onClick={() => setMobilePanel('activity')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors duration-150 ease-out relative ${
             mobilePanel === 'activity'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground/70'
@@ -143,7 +143,7 @@ export function ScoutLayout() {
             Always mounted to maintain SSE connection and streaming refs.
             On mobile: uses opacity/pointer-events for fade transition. */}
         <div
-          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] md:border-r md:border-border/30 flex flex-col transition-opacity duration-150 ${
+          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] md:border-r md:border-border/30 flex flex-col transition-opacity duration-150 ease-out ${
             mobilePanel === 'chat'
               ? 'opacity-100 z-10 md:z-auto'
               : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto md:z-auto z-0'
@@ -156,7 +156,7 @@ export function ScoutLayout() {
             On mobile: uses opacity/pointer-events for fade transition.
             SSE events update Zustand store regardless of visibility. */}
         <div
-          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] flex flex-col transition-opacity duration-150 ${
+          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] flex flex-col transition-opacity duration-150 ease-out ${
             mobilePanel === 'activity'
               ? 'opacity-100 z-10 md:z-auto'
               : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto md:z-auto z-0'

@@ -97,7 +97,7 @@ export function ProjectCreateModal({ open, onClose }: ProjectCreateModalProps) {
           <h2 className="text-lg font-semibold tracking-tight">New Project</h2>
           <button
             onClick={resetAndClose}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-elevated transition-colors"
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-elevated active:scale-[0.98] transition-colors duration-150 ease-out"
           >
             <X className="w-4 h-4 text-muted-foreground" />
           </button>

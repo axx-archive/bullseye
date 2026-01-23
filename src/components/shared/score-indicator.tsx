@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { Rating } from '@/types';
 import { RATING_LABELS } from '@/types';
@@ -47,13 +48,21 @@ export function ScoreIndicator({
         </span>
       )}
 
-      {/* Score bars — rounded, gap-less for density */}
+      {/* Score bars — animated on mount with stagger */}
       <div className="flex gap-[2px] flex-shrink-0">
         {[...Array(10)].map((_, i) => (
-          <div
+          <motion.div
             key={i}
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{
+              duration: 0.4,
+              delay: i * 0.05,
+              ease: [0, 0, 0.58, 1],
+            }}
+            style={{ transformOrigin: 'left' }}
             className={cn(
-              'rounded-[2px] transition-colors duration-300',
+              'rounded-[2px]',
               barWidth,
               barHeight,
               i < filled ? 'bg-bullseye-gold' : 'bg-elevated'

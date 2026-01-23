@@ -113,7 +113,7 @@ export function DraftUploadModal({ open, onClose }: DraftUploadModalProps) {
           <button
             onClick={!isUploading ? resetAndClose : undefined}
             disabled={isUploading}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-elevated transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-elevated active:scale-[0.98] transition-colors duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4 text-muted-foreground" />
           </button>

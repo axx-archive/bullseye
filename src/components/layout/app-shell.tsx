@@ -71,7 +71,7 @@ export function AppShell({ children }: AppShellProps) {
   const hasProject = currentProject !== null;
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delayDuration={200}>
       <div className="flex h-screen bg-background overflow-hidden">
         {/* Icon Rail — hidden on mobile */}
         <nav className="hidden md:flex w-[72px] flex-col items-center py-6 bg-sidebar border-r border-border/50">
@@ -175,7 +175,7 @@ export function AppShell({ children }: AppShellProps) {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setShowStudioSwitcher(!showStudioSwitcher)}
-                      className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors"
+                      className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors duration-150 ease-out"
                     >
                       <div className="w-6 h-6 rounded-lg bg-elevated flex items-center justify-center">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase">
@@ -214,7 +214,7 @@ export function AppShell({ children }: AppShellProps) {
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleSignOut}
-                      className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors"
+                      className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors duration-150 ease-out"
                     >
                       <LogOut className="w-[18px] h-[18px] text-muted-foreground" strokeWidth={1.5} />
                     </button>
@@ -263,7 +263,7 @@ export function AppShell({ children }: AppShellProps) {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setShowUploadModal(true)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface hover:bg-elevated transition-colors text-sm text-muted-foreground hover:text-foreground"
+                      className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface hover:bg-elevated transition-colors duration-150 ease-out text-sm text-muted-foreground hover:text-foreground"
                     >
                       <Upload className="w-4 h-4" />
                       <span className="hidden sm:inline">Upload Draft</span>
@@ -288,7 +288,7 @@ export function AppShell({ children }: AppShellProps) {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
+                transition={{ duration: 0.15, ease: [0, 0, 0.58, 1] }}
                 className="h-full"
               >
                 {children}
@@ -347,7 +347,7 @@ function MobileTabButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 min-w-[48px] rounded-lg transition-colors',
+        'flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 min-w-[48px] rounded-lg transition-colors duration-150 ease-out',
         disabled && 'opacity-30 cursor-not-allowed',
         isActive && !disabled && 'text-foreground'
       )}
@@ -413,7 +413,7 @@ function StudioSwitcherDropdown({
               key={studio.id}
               onClick={() => onSelect(studio)}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
+                'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ease-out',
                 studio.id === currentStudioId
                   ? 'bg-elevated text-foreground'
                   : 'hover:bg-elevated/50 text-muted-foreground hover:text-foreground'
