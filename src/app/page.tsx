@@ -10,9 +10,10 @@ import { CoverageView } from '@/components/coverage/coverage-view';
 import { FocusView } from '@/components/focus/focus-view';
 import { RevisionsView } from '@/components/revisions/revisions-view';
 import { PitchView } from '@/components/pitch/pitch-view';
+import { StudioView } from '@/components/studio/studio-view';
 
 export default function Home() {
-  const { activeTab, currentStudio, studios, setCurrentStudio, addStudio } = useAppStore();
+  const { activeTab, isStudioConfigOpen, currentStudio, studios, setCurrentStudio, addStudio } = useAppStore();
 
   // Initialize default studio if none exists
   useEffect(() => {
@@ -34,6 +35,10 @@ export default function Home() {
   }, [studios.length]);
 
   const renderContent = () => {
+    if (isStudioConfigOpen) {
+      return <ErrorBoundary key="studioConfig"><StudioView /></ErrorBoundary>;
+    }
+
     switch (activeTab) {
       case 'home':
         return <ErrorBoundary key="home"><HomeView /></ErrorBoundary>;

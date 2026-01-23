@@ -13,6 +13,8 @@ import {
   Presentation,
   Upload,
   Check,
+  Building2,
+  ArrowLeft,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TabId } from '@/stores/app-store';
@@ -47,6 +49,9 @@ export function AppShell({ children }: AppShellProps) {
     studios,
     setCurrentStudio,
     setCurrentProject,
+    isStudioConfigOpen,
+    openStudioConfig,
+    closeStudioConfig,
   } = useAppStore();
   const [showStudioSwitcher, setShowStudioSwitcher] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -77,14 +82,17 @@ export function AppShell({ children }: AppShellProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={handleGoHome}
+                onClick={() => {
+                  if (isStudioConfigOpen) closeStudioConfig();
+                  handleGoHome();
+                }}
                 className={cn(
                   'relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
                   'hover:bg-elevated/80',
-                  activeTab === 'home' && 'bg-elevated'
+                  activeTab === 'home' && !isStudioConfigOpen && 'bg-elevated'
                 )}
               >
-                {activeTab === 'home' && (
+                {activeTab === 'home' && !isStudioConfigOpen && (
                   <motion.div
                     layoutId="nav-indicator"
                     className="absolute -left-[22px] w-1 h-5 rounded-full bg-gradient-gold"
@@ -94,9 +102,9 @@ export function AppShell({ children }: AppShellProps) {
                 <Home
                   className={cn(
                     'w-[20px] h-[20px] transition-colors duration-200',
-                    activeTab === 'home' ? 'text-foreground' : 'text-muted-foreground'
+                    activeTab === 'home' && !isStudioConfigOpen ? 'text-foreground' : 'text-muted-foreground'
                   )}
-                  strokeWidth={activeTab === 'home' ? 2 : 1.5}
+                  strokeWidth={activeTab === 'home' && !isStudioConfigOpen ? 2 : 1.5}
                 />
               </button>
             </TooltipTrigger>
@@ -108,18 +116,47 @@ export function AppShell({ children }: AppShellProps) {
           {/* Separator */}
           <div className="w-6 h-px bg-border/50 my-2" />
 
+          {/* Studio Config nav indicator */}
+          {isStudioConfigOpen && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={closeStudioConfig}
+                  className="relative w-11 h-11 rounded-xl flex items-center justify-center bg-elevated mb-1"
+                >
+                  <motion.div
+                    layoutId="nav-indicator"
+                    className="absolute -left-[22px] w-1 h-5 rounded-full bg-gradient-gold"
+                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  />
+                  <Building2
+                    className="w-[20px] h-[20px] text-foreground"
+                    strokeWidth={2}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                <span className="text-xs font-medium">Studio Config</span>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           {/* Project tabs */}
           <div className="flex-1 flex flex-col items-center gap-1">
             {PROJECT_TABS.map((tab) => {
               const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
+              const isActive = activeTab === tab.id && !isStudioConfigOpen;
               const disabled = !hasProject;
 
               return (
                 <Tooltip key={tab.id}>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => !disabled && setActiveTab(tab.id as TabId)}
+                      onClick={() => {
+                        if (disabled) return;
+                        if (isStudioConfigOpen) closeStudioConfig();
+                        setActiveTab(tab.id as TabId);
+                      }}
                       className={cn(
                         'relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
                         disabled
@@ -173,7 +210,7 @@ export function AppShell({ children }: AppShellProps) {
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
-                    <span className="text-xs font-medium">{currentStudio?.name || 'Studios'}</span>
+                    <span className="text-xs font-medium">Studios</span>
                   </TooltipContent>
                 </Tooltip>
 
@@ -185,8 +222,7 @@ export function AppShell({ children }: AppShellProps) {
                       currentStudioId={currentStudio?.id}
                       onSelect={(studio) => {
                         setCurrentStudio(studio);
-                        setCurrentProject(null);
-                        setActiveTab('home');
+                        openStudioConfig();
                         setShowStudioSwitcher(false);
                       }}
                       onClose={() => setShowStudioSwitcher(false)}
@@ -201,8 +237,28 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
-          {/* Context bar — only shows in project context */}
-          {activeTab !== 'home' && (
+          {/* Context bar — studio config or project context */}
+          {isStudioConfigOpen ? (
+            <div className="flex items-center justify-between px-4 md:px-8 pt-4 md:pt-6 pb-2">
+              <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                <button
+                  onClick={closeStudioConfig}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-elevated/80 transition-colors duration-150 ease-out"
+                >
+                  <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+                </button>
+                <h1 className="text-lg md:text-2xl font-semibold tracking-tight flex-shrink-0">
+                  Studio Config
+                </h1>
+                {currentStudio && (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-surface text-xs text-muted-foreground min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold flex-shrink-0" />
+                    <span className="truncate">{currentStudio.name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeTab !== 'home' && (
             <div className="flex items-center justify-between px-4 md:px-8 pt-4 md:pt-6 pb-2">
               <div className="flex items-center gap-2 md:gap-4 min-w-0">
                 <h1 className="text-lg md:text-2xl font-semibold tracking-tight flex-shrink-0">
@@ -238,11 +294,11 @@ export function AppShell({ children }: AppShellProps) {
           {/* Content Area */}
           <div className={cn(
             'flex-1 overflow-auto pb-8',
-            activeTab === 'home' ? 'px-4 md:px-8 pt-4 md:pt-6' : 'px-4 md:px-8'
+            activeTab === 'home' && !isStudioConfigOpen ? 'px-4 md:px-8 pt-4 md:pt-6' : 'px-4 md:px-8'
           )}>
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeTab}
+                key={isStudioConfigOpen ? 'studioConfig' : activeTab}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}

@@ -37,6 +37,7 @@ import {
 import { useUserProfile, useUpdateDisplayName, useUploadAvatar } from '@/hooks/use-user-profile';
 import { UserAvatar } from '@/components/shared/user-avatar';
 import { useToastStore } from '@/stores/toast-store';
+import { useAppStore } from '@/stores/app-store';
 
 // ============================================
 // TYPES
@@ -931,6 +932,7 @@ function SettingsSection() {
 
   const queryClient = useQueryClient();
   const { addToast } = useToastStore();
+  const { currentStudio, updateStudio } = useAppStore();
 
   // Initialize name from fetched data
   if (studio && !initialized) {
@@ -953,6 +955,10 @@ function SettingsSection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: studioKeys.studio });
+      // Update Zustand store so studio switcher dropdown reflects new name
+      if (currentStudio) {
+        updateStudio(currentStudio.id, { name: studioName.trim() });
+      }
       addToast('Studio settings saved', 'success');
       setNameError('');
     },
