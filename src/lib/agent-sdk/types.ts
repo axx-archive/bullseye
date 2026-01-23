@@ -40,6 +40,7 @@ export type RightPanelPhase = 'idle' | 'analysis' | 'focus_group' | 'reader_chat
 export interface ReaderStreamState {
   readerId: string;
   status: 'pending' | 'streaming' | 'complete' | 'error';
+  progress?: number; // 0-100 progress during analysis
   scores?: {
     premise?: number;
     character?: number;

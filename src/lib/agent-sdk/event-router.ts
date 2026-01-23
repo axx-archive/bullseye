@@ -12,6 +12,7 @@ export interface EventRouterCallbacks {
 
   // Reader analysis
   onReaderStart: (readerId: string) => void;
+  onReaderProgress: (readerId: string, progress: number) => void;
   onReaderComplete: (readerId: string, data: Partial<ReaderStreamState>) => void;
   onReaderError: (readerId: string, error: string) => void;
 
@@ -62,6 +63,9 @@ export function routeEvent(event: ScoutSSEEvent, callbacks: EventRouterCallbacks
       if (event.type === 'analysis_start') {
         callbacks.onPhaseChange('analysis');
         callbacks.onReaderStart(readerId);
+      } else if (event.type === 'analysis_stream' && event.data) {
+        const progress = (event.data as { progress?: number }).progress ?? 0;
+        callbacks.onReaderProgress(readerId, progress);
       } else if (event.type === 'analysis_complete' && event.data) {
         callbacks.onReaderComplete(readerId, event.data as Partial<ReaderStreamState>);
       } else if (event.type === 'error') {

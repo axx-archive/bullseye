@@ -99,7 +99,10 @@ export function ScoutChat() {
         updateChatMessage(assistantId, { isStreaming: false });
       },
       onReaderStart: (readerId) => {
-        setReaderState(readerId, { readerId, status: 'streaming' });
+        setReaderState(readerId, { readerId, status: 'streaming', progress: 0 });
+      },
+      onReaderProgress: (readerId, progress) => {
+        setReaderState(readerId, { progress });
       },
       onReaderComplete: (readerId, data) => {
         setReaderState(readerId, {
