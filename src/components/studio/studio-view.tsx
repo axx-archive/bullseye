@@ -344,7 +344,7 @@ function ReaderConfigCard({ reader }: { reader: ReaderPersona }) {
 
             <div>
               <label className="text-sm font-medium mb-3 block">Analytical Weights</label>
-              <div className="grid grid-cols-5 gap-4">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
                 {Object.entries(weights).map(([dimension, weight]) => (
                   <div key={dimension} className="space-y-1">
                     <Input
@@ -378,7 +378,7 @@ function ReaderConfigCard({ reader }: { reader: ReaderPersona }) {
               <label className="text-sm font-medium text-muted-foreground mb-3 block">
                 Analytical Weights
               </label>
-              <div className="grid grid-cols-5 gap-4">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
                 {Object.entries(weights).map(([dimension, weight]) => (
                   <div key={dimension} className="text-center">
                     <div
@@ -558,7 +558,7 @@ function ExecutiveConfigCard({ executive }: { executive: ExecutiveProfile }) {
       <CardContent className="space-y-4">
         {isEditing ? (
           <>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Name</label>
                 <Input
@@ -692,7 +692,7 @@ function CalibrationSection() {
       </div>
 
       {/* Stats overview */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-3xl font-bold">{intelligence.totalProjectsAnalyzed}</div>

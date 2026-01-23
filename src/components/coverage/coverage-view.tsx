@@ -302,7 +302,7 @@ function CoverageContent({ coverage }: { coverage: CoverageReport }) {
 
       <div className="h-px bg-border/50" />
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <section>
           <h3 className="text-[10px] font-semibold tracking-wider text-success uppercase mb-2">Strengths</h3>
           <ul className="space-y-1.5">
@@ -347,7 +347,7 @@ function AnalysisBlock({ title, content }: { title: string; content: string }) {
 function IntakeContent({ intake }: { intake: IntakeReport }) {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
           { label: 'Format', value: intake.format },
           { label: 'Genre', value: intake.genre },
@@ -359,7 +359,7 @@ function IntakeContent({ intake }: { intake: IntakeReport }) {
             <p className="text-sm font-medium mt-0.5">{value}</p>
           </div>
         ))}
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Budget Range</span>
           <p className="text-sm font-medium mt-0.5">{intake.budgetRange}</p>
         </div>
@@ -372,7 +372,7 @@ function IntakeContent({ intake }: { intake: IntakeReport }) {
         <p className="text-sm leading-relaxed">{intake.logline}</p>
       </section>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <section>
           <h3 className="text-[10px] font-semibold tracking-wider text-success uppercase mb-2">What Works</h3>
           <ul className="space-y-1.5">
@@ -433,7 +433,7 @@ function LoadingSkeleton() {
         {/* Reader card skeletons */}
         <div className="space-y-4">
           <div className="h-4 w-36 bg-elevated rounded animate-pulse" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="rounded-2xl bg-surface border border-border/50 p-5 space-y-4">
                 <div className="flex items-center gap-3">

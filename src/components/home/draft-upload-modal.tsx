@@ -87,7 +87,7 @@ export function DraftUploadModal({ open, onClose }: DraftUploadModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -97,10 +97,10 @@ export function DraftUploadModal({ open, onClose }: DraftUploadModalProps) {
       />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="relative w-full max-w-md mx-4 rounded-2xl bg-background border border-border/50 shadow-2xl overflow-hidden"
+        className="relative w-full md:max-w-md md:mx-4 rounded-t-2xl md:rounded-2xl bg-background border border-border/50 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4">

@@ -33,26 +33,27 @@ export function ScoreIndicator({
   className,
 }: ScoreIndicatorProps) {
   const filled = RATING_TO_FILLED[rating];
-  const trend = percentile ? (percentile > 60 ? 'up' : percentile < 40 ? 'down' : 'neutral') : null;
 
-  const barHeight = size === 'sm' ? 'h-4' : size === 'lg' ? 'h-8' : 'h-6';
-  const barWidth = size === 'sm' ? 'w-2' : size === 'lg' ? 'w-4' : 'w-3';
-  const gap = size === 'sm' ? 'gap-0.5' : 'gap-1';
-  const labelWidth = size === 'sm' ? 'w-16' : size === 'lg' ? 'w-28' : 'w-24';
-  const fontSize = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-base' : 'text-sm';
+  const barHeight = size === 'sm' ? 'h-3' : size === 'lg' ? 'h-5' : 'h-4';
+  const barWidth = size === 'sm' ? 'w-1.5' : size === 'lg' ? 'w-3' : 'w-2';
+  const labelWidth = size === 'sm' ? 'w-12 sm:w-16' : size === 'lg' ? 'w-20 sm:w-28' : 'w-16 sm:w-24';
+  const fontSize = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-sm' : 'text-xs';
 
   return (
-    <div className={cn('flex items-center gap-3', className)}>
-      {/* Label */}
-      <span className={cn('text-muted-foreground capitalize', labelWidth, fontSize)}>{label}</span>
+    <div className={cn('flex items-center gap-2 sm:gap-3', className)}>
+      {label && (
+        <span className={cn('text-muted-foreground capitalize truncate', labelWidth, fontSize)}>
+          {label}
+        </span>
+      )}
 
-      {/* Score bars */}
-      <div className={cn('flex', gap)}>
+      {/* Score bars — rounded, gap-less for density */}
+      <div className="flex gap-[2px] flex-shrink-0">
         {[...Array(10)].map((_, i) => (
           <div
             key={i}
             className={cn(
-              'rounded-sm transition-colors duration-200',
+              'rounded-[2px] transition-colors duration-300',
               barWidth,
               barHeight,
               i < filled ? 'bg-bullseye-gold' : 'bg-elevated'
@@ -62,49 +63,41 @@ export function ScoreIndicator({
       </div>
 
       {/* Rating label */}
-      <span className={cn('font-medium min-w-[80px]', fontSize)}>
+      <span className={cn('font-medium text-foreground/80 hidden sm:inline min-w-[72px]', fontSize)}>
         {RATING_LABELS[rating]}
       </span>
 
-      {/* Percentile trend */}
+      {/* Percentile */}
       {showPercentile && percentile !== undefined && (
-        <TrendIndicator trend={trend} percentile={percentile} size={size} />
+        <PercentilePill percentile={percentile} size={size} />
       )}
     </div>
   );
 }
 
-interface TrendIndicatorProps {
-  trend: 'up' | 'down' | 'neutral' | null;
-  percentile: number;
-  size?: 'sm' | 'md' | 'lg';
-}
-
-function TrendIndicator({ trend, percentile, size = 'md' }: TrendIndicatorProps) {
-  const iconSize = size === 'sm' ? 'w-3 h-3' : size === 'lg' ? 'w-5 h-5' : 'w-4 h-4';
-  const fontSize = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-base' : 'text-sm';
-
+function PercentilePill({ percentile, size = 'md' }: { percentile: number; size?: string }) {
   const diff = percentile - 50;
-  const diffText = diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : '=';
+  const trend = diff > 10 ? 'up' : diff < -10 ? 'down' : 'neutral';
+  const label = diff > 0 ? `+${diff}` : `${diff}`;
 
   return (
     <div
       className={cn(
-        'flex items-center gap-1 px-2 py-0.5 rounded-full',
-        trend === 'up' && 'bg-success/20 text-success',
-        trend === 'down' && 'bg-danger/20 text-danger',
-        trend === 'neutral' && 'bg-muted text-muted-foreground'
+        'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
+        trend === 'up' && 'bg-success/10 text-success',
+        trend === 'down' && 'bg-danger/10 text-danger',
+        trend === 'neutral' && 'bg-surface text-muted-foreground'
       )}
     >
-      {trend === 'up' && <TrendingUp className={iconSize} />}
-      {trend === 'down' && <TrendingDown className={iconSize} />}
-      {trend === 'neutral' && <Minus className={iconSize} />}
-      <span className={fontSize}>{diffText}</span>
+      {trend === 'up' && <TrendingUp className="w-2.5 h-2.5" />}
+      {trend === 'down' && <TrendingDown className="w-2.5 h-2.5" />}
+      {trend === 'neutral' && <Minus className="w-2.5 h-2.5" />}
+      <span>{label}%</span>
     </div>
   );
 }
 
-// Compact score display for reader cards
+// Compact score for reader cards
 interface MiniScoreProps {
   label: string;
   rating: Rating;
@@ -116,16 +109,16 @@ export function MiniScore({ label, rating, color }: MiniScoreProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground w-20 capitalize">{label}</span>
-      <div className="flex gap-px">
+      <span className="text-[11px] text-muted-foreground w-[72px] capitalize">{label}</span>
+      <div className="flex gap-[1px]">
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
             className={cn(
-              'w-2 h-4 rounded-sm',
-              i < Math.ceil(filled / 2) ? 'bg-bullseye-gold' : 'bg-elevated'
+              'w-1.5 h-3 rounded-[1px]',
+              i < Math.ceil(filled / 2) ? '' : 'bg-elevated'
             )}
-            style={i < Math.ceil(filled / 2) && color ? { backgroundColor: color } : undefined}
+            style={i < Math.ceil(filled / 2) ? { backgroundColor: color || 'var(--bullseye-gold)' } : undefined}
           />
         ))}
       </div>
@@ -160,12 +153,14 @@ export function HarmonizedScoresDisplay({
 
   return (
     <div className="space-y-4">
-      {/* Overall score highlight */}
-      <div className="p-4 rounded-lg bg-elevated border border-border">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-muted-foreground">OVERALL SCORE</span>
+      {/* Overall — emphasized */}
+      <div className="p-5 rounded-2xl bg-elevated/60 border border-border/50">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            Overall
+          </span>
           {showCalibration && (
-            <span className="text-sm text-muted-foreground">vs. Studio Average</span>
+            <span className="text-[11px] text-muted-foreground">vs. corpus</span>
           )}
         </div>
         <ScoreIndicator
@@ -178,8 +173,8 @@ export function HarmonizedScoresDisplay({
         />
       </div>
 
-      {/* Individual dimensions */}
-      <div className="space-y-3">
+      {/* Dimensions */}
+      <div className="space-y-2.5 pt-2">
         {dimensions.map(({ key, label }) => (
           <ScoreIndicator
             key={key}

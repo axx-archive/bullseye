@@ -194,7 +194,7 @@ export function PitchView() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {executives?.map((exec) => {
                   const liveState = executiveStates.get(exec.id);
                   const isCurrentlyEvaluating = liveState?.status === 'evaluating';
@@ -365,7 +365,7 @@ function LiveEvaluationCard({ state }: { state: ExecutiveStreamState }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {state.keyFactors && state.keyFactors.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold mb-2 text-success">Key Factors</h4>
@@ -516,7 +516,7 @@ function PersistedEvaluationCard({ evaluation }: { evaluation: EvaluationData })
           <p className="text-sm leading-relaxed">{evaluation.rationale}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {evaluation.keyFactors.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold mb-2 text-success">Key Factors</h4>
@@ -575,7 +575,7 @@ function LoadingSkeleton() {
         {/* Executive grid skeleton */}
         <div className="rounded-lg border border-border p-6 space-y-4">
           <div className="h-6 w-40 rounded bg-elevated animate-pulse" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="p-4 rounded-lg border border-border space-y-3">
                 <div className="flex items-start gap-3">
