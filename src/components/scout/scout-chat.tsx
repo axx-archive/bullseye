@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/stores/app-store';
@@ -54,6 +55,7 @@ export function ScoutChat() {
     setPendingScoutAttachment,
   } = useAppStore();
 
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const streamingTextRef = useRef('');
@@ -444,7 +446,7 @@ export function ScoutChat() {
             <div className="flex justify-center gap-2 pb-2">
               {chatMessages.some((m) => m.role === 'system' && m.content.includes('API key in Settings')) ? (
                 <button
-                  onClick={() => useAppStore.getState().setActiveTab('settings')}
+                  onClick={() => router.push('/settings')}
                   className="px-4 py-2 rounded-full text-xs font-medium text-bullseye-gold bg-bullseye-gold/10 border border-bullseye-gold/30 hover:bg-bullseye-gold/20 transition-colors"
                 >
                   Go to Settings

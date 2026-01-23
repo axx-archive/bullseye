@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/lib/utils';
@@ -11,7 +12,6 @@ import {
   Users,
   GitBranch,
   Presentation,
-  Settings2,
   Upload,
   Check,
   Building2,
@@ -20,6 +20,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TabId } from '@/stores/app-store';
 import { DraftUploadModal } from '@/components/home/draft-upload-modal';
+import { UserAvatar } from '@/components/shared/user-avatar';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const PROJECT_TABS = [
   { id: 'scout', label: 'Scout', icon: Target },
@@ -54,6 +56,8 @@ export function AppShell({ children }: AppShellProps) {
     openStudioConfig,
     closeStudioConfig,
   } = useAppStore();
+  const router = useRouter();
+  const { data: userProfile } = useUserProfile();
   const [showStudioSwitcher, setShowStudioSwitcher] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
 
@@ -63,6 +67,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   const hasProject = currentProject !== null;
+  const isScoutTab = activeTab === 'scout' && !isStudioConfigOpen;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -192,38 +197,6 @@ export function AppShell({ children }: AppShellProps) {
             })}
           </div>
 
-          {/* Settings — always accessible */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setActiveTab('settings')}
-                className={cn(
-                  'relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
-                  'hover:bg-elevated/80',
-                  activeTab === 'settings' && 'bg-elevated'
-                )}
-              >
-                {activeTab === 'settings' && (
-                  <motion.div
-                    layoutId="nav-indicator"
-                    className="absolute -left-[22px] w-1 h-5 rounded-full bg-gradient-gold"
-                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                  />
-                )}
-                <Settings2
-                  className={cn(
-                    'w-[20px] h-[20px] transition-colors duration-200',
-                    activeTab === 'settings' ? 'text-foreground' : 'text-muted-foreground'
-                  )}
-                  strokeWidth={activeTab === 'settings' ? 2 : 1.5}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <span className="text-xs font-medium">Settings</span>
-            </TooltipContent>
-          </Tooltip>
-
           {/* Bottom actions */}
           <div className="flex flex-col items-center gap-2 mt-4">
             {/* Studio switcher */}
@@ -265,6 +238,27 @@ export function AppShell({ children }: AppShellProps) {
               </div>
             )}
 
+            {/* User avatar — navigates to /settings */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors duration-150 ease-out"
+                >
+                  <UserAvatar
+                    src={userProfile?.avatarUrl}
+                    name={userProfile?.displayName}
+                    email={userProfile?.email}
+                    size="sm"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                <span className="text-xs font-medium">
+                  {userProfile?.displayName || userProfile?.email || 'Settings'}
+                </span>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </nav>
 
@@ -326,7 +320,8 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Content Area */}
           <div className={cn(
-            'flex-1 overflow-auto pb-8',
+            'flex-1',
+            isScoutTab ? 'overflow-hidden' : 'overflow-auto pb-8',
             activeTab === 'home' && !isStudioConfigOpen ? 'px-4 md:px-8 pt-4 md:pt-6' : 'px-4 md:px-8'
           )}>
             <AnimatePresence mode="wait">
@@ -365,12 +360,17 @@ export function AppShell({ children }: AppShellProps) {
               />
             );
           })}
-          <MobileTabButton
-            icon={Settings2}
-            label="Settings"
-            isActive={activeTab === 'settings'}
-            onClick={() => setActiveTab('settings')}
-          />
+          <button
+            onClick={() => router.push('/settings')}
+            className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 min-w-[48px] rounded-lg transition-colors duration-150 ease-out"
+          >
+            <UserAvatar
+              src={userProfile?.avatarUrl}
+              name={userProfile?.displayName}
+              email={userProfile?.email}
+              size="sm"
+            />
+          </button>
         </nav>
       </div>
       <DraftUploadModal
