@@ -151,6 +151,13 @@ interface ChatState {
 
 import type { RightPanelPhase, ReaderStreamState, FocusGroupUIMessage } from '@/lib/agent-sdk/types';
 
+export interface ReaderChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  isStreaming?: boolean;
+}
+
 interface ScoutSessionState {
   sessionId: string | null;
   rightPanelMode: RightPanelPhase;
@@ -158,6 +165,7 @@ interface ScoutSessionState {
   focusGroupMessages: FocusGroupUIMessage[];
   focusGroupTypingSpeaker: string | null;
   activeReaderChatId: string | null; // For 1:1 reader chat
+  readerChatMessages: Record<string, ReaderChatMessage[]>; // Keyed by readerId
 
   setSessionId: (id: string | null) => void;
   setRightPanelMode: (mode: RightPanelPhase) => void;
@@ -167,6 +175,8 @@ interface ScoutSessionState {
   setFocusGroupTyping: (speaker: string | null, speakerType: 'moderator' | 'reader', readerId?: string) => void;
   clearFocusGroupMessages: () => void;
   setActiveReaderChatId: (readerId: string | null) => void;
+  addReaderChatMessage: (readerId: string, message: ReaderChatMessage) => void;
+  updateReaderChatMessage: (readerId: string, messageId: string, updates: Partial<ReaderChatMessage>) => void;
 }
 
 // ============================================
@@ -344,6 +354,7 @@ export const useAppStore = create<AppStore>()(
         focusGroupMessages: [] as FocusGroupUIMessage[],
         focusGroupTypingSpeaker: null,
         activeReaderChatId: null,
+        readerChatMessages: {} as Record<string, ReaderChatMessage[]>,
 
         setSessionId: (id) => set({ sessionId: id }),
         setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
@@ -361,6 +372,22 @@ export const useAppStore = create<AppStore>()(
           set({ focusGroupTypingSpeaker: speaker }),
         clearFocusGroupMessages: () => set({ focusGroupMessages: [], focusGroupTypingSpeaker: null }),
         setActiveReaderChatId: (readerId) => set({ activeReaderChatId: readerId }),
+        addReaderChatMessage: (readerId, message) =>
+          set((s) => ({
+            readerChatMessages: {
+              ...s.readerChatMessages,
+              [readerId]: [...(s.readerChatMessages[readerId] || []), message],
+            },
+          })),
+        updateReaderChatMessage: (readerId, messageId, updates) =>
+          set((s) => ({
+            readerChatMessages: {
+              ...s.readerChatMessages,
+              [readerId]: (s.readerChatMessages[readerId] || []).map((m) =>
+                m.id === messageId ? { ...m, ...updates } : m
+              ),
+            },
+          })),
 
         // ============ UI STATE ============
         sidebarOpen: true,
