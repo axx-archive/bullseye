@@ -4,7 +4,7 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createBullseyeToolServer } from '@/lib/agent-sdk/tools';
-import { setCurrentScript } from '@/lib/agent-sdk/tools/ingest';
+import { setCurrentScript, getCurrentScript, extractScriptMetadata } from '@/lib/agent-sdk/tools/ingest';
 import { SCOUT_AGENT_SYSTEM_PROMPT } from '@/lib/agent-sdk/prompts';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
 import { getCurrentUser, getUserApiKey } from '@/lib/auth';
@@ -87,7 +87,21 @@ export async function POST(req: Request) {
       ingestedAt: new Date(),
     });
 
-    prompt += `\n\n[UPLOADED SCRIPT FILE: "${attachment.filename}"]\nThe script has been automatically ingested and is ready for analysis. Title: "${titleFromFilename}", estimated ${estimatedPages} pages. Do NOT call ingest_script — the script is already loaded. Proceed directly to spawn_readers (ask the user about genre/format first if unclear, but do not block on it).`;
+    // Auto-extract metadata from script text using LLM
+    const extracted = await extractScriptMetadata(attachment.content);
+    if (extracted) {
+      const script = getCurrentScript()!;
+      setCurrentScript({
+        ...script,
+        title: extracted.title || script.title,
+        author: extracted.writer !== 'Unknown' ? extracted.writer : script.author,
+        genre: extracted.genre || script.genre,
+        format: extracted.format || script.format,
+      });
+    }
+
+    const updatedScript = getCurrentScript()!;
+    prompt += `\n\n[UPLOADED SCRIPT FILE: "${attachment.filename}"]\nThe script has been automatically ingested and is ready for analysis. Title: "${updatedScript.title}", Writer: "${updatedScript.author}", Genre: "${updatedScript.genre}", Format: "${updatedScript.format}", estimated ${estimatedPages} pages. Do NOT call ingest_script — the script is already loaded. Proceed directly to spawn_readers.`;
   }
 
   // Build system prompt with optional user name context
