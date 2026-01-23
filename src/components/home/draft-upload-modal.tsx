@@ -14,7 +14,7 @@ interface DraftUploadModalProps {
 }
 
 export function DraftUploadModal({ open, onClose }: DraftUploadModalProps) {
-  const { currentProject, setCurrentDraft } = useAppStore();
+  const { currentProject, setCurrentDraft, setPendingScoutAttachment, setActiveTab } = useAppStore();
   const { addToast } = useToastStore();
   const uploadMutation = useUploadDraft();
   const [file, setFile] = useState<File | null>(null);
@@ -69,6 +69,16 @@ export function DraftUploadModal({ open, onClose }: DraftUploadModalProps) {
             createdAt: new Date(data.createdAt),
             updatedAt: new Date(data.updatedAt),
           });
+
+          // Auto-trigger Scout analysis if script text was extracted
+          if (data.scriptText) {
+            setPendingScoutAttachment({
+              filename: file!.name,
+              content: data.scriptText,
+            });
+            setActiveTab('scout');
+          }
+
           resetAndClose();
         },
         onError: (error) => {
