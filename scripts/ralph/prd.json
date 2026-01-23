@@ -414,8 +414,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Pitch view uses useExecutiveProfiles() for real DB executives and useEvaluations(currentDraft.id) for persisted results. Run Simulation sends message to /api/scout via createSSEConnection with executive callbacks. Live streaming results from Zustand executiveStates shown during evaluation, then replaced by persisted API results on subsequent visits. Loading skeleton shows 3 executive card skeletons + 2 result card skeletons. Empty states: no draft → Go to Home, no deliverable → 'Complete coverage analysis first' with Scout link. Both PURSUE/PASS verdict formats handled (uppercase from API, lowercase from live SSE)."
     },
     {
       "id": "US-023",

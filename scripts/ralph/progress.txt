@@ -539,3 +539,31 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The drafts array from useDrafts comes sorted by draftNumber desc (from project detail endpoint) — no need to re-sort for "latest first" display
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-022
+- What was implemented:
+  - Pitch view rewritten to use real data from `useExecutiveProfiles()` and `useEvaluations(currentDraft.id)` React Query hooks
+  - Executive cards show real DB profiles (name, title, company) with avatar initials
+  - `useDeliverable(currentDraft.id)` used to check if coverage analysis has been run (prerequisite for exec eval)
+  - Prefers Zustand `currentDeliverable` (live) over API data for hasDeliverable check
+  - "Run Simulation" button sends message to `/api/scout` via `createSSEConnection` with executive SSE callbacks
+  - Per-executive loading spinner overlay during evaluation (from Zustand executiveStates Map)
+  - Live streaming results rendered as `LiveResults` component — shows completed executive eval cards as they stream in
+  - Persisted results rendered as `PersistedResults` component — shows saved evaluations from API on return visits
+  - Results include: PURSUE/PASS badge, confidence %, rationale, key factors as bullets, concerns as bullets, cited coverage elements
+  - Summary card shows Pursue/Pass counts and success rate Progress bar
+  - Loading skeleton: header + 3 executive card skeletons + 2 result card skeletons (all with pulse animation)
+  - Two empty states: no draft selected → "Select a Project" + Home link, no deliverable → "No Evaluations Yet" + "Complete coverage analysis first" + Scout link
+  - Removed all mock/simulated evaluation logic (delay, random verdict generation)
+  - Removed dependency on `DEFAULT_EXECUTIVES` from `@/lib/executive` — now uses API data
+  - Removed unused Zustand actions (startEvaluation, addEvaluation, endEvaluation, etc.) from component destructure
+- Files changed:
+  - src/components/pitch/pitch-view.tsx (rewritten — uses useExecutiveProfiles + useEvaluations hooks, SSE for Run Simulation, loading/empty states)
+- **Learnings for future iterations:**
+  - EvaluationResponse from API has uppercase verdict ('PURSUE'/'PASS') while live SSE may send lowercase — handle both with `=== 'pursue' || === 'PURSUE'`
+  - Live executive results (from Zustand executiveStates Map) take priority over persisted results (from API) when hasLiveResults is true — prevents showing stale data during active evaluation
+  - createSSEConnection can be called from any component (not just scout-chat) — provide full EventRouterCallbacks with no-op handlers for unneeded events
+  - Pitch view has two entry points for evaluation data: live streaming (Zustand executiveStates) and persisted (useEvaluations API hook)
+  - The `connectionRef` is important to prevent garbage collection of the SSE connection
+  - Browser verification not available — manual testing needed
+---
