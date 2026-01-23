@@ -318,8 +318,8 @@
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Routes at src/app/api/drafts/[id]/evaluations/route.ts, src/app/api/studio/route.ts (GET+PUT), src/app/api/studio/readers/route.ts (GET), src/app/api/studio/readers/[id]/route.ts (PUT), src/app/api/studio/executives/route.ts (GET), src/app/api/studio/executives/[id]/route.ts (PUT), src/app/api/studio/intelligence/route.ts (GET). All validate auth via getCurrentUser(), studio scoping for access control."
     },
     {
       "id": "US-018",

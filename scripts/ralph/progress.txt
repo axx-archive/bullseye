@@ -42,6 +42,9 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - When adding new EventRouterCallbacks, also update focus-group-panel.tsx (has its own inline callbacks for follow-up messages)
 - Draft access control: `include: { project: { select: { studioId: true } } }` then check `draft.project.studioId !== user.studioId`
 - DraftDeliverable has unique constraint on `draftId` — use `findUnique({ where: { draftId: id } })` not findFirst
+- Studio sub-entity (readers/executives) access control: check `entity.studioId !== user.studioId` directly — no join needed
+- StudioIntelligence has unique constraint on `studioId` — use `findUnique({ where: { studioId } })`
+- PUT routes for partial updates: use conditional spread `...(body.field !== undefined && { field: body.field })` for each updatable field
 
 ---
 
@@ -413,4 +416,32 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - DraftDeliverable has a unique constraint on draftId — use `findUnique({ where: { draftId: id } })` not `findFirst`
   - FocusSession messages should be ordered by sequenceNumber (not createdAt) for correct conversation ordering
   - Pre-existing type errors in agent-sdk/tools/ are known and don't block new API routes (ignoreBuildErrors: true)
+---
+
+## 2026-01-22 - US-017
+- What was implemented:
+  - GET /api/drafts/[id]/evaluations — returns ExecutiveEvaluations with executive profile data included, ordered by createdAt desc
+  - GET /api/studio — returns current user's Studio with _count of readerPersonas and projects
+  - PUT /api/studio — accepts { name } and updates the studio record (validates name is non-empty string)
+  - GET /api/studio/readers — returns ReaderPersonas for the user's studio, ordered by createdAt asc
+  - PUT /api/studio/readers/[id] — accepts persona fields and updates the record (validates ownership)
+  - GET /api/studio/executives — returns ExecutiveProfiles for the user's studio, ordered by createdAt asc
+  - PUT /api/studio/executives/[id] — accepts profile fields and updates the record (validates ownership)
+  - GET /api/studio/intelligence — returns StudioIntelligence for the user's studio (404 if not found)
+  - All routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - PUT routes verify entity belongs to user's studio before allowing updates
+- Files changed:
+  - src/app/api/drafts/[id]/evaluations/route.ts (new)
+  - src/app/api/studio/route.ts (new)
+  - src/app/api/studio/readers/route.ts (new)
+  - src/app/api/studio/readers/[id]/route.ts (new)
+  - src/app/api/studio/executives/route.ts (new)
+  - src/app/api/studio/executives/[id]/route.ts (new)
+  - src/app/api/studio/intelligence/route.ts (new)
+- **Learnings for future iterations:**
+  - Studio entity access control: reader/executive entities have `studioId` field — check `entity.studioId !== user.studioId` directly (no need for project relation join)
+  - PUT routes use conditional spread for optional fields: `...(body.field !== undefined && { field: body.field })` — allows partial updates without overwriting unset fields
+  - Studio GET uses `_count: { select: { readerPersonas: true, projects: true } }` for relation counts
+  - ExecutiveEvaluation includes `executive: true` in the findMany to get profile data inline
+  - StudioIntelligence has unique constraint on studioId — use `findUnique({ where: { studioId } })`
 ---
