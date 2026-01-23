@@ -121,3 +121,17 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - Studio grouping uses `project.studio?.id || project.studioId` for fallback (optimistic creates may lack studio)
   - AnimatePresence with `initial={false}` prevents animation on first render
 ---
+
+## 2026-01-23 - US-007
+- Added `StudioStats` component to home-view.tsx that renders compact stat row below each studio header
+- Added `EVALUATION_STATUS_CONFIG` constant mapping evaluation statuses to labels and color classes
+- Stats show counts for Under Consideration (amber), Approved (green), Rejected (muted red)
+- Only non-zero counts are displayed; component returns null if all counts are zero
+- Stats are hidden when studio section is collapsed
+- All data computed from existing `projects` query data — no additional API calls
+- Files changed: src/components/home/home-view.tsx
+- **Learnings for future iterations:**
+  - `evaluationStatus` field on `ProjectWithCount` may be undefined for optimistic creates — default to `'UNDER_CONSIDERATION'`
+  - Stats row is placed between studio header button and AnimatePresence block (outside collapse animation) but guarded by `!isCollapsed`
+  - Use Tailwind color utility classes with opacity modifiers (e.g., `text-red-400/70`) for subtle muted colors
+---
