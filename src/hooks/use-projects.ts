@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Project, ProjectFormat } from '@/types';
+import type { Project, ProjectFormat, EvaluationStatus } from '@/types';
 
 // ============================================
 // QUERY KEYS
@@ -131,6 +131,49 @@ export function useCreateProject() {
     },
     onSettled: () => {
       // Refetch to get server state
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
+interface UpdateProjectInput {
+  id: string;
+  evaluationStatus?: EvaluationStatus;
+  title?: string;
+}
+
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ProjectWithCount, Error, UpdateProjectInput, MutationContext>({
+    mutationFn: async ({ id, ...data }) => {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to update project' }));
+        throw new Error(error.error || 'Failed to update project');
+      }
+      return res.json();
+    },
+    onMutate: async ({ id, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: projectKeys.all });
+      const previous = queryClient.getQueryData<ProjectWithCount[]>(projectKeys.all);
+
+      queryClient.setQueryData<ProjectWithCount[]>(projectKeys.all, (old) =>
+        old?.map((p) => (p.id === id ? { ...p, ...data } : p))
+      );
+
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(projectKeys.all, context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });

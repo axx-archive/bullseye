@@ -18,6 +18,8 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Scout chat error UI: check `m.content.includes('API key in Settings')` to differentiate API key errors from generic errors
 - `ProjectWithCount` (exported from `use-projects.ts`) includes `studio: { id, name }` — use this for grouping/display
 - Projects API returns studio info and orders by `sortOrder asc, updatedAt desc`
+- PATCH `/api/projects/[id]` accepts `evaluationStatus` and `title` — use `useUpdateProject` hook from `use-projects.ts`
+- For nested interactive elements in cards, use `<div role="button">` + `e.stopPropagation()` on inner elements
 
 ---
 
@@ -134,4 +136,19 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - `evaluationStatus` field on `ProjectWithCount` may be undefined for optimistic creates — default to `'UNDER_CONSIDERATION'`
   - Stats row is placed between studio header button and AnimatePresence block (outside collapse animation) but guarded by `!isCollapsed`
   - Use Tailwind color utility classes with opacity modifiers (e.g., `text-red-400/70`) for subtle muted colors
+---
+
+## 2026-01-23 - US-008
+- Added PATCH handler to `/api/projects/[id]/route.ts` supporting `evaluationStatus` and `title` fields
+- Created `EvaluationStatusBadge` component in home-view.tsx with DropdownMenu for status selection
+- Added `useUpdateProject` mutation hook in `use-projects.ts` with optimistic updates
+- Badge shows colored dot + label text; clicking opens dropdown with three status options
+- Changed ProjectCard from `<button>` to `<div role="button">` to allow nested interactive elements (dropdown)
+- `e.stopPropagation()` prevents dropdown clicks from triggering card navigation
+- Files changed: src/app/api/projects/[id]/route.ts, src/hooks/use-projects.ts, src/components/home/home-view.tsx
+- **Learnings for future iterations:**
+  - Nested interactive elements (button inside button) are invalid HTML — use `<div role="button">` for the outer container
+  - DropdownMenu from Radix needs `e.stopPropagation()` on both trigger and content to prevent parent click handlers
+  - The PATCH route validates allowed fields explicitly and builds updateData dynamically — extendable for future fields
+  - `useUpdateProject` hook is generic (accepts any updatable field) — reusable for rename, status changes, etc.
 ---

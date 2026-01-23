@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
-import { useProjects, type ProjectWithCount } from '@/hooks/use-projects';
+import { useProjects, useUpdateProject, type ProjectWithCount } from '@/hooks/use-projects';
 import {
   Plus,
   Clock,
@@ -14,6 +14,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import type { EvaluationStatus } from '@/types';
 
 const FORMAT_LABELS: Record<string, string> = {
   FEATURE: 'Feature',
@@ -60,6 +67,66 @@ const EVALUATION_STATUS_CONFIG = {
   APPROVED: { label: 'Approved', className: 'text-green-500' },
   REJECTED: { label: 'Rejected', className: 'text-red-400/70' },
 } as const;
+
+const EVALUATION_STATUS_DOT: Record<EvaluationStatus, string> = {
+  UNDER_CONSIDERATION: 'bg-amber-500',
+  APPROVED: 'bg-green-500',
+  REJECTED: 'bg-red-400',
+};
+
+function EvaluationStatusBadge({
+  projectId,
+  status,
+}: {
+  projectId: string;
+  status: EvaluationStatus;
+}) {
+  const { mutate: updateProject } = useUpdateProject();
+  const config = EVALUATION_STATUS_CONFIG[status];
+  const dotColor = EVALUATION_STATUS_DOT[status];
+
+  function handleSelect(newStatus: EvaluationStatus) {
+    if (newStatus !== status) {
+      updateProject({ id: projectId, evaluationStatus: newStatus });
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-elevated/50 transition-colors text-[10px]"
+        >
+          <div className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />
+          <span className={cn('font-medium', config.className)}>
+            {config.label}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48" onClick={(e) => e.stopPropagation()}>
+        {(Object.entries(EVALUATION_STATUS_CONFIG) as [EvaluationStatus, typeof config][]).map(
+          ([key, cfg]) => (
+            <DropdownMenuItem
+              key={key}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSelect(key);
+              }}
+              className="flex items-center gap-2"
+            >
+              <div className={cn('w-2 h-2 rounded-full', EVALUATION_STATUS_DOT[key])} />
+              <span className={cfg.className}>{cfg.label}</span>
+              {key === status && (
+                <span className="ml-auto text-muted-foreground text-xs">Current</span>
+              )}
+            </DropdownMenuItem>
+          )
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function StudioStats({ projects }: { projects: ProjectWithCount[] }) {
   const counts = { UNDER_CONSIDERATION: 0, APPROVED: 0, REJECTED: 0 };
@@ -254,11 +321,15 @@ function ProjectCardSkeleton() {
 function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: () => void }) {
   const draftCount = project._count?.drafts ?? 0;
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
+  const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
 
   return (
-    <button
+    <div
       onClick={onOpen}
-      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
+      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -277,17 +348,20 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
         </p>
       )}
 
-      <div className="flex items-center gap-4 mt-auto pt-2 border-t border-border/30">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Layers className="w-3 h-3" />
-          <span className="text-[11px]">{draftCount} {draftCount === 1 ? 'draft' : 'drafts'}</span>
+      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/30">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Layers className="w-3 h-3" />
+            <span className="text-[11px]">{draftCount} {draftCount === 1 ? 'draft' : 'drafts'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Clock className="w-3 h-3" />
+            <span className="text-[11px]">{formatRelativeDate(project.updatedAt)}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Clock className="w-3 h-3" />
-          <span className="text-[11px]">{formatRelativeDate(project.updatedAt)}</span>
-        </div>
+        <EvaluationStatusBadge projectId={project.id} status={evalStatus} />
       </div>
-    </button>
+    </div>
   );
 }
 
