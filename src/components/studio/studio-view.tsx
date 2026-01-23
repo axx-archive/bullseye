@@ -22,11 +22,13 @@ import {
   Save,
   Edit2,
   X,
+  Plus,
   Loader2,
   AlertTriangle,
   Upload,
   LogOut,
   Trash2,
+  Lightbulb,
 } from 'lucide-react';
 import {
   useStudio,
@@ -85,7 +87,7 @@ interface RecommendationBreakdown {
 // ============================================
 
 export function StudioView() {
-  const [activeSection, setActiveSection] = useState<'readers' | 'executives' | 'calibration' | 'settings'>('readers');
+  const [activeSection, setActiveSection] = useState<'info' | 'readers' | 'executives' | 'calibration' | 'settings'>('info');
 
   return (
     <div className="h-full">
@@ -104,7 +106,11 @@ export function StudioView() {
 
           {/* Navigation tabs */}
           <Tabs value={activeSection} onValueChange={(v) => setActiveSection(v as typeof activeSection)}>
-            <TabsList className="grid grid-cols-4 w-full max-w-md">
+            <TabsList className="grid grid-cols-5 w-full max-w-lg">
+              <TabsTrigger value="info" className="gap-2">
+                <Lightbulb className="w-4 h-4" />
+                Studio Info
+              </TabsTrigger>
               <TabsTrigger value="readers" className="gap-2">
                 <Users className="w-4 h-4" />
                 Readers
@@ -122,6 +128,11 @@ export function StudioView() {
                 Settings
               </TabsTrigger>
             </TabsList>
+
+            {/* Studio Info tab */}
+            <TabsContent value="info" className="space-y-4 mt-6">
+              <StudioInfoSection />
+            </TabsContent>
 
             {/* Readers tab */}
             <TabsContent value="readers" className="space-y-4 mt-6">
@@ -147,6 +158,278 @@ export function StudioView() {
           </Tabs>
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+// ============================================
+// STUDIO INFO SECTION
+// ============================================
+
+function StudioInfoSection() {
+  const { data: studio, isLoading, error } = useStudio();
+  const [pov, setPov] = useState('');
+  const [pillars, setPillars] = useState<string[]>([]);
+  const [beliefs, setBeliefs] = useState<string[]>([]);
+  const [mandates, setMandates] = useState<string[]>([]);
+  const [newPillar, setNewPillar] = useState('');
+  const [newBelief, setNewBelief] = useState('');
+  const [newMandate, setNewMandate] = useState('');
+  const [initialized, setInitialized] = useState(false);
+
+  const queryClient = useQueryClient();
+  const { addToast } = useToastStore();
+
+  // Initialize from fetched data
+  if (studio && !initialized) {
+    setPov(studio.pov ?? '');
+    setPillars(studio.pillars ?? []);
+    setBeliefs(studio.beliefs ?? []);
+    setMandates(studio.mandates ?? []);
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: { pov: string | null; pillars: string[]; beliefs: string[]; mandates: string[] }) => {
+      const res = await fetch('/api/studio', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to save' }));
+        throw new Error(error.error || 'Failed to save');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: studioKeys.studio });
+      addToast('Studio info saved', 'success');
+    },
+    onError: (error: Error) => {
+      addToast(error.message, 'error');
+    },
+  });
+
+  const handleSave = () => {
+    saveMutation.mutate({
+      pov: pov.trim() || null,
+      pillars,
+      beliefs,
+      mandates,
+    });
+  };
+
+  const addItem = (list: string[], setList: (items: string[]) => void, value: string, clearInput: () => void) => {
+    const trimmed = value.trim();
+    if (trimmed && !list.includes(trimmed)) {
+      setList([...list, trimmed]);
+      clearInput();
+    }
+  };
+
+  const removeItem = (list: string[], setList: (items: string[]) => void, index: number) => {
+    setList(list.filter((_, i) => i !== index));
+  };
+
+  if (isLoading) {
+    return <SectionSkeleton count={2} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load studio info</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Studio Identity</h2>
+        <p className="text-sm text-muted-foreground">
+          Define your studio&apos;s creative identity to guide AI analysis
+        </p>
+      </div>
+
+      {/* Point of View */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Point of View</CardTitle>
+          <CardDescription>
+            Your studio&apos;s unique perspective — what lens do you use to evaluate scripts and stories?
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={pov}
+            onChange={(e) => setPov(e.target.value)}
+            placeholder="e.g., We champion underrepresented voices in genre fiction, looking for stories that subvert expectations while remaining commercially viable."
+            className="min-h-[100px]"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Pillars */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Pillars</CardTitle>
+          <CardDescription>
+            Core values that define your studio&apos;s creative standards
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pillars.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pillars.map((pillar, index) => (
+                <Badge key={index} variant="secondary" className="gap-1 pr-1">
+                  {pillar}
+                  <button
+                    type="button"
+                    onClick={() => removeItem(pillars, setPillars, index)}
+                    className="ml-1 rounded-full p-0.5 hover:bg-foreground/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              value={newPillar}
+              onChange={(e) => setNewPillar(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addItem(pillars, setPillars, newPillar, () => setNewPillar(''));
+                }
+              }}
+              placeholder="Add a pillar..."
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => addItem(pillars, setPillars, newPillar, () => setNewPillar(''))}
+              disabled={!newPillar.trim()}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Beliefs */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Beliefs</CardTitle>
+          <CardDescription>
+            What your studio believes about great storytelling
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {beliefs.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {beliefs.map((belief, index) => (
+                <Badge key={index} variant="secondary" className="gap-1 pr-1">
+                  {belief}
+                  <button
+                    type="button"
+                    onClick={() => removeItem(beliefs, setBeliefs, index)}
+                    className="ml-1 rounded-full p-0.5 hover:bg-foreground/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              value={newBelief}
+              onChange={(e) => setNewBelief(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addItem(beliefs, setBeliefs, newBelief, () => setNewBelief(''));
+                }
+              }}
+              placeholder="Add a belief..."
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => addItem(beliefs, setBeliefs, newBelief, () => setNewBelief(''))}
+              disabled={!newBelief.trim()}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mandates */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Mandates</CardTitle>
+          <CardDescription>
+            Non-negotiable requirements for any project your studio considers
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {mandates.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {mandates.map((mandate, index) => (
+                <Badge key={index} variant="secondary" className="gap-1 pr-1">
+                  {mandate}
+                  <button
+                    type="button"
+                    onClick={() => removeItem(mandates, setMandates, index)}
+                    className="ml-1 rounded-full p-0.5 hover:bg-foreground/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              value={newMandate}
+              onChange={(e) => setNewMandate(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addItem(mandates, setMandates, newMandate, () => setNewMandate(''));
+                }
+              }}
+              placeholder="Add a mandate..."
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => addItem(mandates, setMandates, newMandate, () => setNewMandate(''))}
+              disabled={!newMandate.trim()}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Save button */}
+      <div className="flex justify-end">
+        <Button className="gap-2" onClick={handleSave} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Save Studio Info
+        </Button>
+      </div>
     </div>
   );
 }

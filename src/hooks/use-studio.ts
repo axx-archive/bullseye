@@ -98,6 +98,10 @@ interface StudioResponse {
   name: string;
   slug: string;
   ownerId: string;
+  pov: string | null;
+  pillars: string[];
+  beliefs: string[];
+  mandates: string[];
   createdAt: string;
   updatedAt: string;
   _count: {
