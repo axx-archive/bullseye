@@ -2,12 +2,11 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 
-const DEFAULT_STUDIO_ID = 'default-studio-id';
-
 /**
  * Get the current authenticated user from Supabase and ensure
  * they have a corresponding record in our database.
  * Returns the Prisma User (with studio) or null if not authenticated.
+ * If the user's studio was deleted (e.g., after migration), returns user with studio: null.
  */
 export async function getCurrentUser() {
   const supabase = await createClient();
@@ -16,24 +15,14 @@ export async function getCurrentUser() {
   if (!authUser) return null;
 
   // Check if user exists in our database
-  let user = await db.user.findUnique({
+  const user = await db.user.findUnique({
     where: { supabaseAuthId: authUser.id },
     include: { studio: true },
   });
 
-  // If not, create them linked to the default seed studio
-  if (!user) {
-    user = await db.user.create({
-      data: {
-        supabaseAuthId: authUser.id,
-        email: authUser.email!,
-        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-        role: 'MEMBER',
-        studioId: DEFAULT_STUDIO_ID,
-      },
-      include: { studio: true },
-    });
-  }
+  // User doesn't exist in DB (was cascade-deleted with studio, or never provisioned)
+  // Return null — the client should call POST /api/studio to create a new studio
+  if (!user) return null;
 
   return user;
 }

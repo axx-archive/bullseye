@@ -1,189 +1,157 @@
 {
   "project": "Bullseye",
-  "branchName": "ralph/user-customization",
-  "description": "User customization (avatar, display name), agent personalization, and studio deletion with cascade warnings",
+  "branchName": "ralph/settings-studio-cleanup",
+  "description": "Fix API key saving, clear stale studios, dedicated user settings page, and Studio Info tab with POV/Pillars/Beliefs/Mandates",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Reusable UserAvatar component",
-      "description": "As a developer, I need a reusable avatar component that shows an uploaded image or falls back to styled initials.",
+      "title": "Add POV, Pillars, Beliefs, Mandates fields to Studio model",
+      "description": "As a developer, I need to store studio identity fields (POV, Pillars, Beliefs, Mandates) in the database so they persist across sessions.",
       "acceptanceCriteria": [
-        "Shared component at src/components/shared/user-avatar.tsx",
-        "Props: src (string | null | undefined), name (string | null | undefined), email (string | undefined), size ('sm' | 'md' | 'lg') where sm=28px, md=40px, lg=64px",
-        "If src provided: renders circular img with object-cover and rounded-full",
-        "If no src: renders initials (first letter of name, or first letter of email, or '?') in a colored circle",
-        "Initials background color derived deterministically from name/email string (hash to a small palette of muted colors)",
-        "Text color is white for all background colors",
-        "Component exported as named export",
+        "Add fields to Studio model in prisma/schema.prisma: pov String? (nullable text), pillars String[] (default []), beliefs String[] (default []), mandates String[] (default [])",
+        "Generate Prisma migration successfully (npx prisma migrate dev --name add_studio_identity_fields)",
+        "Prisma client regenerates with new fields available on Studio type",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": ""
+      "notes": "Schema-only change. API updates in next story."
     },
     {
       "id": "US-002",
-      "title": "User profile API routes",
-      "description": "As a developer, I need API routes for reading and updating the user's display name and avatar URL.",
+      "title": "Update Studio API to support identity fields",
+      "description": "As a developer, I need the PUT /api/studio endpoint to accept and persist pov, pillars, beliefs, and mandates fields.",
       "acceptanceCriteria": [
-        "GET /api/user/profile returns { displayName: string | null, email: string, avatarUrl: string | null }",
-        "PUT /api/user/profile accepts { displayName?: string, avatarUrl?: string } and updates the User record in Prisma",
-        "displayName validated: trimmed, 1-50 characters if provided, returns 400 if empty string or over 50 chars",
-        "Both routes validate auth via getCurrentUser() — return 401 if unauthenticated",
-        "PUT returns the updated user profile object",
+        "PUT /api/studio accepts optional fields: pov (string | null), pillars (string[]), beliefs (string[]), mandates (string[])",
+        "GET /api/studio returns the new fields in the response (pov, pillars, beliefs, mandates)",
+        "Partial updates work — sending only { pov: 'new value' } updates pov without clearing pillars/beliefs/mandates",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "User model already has name and avatarUrl fields in Prisma schema"
+      "notes": "Uses existing conditional spread pattern for partial updates: ...(body.field !== undefined && { field: body.field })"
     },
     {
       "id": "US-003",
-      "title": "Avatar upload API route",
-      "description": "As a developer, I need an API route to upload avatar images to Supabase Storage.",
+      "title": "Fix API key save failure",
+      "description": "As a user, I want to save my Anthropic API key without getting 'Failed to save API key' error.",
       "acceptanceCriteria": [
-        "POST /api/user/avatar accepts multipart form data with an image file field",
-        "Validates file type: only jpg, jpeg, png, webp, gif accepted — returns 400 for others",
-        "File size limit: 2MB — returns 400 if exceeded",
-        "Stores image in Supabase Storage bucket 'avatars' at path '{userId}.{ext}' (overwrites previous avatar)",
-        "Uses Supabase admin client (service role) for storage upload",
-        "Updates User record's avatarUrl field with the public URL from Supabase Storage",
-        "Returns { avatarUrl: string } with the new public URL",
-        "Route validates auth — returns 401 if unauthenticated",
+        "Identify and fix root cause of save failure in /api/settings/route.ts (check DB connection, encryption, auth, UserSettings upsert)",
+        "API key with valid sk-ant- prefix saves successfully to UserSettings table",
+        "Success feedback shown after save (e.g., toast or inline 'API key saved successfully' message)",
+        "Error messages are specific (show actual error reason, not generic 'Failed to save API key')",
+        "Key persists across page refreshes (verify by reloading settings page — key indicator shows 'saved')",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Use createAdminClient() from src/lib/supabase/admin.ts for storage operations"
+      "notes": "The catch block in settings-view.tsx:74 swallows errors. The actual failure is likely in the API route — check DB upsert, encryption setup, or auth. Console.error the real error server-side."
     },
     {
       "id": "US-004",
-      "title": "Settings — user profile section UI",
-      "description": "As a user, I want to edit my display name and avatar in Settings so I can personalize my experience.",
+      "title": "Migration script to clear all studios",
+      "description": "As a developer, I need a one-time script to delete all existing studios across all user accounts to remove stale/undeletable studios from early accounts.",
       "acceptanceCriteria": [
-        "Settings view shows a 'Profile' section above the existing 'Claude API Key' section",
-        "Profile section displays: circular avatar preview (64px using UserAvatar component with size='lg'), display name input, email as read-only muted text",
-        "Avatar area: clicking opens file picker (accept='image/jpeg,image/png,image/webp,image/gif')",
-        "After file selected: uploads to POST /api/user/avatar, shows Loader2 spinner during upload, updates preview on success",
-        "If no avatar uploaded: UserAvatar shows initials with subtle 'Upload' text overlay on hover (opacity transition)",
-        "Display name input: pre-filled from GET /api/user/profile, saves on blur or Enter via PUT /api/user/profile",
-        "Success toast shown on display name save and avatar upload",
-        "Email shown as read-only label below display name with text: 'Username (cannot be changed)'",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Script at scripts/clear-all-studios.ts that connects to the database",
+        "Deletes ALL Studio records with Prisma cascade (projects, drafts, deliverables, focus sessions, reader personas, executive profiles, studio intelligence all removed)",
+        "Cleans up Supabase Storage files: lists and removes all files in 'scripts' bucket",
+        "Resets all User records: sets studioId to null (or removes the FK reference) so users get fresh onboarding",
+        "Script is idempotent (safe to run when no studios exist)",
+        "Script logs progress: number of studios deleted, storage files cleaned, users reset",
+        "Can be run via: npx tsx scripts/clear-all-studios.ts",
+        "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": ""
+      "notes": "Use Prisma deleteMany for studios. Use Supabase admin client for storage cleanup. Must handle the User.studioId FK — either set to null or handle the constraint."
     },
     {
       "id": "US-005",
-      "title": "Nav avatar replaces gear icon for Settings access",
-      "description": "As a user, I want my avatar in the bottom-left nav to be the way to access Settings.",
+      "title": "Studio Config — Add Studio Info tab as first tab",
+      "description": "As a user, I want to define my studio's POV, Pillars, Beliefs, and Mandates in a dedicated Studio Info tab so the AI analysis reflects my creative identity.",
       "acceptanceCriteria": [
-        "Remove the existing Settings tab entry (gear icon) from the nav rail tab list",
-        "The user avatar circle in the bottom-left nav now calls setActiveTab('settings') on click",
-        "Avatar renders using UserAvatar component with size='sm', passing avatarUrl and displayName from user state",
-        "User profile data fetched via GET /api/user/profile on app mount (React Query hook useUserProfile with long staleTime)",
-        "Tooltip on avatar shows display name if set, otherwise email",
-        "Active state: ring-2 ring-bullseye-gold around avatar when Settings tab is active",
-        "Mobile bottom tab bar: replace Settings gear icon with UserAvatar size='sm'",
-        "Remove the old sign-out button from nav — move sign-out to Settings page instead",
+        "New 'Studio Info' tab added as the FIRST tab in Studio Config (tab order: Studio Info, Readers, Executives, Calibration, Settings)",
+        "TabsList grid updated from grid-cols-4 to grid-cols-5",
+        "Studio Info tab displays: POV section with textarea (label: 'Point of View', helper text explaining purpose), Pillars section with editable list, Beliefs section with editable list, Mandates section with editable list",
+        "Each list section (Pillars/Beliefs/Mandates) has: existing items displayed as removable entries, input field with '+' or 'Add' button to add new items, remove button (X icon) on each item",
+        "Save button at bottom calls PUT /api/studio with updated pov, pillars, beliefs, mandates",
+        "Save shows Loader2 spinner while pending, success toast on completion",
+        "Data pre-filled from useStudio() hook on mount",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Keep Settings as a valid tab in the activeTab type. Just change the nav entry point from gear icon to avatar."
+      "notes": "Use the existing useStudio() hook for data fetching. Invalidate studioKeys.studio on save. Follow existing edit patterns from ReadersSection/ExecutivesSection."
     },
     {
       "id": "US-006",
-      "title": "Inject user display name into agent prompts",
-      "description": "As a user, I want Scout and readers to know my name so interactions feel personalized.",
+      "title": "Create dedicated User Settings page at /settings",
+      "description": "As a user, I want a dedicated settings page for my account with User Settings, API Keys, and Account Settings sections.",
       "acceptanceCriteria": [
-        "Scout API route retrieves user's name field from the User record (already have user from getCurrentUser())",
-        "If user.name is set, append to Scout system prompt: 'The user you are working with is named {name}. Address them by name occasionally in conversation — naturally, not forced.'",
-        "If no display name set, do not inject any user name context (agents behave as before)",
-        "Reader chat API route also appends user name context to the reader's system prompt",
-        "Focus group engine receives userName parameter and includes it in moderator context",
-        "Typecheck passes"
+        "New page at src/app/settings/page.tsx (Next.js App Router)",
+        "Page has 3 clearly separated sections with headings: 'User Settings' section — display name input (pre-filled from useUserProfile), avatar upload (click avatar to open file picker, shows UserAvatar lg), email as read-only text. 'API Keys' section — Anthropic API key input with save button, validation (sk-ant- prefix), success/error feedback (reuse logic from settings-view.tsx). 'Account Settings' section — Sign Out button (uses Supabase signOut + router push to /login)",
+        "Page has a header with 'Settings' title and back button (ArrowLeft icon) that navigates to previous page (router.back())",
+        "Page is styled consistently with existing app (bg-background, card sections with bg-surface, proper padding)",
+        "Page is protected — redirects to /login if unauthenticated",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Keep it subtle — append a short line to existing prompts, don't restructure them"
+      "notes": "Reuse useUserProfile, useUpdateDisplayName, useUploadAvatar hooks. Reuse API key save logic from settings-view.tsx (encryption via /api/settings). This is a standalone page, not a tab in the app shell."
     },
     {
       "id": "US-007",
-      "title": "Remove Studio tab from project-level navigation",
-      "description": "As a developer, I need to remove the Studio tab from the project-level tab bar since studio config is now accessed via the overlay.",
+      "title": "Studio Config Settings tab — remove user-level content",
+      "description": "As a user, I want the Studio Config Settings tab to only show studio-specific settings (name and delete), not user profile or API key.",
       "acceptanceCriteria": [
-        "Remove 'studio' entry from the project tabs array in app-shell.tsx",
-        "Remove StudioView import and rendering from the tab content switch in page.tsx",
-        "Studio tab no longer appears in desktop nav rail or mobile bottom tab bar",
-        "The studio-view.tsx component file is NOT deleted (it will be reused)",
-        "activeTab type updated if needed to remove 'studio' as a valid project tab value",
+        "Settings tab in studio-view.tsx contains ONLY: SettingsSection (studio name input with save) and DangerZoneSection (delete studio with confirmation)",
+        "ProfileSection component removed from Settings tab rendering",
+        "SignOutSection component removed from Settings tab rendering",
+        "Any API key references removed from this tab (API key is now in /settings page)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
       "passes": true,
-      "notes": ""
+      "notes": "ProfileSection and SignOutSection code can be deleted from studio-view.tsx since they're now in the /settings page."
     },
     {
       "id": "US-008",
-      "title": "Studio switcher overlay opens Studio Config view",
-      "description": "As a user, I want clicking a studio in the overlay to open its configuration page.",
+      "title": "Add user avatar to bottom-left of app shell, navigate to /settings",
+      "description": "As a user, I want my avatar always visible in the bottom-left corner of the app shell so I can quickly access my account settings page.",
       "acceptanceCriteria": [
-        "Add a new view mode 'studioConfig' to the app (either as a special activeTab value or a separate Zustand flag like isStudioConfigOpen: boolean)",
-        "Clicking a studio name in StudioSwitcherDropdown sets that studio as active AND switches to Studio Config view",
-        "Studio Config view renders the existing StudioView component (Readers, Executives, Calibration, Settings sub-tabs)",
-        "A back/close button (ArrowLeft or X icon) in the Studio Config header returns to the previous tab",
-        "The studio switcher button tooltip in the nav shows 'Studios'",
-        "Nav rail shows a building/warehouse icon with 'Studio Config' tooltip when this view is active",
-        "Studio names in the overlay update reactively when the name is edited in Studio Config → Settings (React Query invalidation)",
+        "User avatar (UserAvatar component, size='sm') rendered in the bottom-left of the app shell sidebar/nav rail, below the studio switcher",
+        "Avatar displays user image if set, otherwise initials with color-coded background (uses useUserProfile hook)",
+        "Avatar is always visible regardless of which tab/view is active",
+        "Clicking the avatar navigates to /settings page (router.push('/settings'))",
+        "Tooltip on avatar shows display name if set, otherwise email, fallback 'Settings'",
+        "Mobile bottom tab bar: avatar shown at the end/right of the tab bar, same click behavior",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "useStudio() hook data should invalidate when studio name is saved in settings sub-tab"
+      "notes": "Use Next.js router for navigation to /settings. The avatar was previously used for tab switching — now it's a router.push to a dedicated page."
     },
     {
       "id": "US-009",
-      "title": "Studio deletion — backend API",
-      "description": "As a developer, I need an API route to delete a studio with full cascade deletion.",
+      "title": "Handle empty studio state after migration",
+      "description": "As a user, after the studio cleanup migration, I want the app to gracefully handle having no studios and prompt me to create one.",
       "acceptanceCriteria": [
-        "DELETE /api/studio/[id] route created",
-        "Validates auth and that user is the studio owner (check studio.ownerId === user.id)",
-        "Returns 400 if this is the user's only studio: { error: 'Cannot delete your only studio' }",
-        "Deletes all associated files from Supabase Storage: list and remove all files under scripts/{projectId}/ for each project in the studio",
-        "Deletes the studio record (Prisma cascade should handle: projects → drafts → deliverables, focus sessions, reader memories, executive evaluations, chat messages, plus reader personas, executive profiles, studio intelligence)",
-        "Returns { deletedProjects: number } with the count of projects that were in the studio",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": true,
-      "notes": "Check that Prisma schema has onDelete: Cascade on the Project → Studio relation. If not, delete projects manually first."
-    },
-    {
-      "id": "US-010",
-      "title": "Studio deletion — UI with cascade warning",
-      "description": "As a user, I want to delete a studio from its Settings page with a clear warning about permanent data loss.",
-      "acceptanceCriteria": [
-        "Studio Config → Settings sub-tab shows a 'Danger Zone' section at the bottom with red/destructive border",
-        "'Delete Studio' button (destructive variant — red) in the danger zone",
-        "Clicking opens a confirmation dialog/overlay showing: studio name prominently, warning text 'This will permanently delete this studio and all N projects within it. This cannot be undone.'",
-        "Project count displayed in the warning (derived from useProjects or passed from studio data)",
-        "If studio has projects: text input requiring user to type the studio name to confirm, 'Delete Studio' button enabled only when typed text matches studio name exactly",
-        "If studio has zero projects: simpler confirmation with just a 'Delete Studio' button (no name-typing required)",
-        "On confirm: calls DELETE /api/studio/[id], shows success toast 'Studio deleted', switches to another available studio and navigates to Home",
-        "React Query cache invalidated for studio list",
+        "App shell checks if user has any studios on mount (via useStudio or GET /api/studio)",
+        "If no studios exist: app shows a create-studio prompt/modal (studio name input + Create button)",
+        "Creating a studio calls POST /api/studio (create the endpoint if it doesn't exist) with the name",
+        "After creation: sets new studio as currentStudio in Zustand, navigates to Home tab",
+        "Zustand store handles currentStudio being null without crashing (guards throughout the app)",
+        "If localStorage bullseye-storage references a deleted studio ID, the app resets gracefully (doesn't crash)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
-      "priority": 10,
-      "passes": false,
-      "notes": ""
+      "priority": 9,
+      "passes": true,
+      "notes": "The Zustand store persists currentStudio and studios in localStorage. After migration clears the DB, these will be stale. The app must detect the mismatch and reset."
     }
   ]
 }
