@@ -38,6 +38,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - Phase change guard in scout-chat's onPhaseChange callback prevents redundant mode switches and side effects (check `useAppStore.getState().rightPanelMode !== phase` before acting)
 - Reader chat messages stored in Zustand `readerChatMessages` (Record<string, ReaderChatMessage[]>) — keyed by readerId, persists across panel switches
 - `addReaderChatMessage(readerId, msg)` and `updateReaderChatMessage(readerId, msgId, updates)` for per-reader message management
+- Executive streaming states stored in Zustand `executiveStates` Map<string, ExecutiveStreamState> — accumulates results, persists across panel switches
+- When adding new EventRouterCallbacks, also update focus-group-panel.tsx (has its own inline callbacks for follow-up messages)
 
 ---
 
@@ -359,5 +361,35 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - ReaderChatMessage is exported from app-store for use in the panel component's ChatBubble props
   - The reader-chat-panel.tsx was previously untracked — it's a new file in this branch
   - conversationHistory sent to /api/reader-chat is built from Zustand messages (excluding the streaming placeholder)
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-015
+- What was implemented:
+  - Executive evaluation right panel component at src/components/scout/executive-eval-panel.tsx
+  - ExecutiveStreamState type added to src/lib/agent-sdk/types.ts (status, verdict, confidence, rationale, keyFactors, concerns)
+  - executive_start and executive_complete SSE event types added to ScoutEventType union
+  - executiveId and executiveName fields added to ScoutSSEEvent for executive routing
+  - onExecutiveStart and onExecutiveComplete callbacks added to EventRouterCallbacks
+  - Event router executive case updated to parse executive_start/executive_complete events
+  - executiveStates Map added to Zustand store (ScoutSessionState) with setExecutiveState/clearExecutiveStates actions
+  - scout-chat.tsx wired with executive callbacks (setExecutiveState on start/complete)
+  - focus-group-panel.tsx updated with no-op executive callbacks for type conformance
+  - ScoutLayout updated to render ExecutiveEvalPanel instead of placeholder text
+  - Panel shows: executives list with loading spinners (evaluating), verdict badge (PURSUE green / PASS red), confidence %, rationale, key factors, concerns
+  - Results accumulate as each executive completes, persisted in Zustand Map
+- Files changed:
+  - src/lib/agent-sdk/types.ts (modified — added ExecutiveStreamState, executive_start/complete event types, executiveId/executiveName on SSE event)
+  - src/lib/agent-sdk/event-router.ts (modified — added executive callbacks, updated executive case routing)
+  - src/stores/app-store.ts (modified — added executiveStates Map, setExecutiveState, clearExecutiveStates)
+  - src/components/scout/scout-chat.tsx (modified — added setExecutiveState destructure, executive callbacks, dependency array)
+  - src/components/scout/focus-group-panel.tsx (modified — added onExecutiveStart/onExecutiveComplete no-ops)
+  - src/components/scout/scout-layout.tsx (modified — import ExecutiveEvalPanel, replace placeholder)
+  - src/components/scout/executive-eval-panel.tsx (new — full executive eval panel component)
+- **Learnings for future iterations:**
+  - When adding new callbacks to EventRouterCallbacks, also update focus-group-panel.tsx which has its own inline callbacks object for follow-up messages
+  - ExecutiveStreamState uses Map<string, ExecutiveStreamState> (like readerStates) — not a flat array, so entries accumulate and persist across panel switches
+  - Pre-existing type errors in agent-sdk/tools/ and api/reader-chat/ are NOT caused by new changes — they're pre-existing Prisma JSON type issues
+  - The event router 'executive' case previously only called onPhaseChange — now it also handles executive_start/executive_complete sub-events
   - Browser verification not available — manual testing needed
 ---
