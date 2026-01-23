@@ -509,8 +509,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 27,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Left icon rail uses hidden md:flex. Mobile bottom tab bar uses fixed positioning with safe-area-bottom padding. Modals use items-end md:items-center + rounded-t-2xl md:rounded-2xl for bottom-sheet on mobile. Reader cards use lg:grid-cols-3 (not md) for tablet stacking. ScoreIndicator hides rating labels on mobile to prevent overflow. All content areas use px-4 md:px-8 for tighter mobile padding."
     },
     {
       "id": "US-028",

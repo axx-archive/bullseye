@@ -48,6 +48,11 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - draftKeys exported from `src/hooks/use-drafts.ts` — use `draftKeys.deliverable(id)`, `draftKeys.evaluations(id)`, `draftKeys.focusSessions(id)` for cache invalidation
 - studioKeys exported from `src/hooks/use-studio.ts` — use `studioKeys.studio`, `studioKeys.readers`, `studioKeys.executives`, `studioKeys.intelligence` for cache invalidation
 - Hooks that fetch optional data (deliverable, intelligence) return `null` for 404 — check `data === null` for empty state, not just `!data` (which also matches loading)
+- Mobile responsive pattern: `hidden md:flex` hides desktop nav, bottom tab bar uses `fixed bottom-0` with `safe-area-bottom` utility
+- Modal bottom-sheet on mobile: `items-end md:items-center` + `rounded-t-2xl md:rounded-2xl` + `md:max-w-{size} md:mx-4`
+- Reader cards use `lg:grid-cols-3` (1024px+ breakpoint) for tablet single-column stacking, not `md:grid-cols-3`
+- Content padding pattern: `px-4 md:px-8` for all main content areas to ensure readability at 375px
+- ScoreIndicator hides rating text labels on mobile (hidden sm:inline) to prevent horizontal overflow
 
 ---
 
@@ -667,4 +672,44 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The old scout-view.tsx imported uuid, Card, Progress, Badge, Button — all unused after rewrite since real chat is in scout-chat.tsx
   - EmptyState actionLabel/onAction are optional — render nothing if not provided (for display-only states)
   - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-027
+- What was implemented:
+  - Left icon rail hidden on mobile (< 768px) with `hidden md:flex`
+  - Mobile bottom tab bar: fixed to bottom, same icons as sidebar (Home + 6 project tabs), gold active indicator via layoutId animation
+  - Bottom tab bar shows icon + small label text (9px) for each tab, with disabled state for no-project
+  - Safe-area-bottom CSS utility added for iOS notch/home indicator spacing
+  - Main content area padded for bottom bar (pb-16 md:pb-0)
+  - Project grid already used `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` (single column on mobile)
+  - Modals (DraftUploadModal, ProjectCreateModal) render as bottom sheets on mobile: items-end + rounded-t-2xl + max-h-[90vh]
+  - Chat input naturally stays at bottom of viewport within flex layout
+  - Reader cards grid changed from `md:grid-cols-3` to `lg:grid-cols-3` (< 1024px = single column)
+  - ScoreIndicator: responsive label widths (w-16 sm:w-24), hidden rating text on mobile, flex-shrink-0 on bars
+  - Coverage view: strengths/weaknesses, intake fields, and what-works/needs-work grids now `grid-cols-1 sm:grid-cols-2`
+  - Pitch view: key-factors/concerns grids now `grid-cols-1 sm:grid-cols-2`
+  - Studio view: executive name/title/company grid now `grid-cols-1 sm:grid-cols-3`, weights grid `grid-cols-3 sm:grid-cols-5`, calibration stats `grid-cols-2 sm:grid-cols-4`
+  - Context bar: responsive text sizes (text-lg md:text-2xl), truncating project title, tighter gaps on mobile
+  - Content area padding: `px-4 md:px-8` throughout
+  - All text readable without horizontal scrolling at 375px viewport width
+- Files changed:
+  - src/components/layout/app-shell.tsx (modified — hidden md:flex on nav, pb-16 md:pb-0, mobile bottom tab bar, responsive context bar)
+  - src/app/globals.css (modified — added safe-area-bottom utility)
+  - src/components/home/draft-upload-modal.tsx (modified — bottom sheet on mobile)
+  - src/components/home/project-create-modal.tsx (modified — bottom sheet on mobile)
+  - src/components/shared/reader-card.tsx (modified — lg:grid-cols-3 on ReaderComparison)
+  - src/components/shared/score-indicator.tsx (modified — responsive label widths, hidden rating text on mobile)
+  - src/components/coverage/coverage-view.tsx (modified — responsive grid-cols on 3 grids)
+  - src/components/pitch/pitch-view.tsx (modified — responsive grid-cols on 2 grids + reader cards)
+  - src/components/studio/studio-view.tsx (modified — responsive grid-cols on 3 grids)
+- **Learnings for future iterations:**
+  - Mobile bottom bar needs `z-40` (not z-50) so modals render on top of it
+  - Tailwind v4 doesn't require explicit breakpoint config — default sm(640), md(768), lg(1024) breakpoints work
+  - `pb-16 md:pb-0` on main content compensates for the 64px bottom bar height on mobile
+  - For bottom-sheet modals: use `items-end md:items-center` on the fixed container, `rounded-t-2xl md:rounded-2xl` on the modal panel, `max-h-[90vh] overflow-y-auto` for scrollable content
+  - ScoreIndicator rating label hidden on mobile with `hidden sm:inline` — the bars alone provide the visual score information
+  - layoutId animations on mobile bottom bar (`mobile-nav-indicator`) are separate from desktop nav (`nav-indicator`) to prevent cross-render conflicts
+  - `safe-area-bottom` utility uses `env(safe-area-inset-bottom, 0px)` — needs viewport meta tag with `viewport-fit=cover` in layout.tsx for iOS Safari
+  - Browser verification not available — manual testing needed
+---
 ---
