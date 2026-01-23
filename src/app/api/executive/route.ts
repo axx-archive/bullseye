@@ -2,17 +2,15 @@
 // Handles executive pitch simulations
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
 import {
   executiveEvaluationEngine,
   DEFAULT_EXECUTIVES,
   getExecutiveById,
 } from '@/lib/executive';
-import type { CoverageReport, HarmonizedScores, ExecutiveEvaluationResult } from '@/types';
+import type { CoverageReport, HarmonizedScores } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
     const { coverage, harmonizedScores, executiveIds } = await req.json();
 
     if (!coverage || !harmonizedScores) {

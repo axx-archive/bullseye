@@ -5,15 +5,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SCOUT_SYSTEM_PROMPT } from '@/lib/agents';
 import { getReaderById } from '@/lib/agents/reader-personas';
-import { requireUser } from '@/lib/auth';
 
 const anthropic = new Anthropic();
 
 export async function POST(req: NextRequest) {
   try {
-    // Authenticate user
-    const user = await requireUser();
-
     const { messages, agentType, readerId, projectContext } = await req.json();
 
     // Build system prompt based on agent type

@@ -44,12 +44,6 @@ const READER_COLORS: Record<string, string> = {
   'reader-devon': '#B8A9C9',
 };
 
-const READER_NAMES: Record<string, string> = {
-  'reader-maya': 'Maya Chen',
-  'reader-colton': 'Colton Rivers',
-  'reader-devon': 'Devon Park',
-};
-
 export function routeEvent(event: ScoutSSEEvent, callbacks: EventRouterCallbacks): void {
   switch (event.source) {
     case 'scout':

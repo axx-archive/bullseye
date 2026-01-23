@@ -4,10 +4,9 @@
 
 import { z } from 'zod';
 import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { executiveEvaluationEngine, DEFAULT_EXECUTIVES } from '@/lib/executive';
+import { executiveEvaluationEngine } from '@/lib/executive';
 import { getLastDeliverable } from './analysis';
 import { db } from '@/lib/db';
-import type { ScoutSSEEvent } from '../types';
 import type { EventEmitter } from './readers';
 
 export function createExecutiveEvalTool(emitEvent: EventEmitter) {

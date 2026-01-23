@@ -207,7 +207,7 @@ interface AppStore extends TabState, StudioState, ProjectState, AnalysisState, F
 export const useAppStore = create<AppStore>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set, _get) => ({
         // ============ TAB STATE ============
         activeTab: 'home' as TabId,
         setActiveTab: (tab) => set({ activeTab: tab }),

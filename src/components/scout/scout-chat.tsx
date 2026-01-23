@@ -243,7 +243,7 @@ export function ScoutChat() {
       requestPayload,
       callbacks
     );
-  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState]);
+  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient]);
 
   const handleSendMessage = useCallback((content: string, attachment?: FileAttachment) => {
     // Build the user-facing message content

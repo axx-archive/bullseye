@@ -31,6 +31,7 @@ export default function Home() {
     } else if (!currentStudio) {
       setCurrentStudio(studios[0]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initialization logic runs only when studios.length changes
   }, [studios.length]);
 
   const renderContent = () => {

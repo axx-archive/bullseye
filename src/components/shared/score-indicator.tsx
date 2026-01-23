@@ -27,7 +27,6 @@ const RATING_TO_FILLED: Record<Rating, number> = {
 export function ScoreIndicator({
   label,
   rating,
-  numeric,
   percentile,
   showPercentile = true,
   size = 'md',
@@ -84,7 +83,7 @@ export function ScoreIndicator({
   );
 }
 
-function PercentilePill({ percentile, size = 'md' }: { percentile: number; size?: string }) {
+function PercentilePill({ percentile }: { percentile: number; size?: string }) {
   const diff = percentile - 50;
   const trend = diff > 10 ? 'up' : diff < -10 ? 'down' : 'neutral';
   const label = diff > 0 ? `+${diff}` : `${diff}`;

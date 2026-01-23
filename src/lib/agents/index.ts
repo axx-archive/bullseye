@@ -6,7 +6,6 @@ import { DEFAULT_READERS, getReaderById } from './reader-personas';
 import type { ReaderAnalysisOutput, HarmonizationOutput, ExecutiveEvaluationOutput } from './types';
 import { ReaderAnalysisSchema, HarmonizationSchema, ExecutiveEvaluationSchema } from './types';
 import type { ReaderPerspective, ReaderScores, CoverageReport, HarmonizedScores, StudioCalibration } from '@/types';
-import { RATING_VALUES } from '@/types';
 
 function getAnthropicClient(): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

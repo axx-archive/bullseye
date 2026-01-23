@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { harmonizeScores, detectDivergence, synthesizeCoverage, synthesizeIntake, generateScoutAnalysis } from '@/lib/harmonization';
+import { harmonizeScores, synthesizeCoverage, synthesizeIntake, generateScoutAnalysis } from '@/lib/harmonization';
 import { getLastReaderResults, getLastReaderPerspectives, getLastProjectContext } from './readers';
 import { getCurrentScript } from './ingest';
 import { db } from '@/lib/db';
@@ -75,9 +75,6 @@ export function createHarmonizeAnalysesTool(emitEvent: EventEmitter) {
 
     // Harmonize scores with percentile calculation
     const harmonizedScores = harmonizeScores(perspectives, studioIntelligence);
-
-    // Detect divergence and consensus
-    const divergencePoints = detectDivergence(perspectives);
 
     // Synthesize coverage report
     const coverage = synthesizeCoverage(

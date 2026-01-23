@@ -55,6 +55,7 @@ export function AppShell({ children }: AppShellProps) {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUserEmail(user?.email ?? null);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase client recreated each render, including it causes infinite loops
   }, []);
 
   async function handleSignOut() {

@@ -8,10 +8,8 @@ import { FocusGroupEngine } from '@/lib/focus-group';
 import { getLastReaderPerspectives, getLastProjectContext } from './readers';
 import { getLastDeliverable } from './analysis';
 import { db } from '@/lib/db';
-import { memoryReadEngine } from '@/lib/memory';
 import type { SubAgentMemory } from '@/lib/memory';
 import type { Divergence, Rating } from '@/types';
-import type { ScoutSSEEvent } from '../types';
 import type { EventEmitter } from './readers';
 
 // Convert Prisma memory to SubAgentMemory

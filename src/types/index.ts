@@ -293,8 +293,8 @@ export interface ChatHighlight {
 
 export interface ScoreDelta {
   dimension: string;
-  previousRating: Rating;
-  currentRating: Rating;
+  previousRating: string;
+  currentRating: string;
   previousNumeric: number;
   currentNumeric: number;
   reason: string;
@@ -353,6 +353,20 @@ export interface DraftDeliverable {
 
   // Executive evaluations (if run)
   executiveEvaluations?: ExecutiveEvaluationResult[];
+}
+
+// ============================================
+// STUDIO TYPES
+// ============================================
+
+export interface Studio {
+  id: string;
+  name: string;
+  slug: string;
+  ownerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  projects?: Project[];
 }
 
 // ============================================
@@ -439,7 +453,7 @@ export interface AnalysisProgress {
 // ============================================
 
 export interface TabState {
-  activeTab: 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
+  activeTab: 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
 }
 
 export interface CoverageViewState {

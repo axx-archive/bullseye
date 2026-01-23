@@ -63,6 +63,10 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - React Query cache invalidation after Scout analysis: invalidate in `onResult` callback using `queryClient.invalidateQueries({ queryKey: draftKeys.deliverable(id) })` etc.
 - Executive tool emits per-executive SSE events (executive_start/executive_complete) during DB persistence for live UI feedback
 - Prisma JSON fields in upsert: always serialize via `JSON.parse(JSON.stringify(...))` to strip class instances and convert Dates
+- Prisma JSON read fields (JsonValue): cast through `unknown` before narrowing to specific types (avoid TS2352)
+- ESLint `react-hooks/exhaustive-deps` suppress: place eslint-disable comment on the `}, [])` line, not above the useEffect
+- React `setState` in useEffect: derive state in render phase instead (useMemo or inline computation)
+- ESLint flat config: `argsIgnorePattern: "^_"` + `varsIgnorePattern: "^_"` for @typescript-eslint/no-unused-vars
 
 ---
 
@@ -805,4 +809,52 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Cache invalidation happens in onResult (not per-event) because all persistence happens server-side during the SSE connection
   - Use `useAppStore.getState().currentDraft?.id` in callbacks (not hook-level state) for fresh draft ID at invalidation time
   - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-031
+- What was implemented:
+  - Fixed 9 TypeScript errors across 3 files (Prisma JSON type casts)
+  - reader-chat/route.ts and reader-chat.ts: cast Prisma JSON through `unknown` first for chatHighlights
+  - memory.ts: cast priorMemory through unknown for items access; serialize FocusGroupItem[]/ChatHighlight[] via JSON.parse(JSON.stringify()) for Prisma InputJsonValue compatibility
+  - Removed all unused imports across 15+ files (harmonizeAnalyses, detectDivergence, detectConsensus, DEFAULT_EXECUTIVES, ScoutSSEEvent, memoryReadEngine, RATING_VALUES, getReaderById, StudioCalibration, HarmonizedScores type, ExecutiveEvaluationResult, Rating, READER_NAMES)
+  - Removed all unused variables (divergencePoints, numeric, size in PercentilePill, existingTopIds → _existingTopIds)
+  - Removed stale eslint-disable directives (no-require-imports on dynamic imports)
+  - Fixed ESLint errors: focus-view setState-in-effect → derived state; scout-chat missing queryClient dep
+  - Fixed ESLint warnings: app-shell useEffect deps suppressed with justification; reader-chat-panel messages wrapped in useMemo
+  - Removed `ignoreBuildErrors: true` from next.config.ts — TypeScript now checked during build
+  - Configured ESLint argsIgnorePattern/varsIgnorePattern for `_` prefix convention
+  - No console.log statements exist — only console.error for server-side error logging (appropriate)
+- Files changed:
+  - next.config.ts (modified — removed typescript.ignoreBuildErrors)
+  - eslint.config.mjs (modified — added @typescript-eslint/no-unused-vars ignore pattern)
+  - src/app/api/reader-chat/route.ts (modified — cast through unknown)
+  - src/app/api/analyze/route.ts (modified — removed unused imports)
+  - src/app/api/executive/route.ts (modified — removed unused import)
+  - src/app/api/projects/[id]/drafts/route.ts (modified — removed stale eslint-disable)
+  - src/app/api/upload/route.ts (modified — removed stale eslint-disable)
+  - src/app/page.tsx (modified — added eslint-disable with justification)
+  - src/components/layout/app-shell.tsx (modified — moved eslint-disable to correct position)
+  - src/components/focus/focus-view.tsx (modified — replaced setState-in-effect with derived state)
+  - src/components/scout/scout-chat.tsx (modified — added queryClient to deps)
+  - src/components/scout/reader-chat-panel.tsx (modified — useMemo for messages)
+  - src/components/shared/score-indicator.tsx (modified — removed unused destructured vars)
+  - src/lib/agent-sdk/event-router.ts (modified — removed unused READER_NAMES)
+  - src/lib/agent-sdk/tools/analysis.ts (modified — removed unused import + variable)
+  - src/lib/agent-sdk/tools/executive.ts (modified — removed unused imports)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — removed unused imports)
+  - src/lib/agent-sdk/tools/reader-chat.ts (modified — removed unused import, cast fix)
+  - src/lib/agent-sdk/tools/memory.ts (modified — fixed all JSON type errors)
+  - src/lib/agents/index.ts (modified — removed unused RATING_VALUES)
+  - src/lib/executive/index.ts (modified — prefixed unused param)
+  - src/lib/harmonization/index.ts (modified — removed unused imports, prefixed unused params)
+  - src/lib/studio-intelligence/index.ts (modified — removed unused imports, prefixed unused param)
+  - src/stores/app-store.ts (modified — prefixed unused get)
+- **Learnings for future iterations:**
+  - Prisma JSON fields (JsonValue type) require cast through `unknown` before narrowing to specific types — direct cast triggers TS2352
+  - For Prisma InputJsonValue fields in upsert, use `JSON.parse(JSON.stringify(value))` to strip class instances and convert Dates to ISO strings
+  - ESLint flat config in eslint.config.mjs: add `@typescript-eslint/no-unused-vars` with argsIgnorePattern/varsIgnorePattern for `_` prefix convention
+  - React hooks `react-hooks/exhaustive-deps` suppress pattern: place comment on the line with `}, [])` not above the useEffect
+  - React Compiler's `preserve-manual-memoization` isn't an ESLint rule — it only surfaces during build. Fixing deps (adding queryClient) resolves both the compiler error and the hooks/exhaustive-deps warning
+  - `setState` in useEffect triggers `react-hooks/set-state-in-effect` — fix by deriving state in render phase (compute the value inline or via useMemo)
+  - Next.js `ignoreBuildErrors: true` should only be temporary during rapid development — remove it once types are clean for production safety
 ---

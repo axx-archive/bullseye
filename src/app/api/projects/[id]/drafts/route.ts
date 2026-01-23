@@ -132,7 +132,6 @@ export async function POST(
 }
 
 async function extractTextFromPDF(data: Uint8Array): Promise<{ text: string; pageCount: number }> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
   const loadingTask = pdfjsLib.getDocument({

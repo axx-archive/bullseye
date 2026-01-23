@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore, type ReaderChatMessage } from '@/stores/app-store';
 import { cn } from '@/lib/utils';
@@ -51,7 +51,10 @@ export function ReaderChatPanel() {
 
   const readerId = activeReaderChatId as ReaderId | null;
   const reader = readerId ? READER_CONFIG[readerId] : null;
-  const messages = readerId ? (readerChatMessages[readerId] || []) : [];
+  const messages = useMemo(
+    () => readerId ? (readerChatMessages[readerId] || []) : [],
+    [readerId, readerChatMessages]
+  );
 
   // Auto-scroll to bottom
   useEffect(() => {

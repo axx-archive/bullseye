@@ -101,14 +101,8 @@ export function FocusView() {
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  const selectedSession = sessions?.find((s) => s.id === selectedSessionId) ?? null;
-
-  // Reset selection if sessions change
-  useEffect(() => {
-    if (selectedSessionId && sessions && !sessions.find((s) => s.id === selectedSessionId)) {
-      setSelectedSessionId(null);
-    }
-  }, [sessions, selectedSessionId]);
+  // Derive selected session — auto-clears if session no longer exists in data
+  const selectedSession = (selectedSessionId && sessions?.find((s) => s.id === selectedSessionId)) ?? null;
 
   if (isLoading) {
     return <LoadingSkeleton />;

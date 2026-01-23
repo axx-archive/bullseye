@@ -273,7 +273,7 @@ IMPORTANT RULES:
   private buildEvaluationPrompt(
     coverage: CoverageReport,
     scores: HarmonizedScores,
-    executive: ExecutiveProfile
+    _executive: ExecutiveProfile
   ): string {
     return `Evaluate this script for your slate.
 

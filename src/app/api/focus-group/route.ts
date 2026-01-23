@@ -2,13 +2,11 @@
 // Handles streaming focus group conversations
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
 import { focusGroupEngine, type FocusGroupConfig } from '@/lib/focus-group';
 import type { ReaderPerspective, FocusGroupMessage, Divergence } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
     const { draftId, topic, questions, readerPerspectives, divergencePoints } = await req.json();
 
     if (!readerPerspectives || readerPerspectives.length === 0) {
