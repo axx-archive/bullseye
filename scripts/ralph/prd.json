@@ -489,8 +489,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 26,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Shared EmptyState component at src/components/shared/empty-state.tsx accepts icon (LucideIcon), title, description, actionLabel?, onAction? props. Uses Framer Motion fade-in animation, bg-surface icon container, bullseye-gold action link. ScoutView uses EmptyState for no-project (FileText icon, 'Select a project first') and no-draft (Upload icon, 'Upload a script to get started' with DraftUploadModal). Home, Coverage, Focus, Revisions, and Pitch views already had proper inline empty states matching the AC."
     },
     {
       "id": "US-027",

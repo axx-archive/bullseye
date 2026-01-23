@@ -642,3 +642,29 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The pattern for inline error states: `if (error) { return <div><AlertTriangle /><p>{error.message}</p></div>; }` — goes after loading check, before data rendering
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-026
+- What was implemented:
+  - Shared EmptyState component at src/components/shared/empty-state.tsx
+  - Accepts props: icon (LucideIcon), title (string), description (string), actionLabel? (string), onAction? (callback)
+  - Uses Framer Motion fade-in animation (opacity 0→1, y 8→0, 500ms duration)
+  - Styled with bg-surface icon container (48px, rounded-2xl), bullseye-gold action text link
+  - ScoutView updated with two empty states:
+    - No project: FileText icon, "Select a project first", "Choose a project from Home to start analyzing", "Go to Home" link
+    - No draft: Upload icon, "Upload a script to get started", "Upload a screenplay PDF..." description, "Upload Script" button opening DraftUploadModal
+  - All other views verified to already have proper empty states matching AC:
+    - Home: Target icon, "Create your first project", New Project button
+    - Coverage: BarChart3 icon, "No Coverage Yet", "Run analysis from Scout", Scout link
+    - Focus: Users icon, "No Focus Groups Yet", "Start a focus group from Scout", Scout link
+    - Revisions: GitBranch icon, "No Drafts Yet", "Upload First Draft" button
+    - Pitch: Briefcase icon, two states (no project → Home link, no deliverable → "Complete coverage analysis first")
+- Files changed:
+  - src/components/shared/empty-state.tsx (new — shared reusable component)
+  - src/components/scout/scout-view.tsx (modified — replaced simulated chat with empty state checks before ScoutLayout)
+- **Learnings for future iterations:**
+  - The shared EmptyState component uses `type LucideIcon` from lucide-react — import as `import { type LucideIcon } from 'lucide-react'`
+  - ScoutView previously had a full simulated chat (mock responses, progress banner) — this was all dead code replaced by ScoutChat in scout-layout.tsx
+  - The old scout-view.tsx imported uuid, Card, Progress, Badge, Button — all unused after rewrite since real chat is in scout-chat.tsx
+  - EmptyState actionLabel/onAction are optional — render nothing if not provided (for display-only states)
+  - Browser verification not available — manual testing needed
+---
