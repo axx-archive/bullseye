@@ -40,6 +40,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - `addReaderChatMessage(readerId, msg)` and `updateReaderChatMessage(readerId, msgId, updates)` for per-reader message management
 - Executive streaming states stored in Zustand `executiveStates` Map<string, ExecutiveStreamState> — accumulates results, persists across panel switches
 - When adding new EventRouterCallbacks, also update focus-group-panel.tsx (has its own inline callbacks for follow-up messages)
+- Draft access control: `include: { project: { select: { studioId: true } } }` then check `draft.project.studioId !== user.studioId`
+- DraftDeliverable has unique constraint on `draftId` — use `findUnique({ where: { draftId: id } })` not findFirst
 
 ---
 
@@ -392,4 +394,23 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Pre-existing type errors in agent-sdk/tools/ and api/reader-chat/ are NOT caused by new changes — they're pre-existing Prisma JSON type issues
   - The event router 'executive' case previously only called onPhaseChange — now it also handles executive_start/executive_complete sub-events
   - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-016
+- What was implemented:
+  - GET /api/drafts/[id]/deliverable — returns DraftDeliverable with all JSON fields (harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis, studioCalibration)
+  - Returns 404 if no deliverable exists for the draft
+  - GET /api/drafts/[id]/focus-sessions — returns FocusSessions with messages, ordered by createdAt desc
+  - Each focus session includes messages ordered by sequenceNumber asc
+  - Both routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - Both routes verify draft belongs to user's studio via project.studioId check — return 404 for access violations
+  - Both routes return 404 for non-existent draft IDs
+- Files changed:
+  - src/app/api/drafts/[id]/deliverable/route.ts (new)
+  - src/app/api/drafts/[id]/focus-sessions/route.ts (new)
+- **Learnings for future iterations:**
+  - Draft access control pattern: findUnique draft with `include: { project: { select: { studioId: true } } }`, then check `draft.project.studioId !== user.studioId`
+  - DraftDeliverable has a unique constraint on draftId — use `findUnique({ where: { draftId: id } })` not `findFirst`
+  - FocusSession messages should be ordered by sequenceNumber (not createdAt) for correct conversation ordering
+  - Pre-existing type errors in agent-sdk/tools/ are known and don't block new API routes (ignoreBuildErrors: true)
 ---

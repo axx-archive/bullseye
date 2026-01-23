@@ -298,8 +298,8 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Routes at src/app/api/drafts/[id]/deliverable/route.ts and src/app/api/drafts/[id]/focus-sessions/route.ts. Both validate auth via getCurrentUser(), verify draft belongs to user's studio via project.studioId check, return 404 for non-existent drafts/deliverables. Focus sessions include messages ordered by sequenceNumber asc."
     },
     {
       "id": "US-017",
