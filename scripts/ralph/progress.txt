@@ -32,6 +32,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - `updateChatMessage(id, updates)` in app-store for targeted message updates during streaming
 - SSE connection via `createSSEConnection(url, body, callbacks)` from `@/lib/agent-sdk/event-router`
 - StoreChatMessage type exported from app-store — matches ChatMessage from chat-interface.tsx (timestamp optional)
+- Tool status pills are tracked via `toolCalls: ToolCallStatus[]` on the assistant message — updated via `updateChatMessage(id, { toolCalls })` during streaming
+- MCP tool names prefixed with `mcp__bullseye-tools__` — strip with `tool.split('__').pop()` to get the base name for TOOL_DISPLAY_NAMES lookup
 
 ---
 
@@ -225,5 +227,28 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - `useAppStore.setState({ chatMessages: filtered })` can be used for bulk state updates not covered by actions
   - chatMessages are NOT in the persist partialize — they persist in memory across tab switches but not page refreshes
   - Error markers use `__error__:` prefix in system messages for internal tracking, stripped for display
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-010
+- What was implemented:
+  - Inline tool status pills rendered on the assistant message during Scout tool calls
+  - tool_start events add a ToolCallStatus entry (running) with gold spinner pill
+  - tool_end events update the matching pill to complete state (green checkmark)
+  - ToolCallStatus type added to both app-store (StoreChatMessage.toolCalls) and chat-interface (ChatMessage.toolCalls)
+  - Pills rendered via Framer Motion scale-in animation within the MessageBubble component
+  - TOOL_DISPLAY_NAMES mapping updated per AC: spawn_readers → 'Analyzing with readers...', focus_group → 'Running focus group...', executive_eval → 'Evaluating with executives...', reader_chat → 'Chatting with reader...'
+  - File attachment feature (Paperclip button, file picker, drag-and-drop, PDF upload via /api/upload, filename chip) was already present in ChatInterface from working tree — committed as part of US-010
+  - onResult handler marks any remaining running tools as complete
+  - currentAssistantIdRef and toolCallsRef track the active message's tool state across callbacks
+- Files changed:
+  - src/stores/app-store.ts (modified — added ToolCallStatus interface, toolCalls field on StoreChatMessage)
+  - src/components/chat/chat-interface.tsx (modified — added ToolCallStatus interface, toolCalls on ChatMessage, tool pill rendering in MessageBubble, full file attachment UI)
+  - src/components/scout/scout-chat.tsx (modified — added tool call tracking refs, updated onToolStart/onToolEnd/onResult handlers)
+- **Learnings for future iterations:**
+  - Tool pills are tracked as an array on the assistant message (toolCalls) rather than separate system messages — this keeps them visually grouped with the response
+  - Use refs (currentAssistantIdRef, toolCallsRef) for callback-scoped state that needs to persist across SSE events without causing re-renders
+  - MCP tool names come as 'mcp__bullseye-tools__ingest_script' — strip prefix with split('__').pop() to get base name for display mapping
+  - The ToolCallStatus type is defined in both app-store and chat-interface — they're structurally identical so TypeScript treats them as compatible
   - Browser verification not available — manual testing needed
 ---

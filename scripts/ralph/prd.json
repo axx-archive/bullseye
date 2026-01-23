@@ -186,8 +186,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Tool pills rendered inline on the assistant message's toolCalls array. ToolCallStatus type added to both app-store and chat-interface. Pills use Framer Motion scale-in animation, gold (running) or green (complete) color scheme. File attachment was already in ChatInterface — supports PDF (via /api/upload), TXT, Fountain, FDX with drag-and-drop."
     },
     {
       "id": "US-011",
