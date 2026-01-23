@@ -170,6 +170,54 @@ export function useDeleteProject() {
   });
 }
 
+interface ReorderProjectsInput {
+  projectIds: string[];
+}
+
+export function useReorderProjects() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, ReorderProjectsInput, MutationContext>({
+    mutationFn: async ({ projectIds }) => {
+      const res = await fetch('/api/projects/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectIds }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to reorder projects' }));
+        throw new Error(error.error || 'Failed to reorder projects');
+      }
+    },
+    onMutate: async ({ projectIds }) => {
+      await queryClient.cancelQueries({ queryKey: projectKeys.all });
+      const previous = queryClient.getQueryData<ProjectWithCount[]>(projectKeys.all);
+
+      // Optimistically update sortOrder based on new positions
+      queryClient.setQueryData<ProjectWithCount[]>(projectKeys.all, (old) => {
+        if (!old) return old;
+        return old.map((p) => {
+          const newIndex = projectIds.indexOf(p.id);
+          if (newIndex !== -1) {
+            return { ...p, sortOrder: newIndex };
+          }
+          return p;
+        });
+      });
+
+      return { previous };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(projectKeys.all, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
 interface UpdateProjectInput {
   id: string;
   evaluationStatus?: EvaluationStatus;

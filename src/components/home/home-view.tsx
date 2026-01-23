@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
-import { useProjects, useUpdateProject, useDeleteProject, type ProjectWithCount } from '@/hooks/use-projects';
+import { useProjects, useUpdateProject, useDeleteProject, useReorderProjects, type ProjectWithCount } from '@/hooks/use-projects';
 import { useToastStore } from '@/stores/toast-store';
 import {
   Plus,
@@ -15,6 +15,7 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  GripVertical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
@@ -171,6 +172,7 @@ export function HomeView() {
   const { setCurrentProject, setActiveTab } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
   const { mutate: deleteProject, isPending: isDeleting } = useDeleteProject();
+  const { mutate: reorderProjects } = useReorderProjects();
   const addToast = useToastStore((s) => s.addToast);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [collapsedStudios, setCollapsedStudios] = useState<Set<string>>(new Set());
@@ -291,26 +293,12 @@ export function HomeView() {
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <AnimatePresence>
-                            {group.projects.map((project, i) => (
-                              <motion.div
-                                key={project.id}
-                                layout
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                                transition={{ delay: i * 0.05, duration: 0.3 }}
-                              >
-                                <ProjectCard
-                                  project={project}
-                                  onOpen={() => handleOpenProject(project)}
-                                  onDelete={() => setDeleteConfirmId(project.id)}
-                                />
-                              </motion.div>
-                            ))}
-                          </AnimatePresence>
-                        </div>
+                        <StudioProjectList
+                          projects={group.projects}
+                          onOpenProject={handleOpenProject}
+                          onDeleteProject={(id) => setDeleteConfirmId(id)}
+                          onReorder={(projectIds) => reorderProjects({ projectIds })}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -379,7 +367,99 @@ function ProjectCardSkeleton() {
   );
 }
 
-function ProjectCard({ project, onOpen, onDelete }: { project: ProjectWithCount; onOpen: () => void; onDelete: () => void }) {
+function StudioProjectList({
+  projects,
+  onOpenProject,
+  onDeleteProject,
+  onReorder,
+}: {
+  projects: ProjectWithCount[];
+  onOpenProject: (project: ProjectWithCount) => void;
+  onDeleteProject: (id: string) => void;
+  onReorder: (projectIds: string[]) => void;
+}) {
+  const [orderedProjects, setOrderedProjects] = useState(projects);
+
+  // Sync local state with parent data when projects change (e.g., after server refetch)
+  useEffect(() => {
+    setOrderedProjects(projects);
+  }, [projects]);
+
+  const handleReorder = useCallback(
+    (newOrder: ProjectWithCount[]) => {
+      setOrderedProjects(newOrder);
+    },
+    []
+  );
+
+  const handleReorderEnd = useCallback(() => {
+    const newIds = orderedProjects.map((p) => p.id);
+    const originalIds = projects.map((p) => p.id);
+    // Only call API if order actually changed
+    if (JSON.stringify(newIds) !== JSON.stringify(originalIds)) {
+      onReorder(newIds);
+    }
+  }, [orderedProjects, projects, onReorder]);
+
+  return (
+    <Reorder.Group
+      axis="y"
+      values={orderedProjects}
+      onReorder={handleReorder}
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+    >
+      <AnimatePresence>
+        {orderedProjects.map((project) => (
+          <DraggableProjectItem
+            key={project.id}
+            project={project}
+            onOpen={() => onOpenProject(project)}
+            onDelete={() => onDeleteProject(project.id)}
+            onDragEnd={handleReorderEnd}
+          />
+        ))}
+      </AnimatePresence>
+    </Reorder.Group>
+  );
+}
+
+function DraggableProjectItem({
+  project,
+  onOpen,
+  onDelete,
+  onDragEnd,
+}: {
+  project: ProjectWithCount;
+  onOpen: () => void;
+  onDelete: () => void;
+  onDragEnd: () => void;
+}) {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      value={project}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragEnd={onDragEnd}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+      transition={{ duration: 0.3 }}
+      className="list-none"
+    >
+      <ProjectCard
+        project={project}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        showDragHandle
+        onDragHandlePointerDown={(e) => dragControls.start(e)}
+      />
+    </Reorder.Item>
+  );
+}
+
+function ProjectCard({ project, onOpen, onDelete, showDragHandle, onDragHandlePointerDown }: { project: ProjectWithCount; onOpen: () => void; onDelete: () => void; showDragHandle?: boolean; onDragHandlePointerDown?: (e: React.PointerEvent) => void }) {
   const draftCount = project._count?.drafts ?? 0;
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
   const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
@@ -437,8 +517,20 @@ function ProjectCard({ project, onOpen, onDelete }: { project: ProjectWithCount;
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (!isEditing && (e.key === 'Enter' || e.key === ' ')) onOpen(); }}
-      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer"
+      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer relative"
     >
+      {showDragHandle && (
+        <div
+          className="absolute left-1 top-1/2 -translate-y-1/2 p-1 cursor-grab active:cursor-grabbing text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            onDragHandlePointerDown?.(e);
+          }}
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+      )}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={cn('w-1.5 h-1.5 rounded-full', status.dot)} />
