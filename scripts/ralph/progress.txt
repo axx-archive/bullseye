@@ -11,6 +11,11 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - UserSettings model stores encrypted API keys — use `encrypt()`/`decrypt()` from encryption.ts
 - New tabs: add to `TabId` union in app-store.ts, `renderContent` switch in page.tsx, nav rail + mobile nav in app-shell.tsx
 - Toast: `useToastStore((s) => s.addToast)` then `addToast('msg', 'success'|'error'|'warning'|'info')`
+- API key retrieval: use `getUserApiKey(userId)` from `src/lib/auth.ts` — returns decrypted key or null
+- Agent SDK `query()` accepts `env: { ...process.env, ANTHROPIC_API_KEY: key }` to pass user's API key
+- Anthropic SDK (`@anthropic-ai/sdk`): pass `{ apiKey }` to constructor for per-request key
+- SSE error handling in `event-router.ts`: parses JSON body for error messages on non-200 responses
+- Scout chat error UI: check `m.content.includes('API key in Settings')` to differentiate API key errors from generic errors
 
 ---
 
@@ -69,4 +74,29 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - Settings tab is always accessible (not gated by `hasProject`) — excluded from context bar like 'home'
   - Toast store uses `addToast(message, variant)` pattern — import from `@/stores/toast-store`
   - The app-shell has both desktop (icon rail) and mobile (bottom bar) nav — must add to both
+---
+
+## 2026-01-23 - US-005
+- Added `getUserApiKey(userId)` helper to `src/lib/auth.ts` — retrieves and decrypts user's API key from UserSettings
+- Updated Scout API route (`src/app/api/scout/route.ts`):
+  - Added auth check via `getCurrentUser()`
+  - Retrieves user's API key from settings, returns 400 with clear message if missing
+  - Passes key via `env: { ...process.env, ANTHROPIC_API_KEY: apiKey }` to Agent SDK `query()`
+- Updated Reader chat API route (`src/app/api/reader-chat/route.ts`):
+  - Added auth check and API key retrieval
+  - Passes user's key to `new AnthropicSDK({ apiKey })` constructor
+  - Returns 400 with same "add API key in Settings" message if missing
+- Improved SSE error handling in `src/lib/agent-sdk/event-router.ts`:
+  - `createSSEConnection` now parses JSON response body on non-200 to extract error message
+  - Previously only showed generic "HTTP 400: Bad Request"
+- Updated Scout chat UI (`src/components/scout/scout-chat.tsx`):
+  - Detects API key errors in error messages and shows tailored message
+  - Shows "Go to Settings" button (navigates to settings tab) instead of "Retry" for API key errors
+- Files changed: src/lib/auth.ts, src/app/api/scout/route.ts, src/app/api/reader-chat/route.ts, src/lib/agent-sdk/event-router.ts, src/components/scout/scout-chat.tsx
+- **Learnings for future iterations:**
+  - Agent SDK `query()` uses `env` option to override environment — this is how to inject API keys per-request
+  - Anthropic SDK constructor accepts `{ apiKey }` directly for per-request keys
+  - SSE connections return JSON (not SSE) on auth/validation errors — event-router must handle both
+  - `useAppStore.getState().setActiveTab('settings')` navigates to settings from any component without hook
+  - The scout-chat already had pending attachment auto-send logic (useEffect) added in a prior commit
 ---
