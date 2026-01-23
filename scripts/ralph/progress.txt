@@ -45,6 +45,9 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - Studio sub-entity (readers/executives) access control: check `entity.studioId !== user.studioId` directly — no join needed
 - StudioIntelligence has unique constraint on `studioId` — use `findUnique({ where: { studioId } })`
 - PUT routes for partial updates: use conditional spread `...(body.field !== undefined && { field: body.field })` for each updatable field
+- draftKeys exported from `src/hooks/use-drafts.ts` — use `draftKeys.deliverable(id)`, `draftKeys.evaluations(id)`, `draftKeys.focusSessions(id)` for cache invalidation
+- studioKeys exported from `src/hooks/use-studio.ts` — use `studioKeys.studio`, `studioKeys.readers`, `studioKeys.executives`, `studioKeys.intelligence` for cache invalidation
+- Hooks that fetch optional data (deliverable, intelligence) return `null` for 404 — check `data === null` for empty state, not just `!data` (which also matches loading)
 
 ---
 
@@ -444,4 +447,28 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Studio GET uses `_count: { select: { readerPersonas: true, projects: true } }` for relation counts
   - ExecutiveEvaluation includes `executive: true` in the findMany to get profile data inline
   - StudioIntelligence has unique constraint on studioId — use `findUnique({ where: { studioId } })`
+---
+
+## 2026-01-22 - US-018
+- What was implemented:
+  - useDrafts(projectId) hook fetches drafts from project detail endpoint, staleTime 30s
+  - draftKeys query key factory exported from use-drafts.ts for cache invalidation (list, deliverable, focusSessions, evaluations)
+  - useDeliverable(draftId) hook fetches GET /api/drafts/[id]/deliverable, staleTime 5min, returns null for 404
+  - useFocusSessions(draftId) hook fetches GET /api/drafts/[id]/focus-sessions, staleTime 30s
+  - useEvaluations(draftId) hook fetches GET /api/drafts/[id]/evaluations, staleTime 30s
+  - useStudio() hook fetches GET /api/studio, staleTime 10min
+  - useReaderPersonas() hook fetches GET /api/studio/readers, staleTime 30s
+  - useExecutiveProfiles() hook fetches GET /api/studio/executives, staleTime 30s
+  - useStudioIntelligence() hook fetches GET /api/studio/intelligence, staleTime 10min, returns null for 404
+  - All hooks return { data, isLoading, error } and handle undefined/null gracefully via `enabled` guard
+  - Response types defined for all API shapes (DeliverableResponse, FocusSessionResponse, EvaluationResponse, StudioResponse, ReaderPersonaResponse, ExecutiveProfileData, StudioIntelligenceResponse)
+- Files changed:
+  - src/hooks/use-drafts.ts (modified — added useDrafts hook and draftKeys factory)
+  - src/hooks/use-studio.ts (new — useDeliverable, useFocusSessions, useEvaluations, useStudio, useReaderPersonas, useExecutiveProfiles, useStudioIntelligence)
+- **Learnings for future iterations:**
+  - draftKeys pattern: `list: (projectId) => ['drafts', projectId]`, `deliverable: (draftId) => ['drafts', draftId, 'deliverable']` etc. — use these for cache invalidation in mutations
+  - useDeliverable and useStudioIntelligence return null (not throw) for 404 responses — components should check `data === null` for empty state
+  - useDrafts fetches from the project detail endpoint (GET /api/projects/[id]) and extracts `.drafts` array — reuses existing route rather than a separate drafts list endpoint
+  - studioKeys exported from use-studio.ts for external cache invalidation (e.g., after PUT updates in studio configuration views)
+  - Browser verification not available — manual testing needed
 ---
