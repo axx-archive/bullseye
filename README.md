@@ -16,13 +16,14 @@ BULLSEYE uses multiple AI agents to analyze screenplays the way a professional s
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router, Turbopack)
-- **AI**: Anthropic Claude API (Sonnet for analysis, Haiku for utilities)
+- **Framework**: Next.js 16 (App Router, Turbopack)
+- **AI**: Claude Agent SDK + Anthropic Claude API (Sonnet 4 for analysis and chat)
 - **Database**: PostgreSQL via Supabase
-- **ORM**: Prisma 7
-- **Auth**: Supabase Auth (email/password)
-- **UI**: Tailwind CSS, shadcn/ui components
-- **State**: Zustand
+- **ORM**: Prisma 7 (with pg adapter)
+- **Auth**: Supabase Auth (email/password, cookie-based sessions)
+- **UI**: Tailwind CSS 4, shadcn/ui components, Framer Motion
+- **State**: Zustand (UI state) + React Query (server state)
+- **PDF**: pdfjs-dist (server-side text extraction)
 
 ## Project Structure
 
@@ -30,37 +31,38 @@ BULLSEYE uses multiple AI agents to analyze screenplays the way a professional s
 src/
 ├── app/
 │   ├── api/
-│   │   ├── analyze/       # Script analysis endpoint
-│   │   ├── chat/          # Scout chat endpoint
-│   │   ├── executive/     # Executive evaluation endpoint
-│   │   ├── focus-group/   # Focus group streaming endpoint
-│   │   └── studio/        # Studio intelligence endpoint
-│   ├── auth/              # Auth callbacks and signout
-│   ├── login/             # Login/signup page
-│   └── (dashboard)/       # Main app (auth-protected)
+│   │   ├── projects/          # Project CRUD + draft upload
+│   │   ├── drafts/[id]/       # Deliverable, focus-sessions, evaluations
+│   │   ├── scout/             # Scout SSE streaming endpoint
+│   │   ├── reader-chat/       # 1:1 reader chat SSE endpoint
+│   │   ├── upload/            # PDF text extraction
+│   │   ├── studio/            # Studio config, readers, executives, intelligence
+│   │   └── auth/              # User provisioning, callbacks
+│   ├── login/                 # Login/signup page
+│   └── page.tsx               # Main app (tab-based, auth-protected)
 ├── components/
-│   ├── chat/              # Chat interface
-│   ├── coverage/          # Coverage report view
-│   ├── focus/             # Focus group view
-│   ├── layout/            # App shell, navigation
-│   ├── pitch/             # Executive pitch view
-│   ├── revisions/         # Draft revision tracking
-│   ├── scout/             # Scout orchestrator view
-│   ├── shared/            # Reader cards, score indicators
-│   ├── studio/            # Studio intelligence view
+│   ├── home/              # Project grid, create/upload modals
+│   ├── scout/             # Scout chat, right-panel modes (analysis, focus, reader chat, exec)
+│   ├── coverage/          # Harmonized coverage report view
+│   ├── focus/             # Focus group session browser
+│   ├── revisions/         # Draft timeline and score comparison
+│   ├── pitch/             # Executive evaluation view
+│   ├── studio/            # Studio configuration (readers, executives, calibration)
+│   ├── layout/            # App shell with icon rail + mobile bottom tab bar
+│   ├── shared/            # Reader cards, score indicators, toast, skeleton, error boundary, empty state
 │   └── ui/                # shadcn/ui primitives
+├── hooks/                 # React Query hooks (useProjects, useDrafts, useStudio, etc.)
 ├── lib/
-│   ├── agents/            # Reader personas, analysis orchestration, harmonization
-│   ├── executive/         # Executive profiles and evaluation engine
-│   ├── focus-group/       # Focus group conversation engine
+│   ├── agent-sdk/         # Claude Agent SDK integration (MCP tool server, prompts, event routing)
+│   ├── agents/            # Reader persona definitions
+│   ├── executive/         # Executive profiles
 │   ├── harmonization/     # Score harmonization logic
-│   ├── memory/            # Three-layer memory (Resources, Items, Narratives)
+│   ├── memory/            # Three-layer memory engine
 │   ├── studio-intelligence/ # Calibration and percentile engine
-│   ├── supabase/          # Supabase client utilities (server, browser, middleware)
-│   ├── auth.ts            # getCurrentUser / requireUser helpers
-│   ├── db.ts              # Prisma client singleton
-│   └── utils.ts           # Shared utilities
-├── stores/                # Zustand state management
+│   ├── supabase/          # Supabase client utilities (server, browser, admin)
+│   ├── auth.ts            # getCurrentUser helper
+│   └── db.ts              # Prisma client singleton (pg adapter)
+├── stores/                # Zustand stores (app-store, toast-store)
 ├── types/                 # TypeScript type definitions
 └── middleware.ts          # Auth redirect middleware
 ```
@@ -75,11 +77,12 @@ src/
 
 ### Environment Variables
 
-Create a `.env` file:
+Copy `.env.example` to `.env` and fill in values:
 
 ```
 DATABASE_URL="postgresql://..."          # Supabase pooler connection string
-ANTHROPIC_API_KEY="sk-ant-..."           # Anthropic API key
+DIRECT_URL="postgresql://..."            # Supabase direct connection (for migrations)
+ANTHROPIC_API_KEY="sk-ant-..."           # Anthropic API key (for Claude Agent SDK)
 NEXT_PUBLIC_SUPABASE_URL="https://..."   # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY="..."      # Supabase anon/public key
 SUPABASE_SERVICE_ROLE_KEY="..."          # Supabase service role key
@@ -90,11 +93,27 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 ```bash
 npm install
-npx prisma db push    # Push schema to database
-npm run dev           # Start dev server (localhost:3000)
+npx prisma migrate deploy   # Apply database migrations
+npx tsx scripts/seed.ts      # Seed default studio, readers, and executives
+npm run dev                  # Start dev server (localhost:3000)
 ```
 
 ## Architecture
+
+### Scout + MCP Tool Server
+
+Scout is the user-facing orchestrator, powered by Claude Sonnet 4 via the Claude Agent SDK. It runs as an agentic loop with access to an MCP tool server (`src/lib/agent-sdk/tools/`) that provides:
+
+- `ingest_script` — Parse and store uploaded screenplay text
+- `spawn_readers` — Launch parallel reader analysis (3 independent agents)
+- `harmonize_analyses` — Synthesize reader perspectives into unified coverage
+- `focus_group` — Run moderated multi-reader conversations
+- `reader_chat` — Direct 1:1 reader conversations
+- `executive_eval` — Simulate executive pitch evaluations
+- `memory_read/write` — Cross-draft reader memory persistence
+- `studio_intelligence` — Historical calibration context
+
+The Scout endpoint (`/api/scout`) streams results via SSE with typed events that drive the frontend's real-time UI.
 
 ### Agent System
 
