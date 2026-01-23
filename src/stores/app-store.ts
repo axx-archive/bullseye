@@ -18,7 +18,7 @@ import type {
 // TAB STATE
 // ============================================
 
-export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
+export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch';
 
 interface TabState {
   activeTab: TabId;

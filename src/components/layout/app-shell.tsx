@@ -17,8 +17,6 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TabId } from '@/stores/app-store';
 import { DraftUploadModal } from '@/components/home/draft-upload-modal';
-import { UserAvatar } from '@/components/shared/user-avatar';
-import { useUserProfile } from '@/hooks/use-user-profile';
 
 const PROJECT_TABS = [
   { id: 'scout', label: 'Scout', icon: Target },
@@ -34,7 +32,6 @@ const TAB_LABELS: Record<string, string> = {
   focus: 'Focus',
   revisions: 'Revisions',
   pitch: 'Pitch',
-  studio: 'Settings',
 };
 
 interface AppShellProps {
@@ -53,7 +50,6 @@ export function AppShell({ children }: AppShellProps) {
   } = useAppStore();
   const [showStudioSwitcher, setShowStudioSwitcher] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const { data: userProfile } = useUserProfile();
 
   function handleGoHome() {
     setCurrentProject(null);
@@ -200,30 +196,6 @@ export function AppShell({ children }: AppShellProps) {
               </div>
             )}
 
-            {/* User avatar — opens Settings */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setActiveTab('studio')}
-                  className={cn(
-                    'rounded-full transition-all duration-150 ease-out',
-                    activeTab === 'studio' && 'ring-2 ring-bullseye-gold'
-                  )}
-                >
-                  <UserAvatar
-                    src={userProfile?.avatarUrl}
-                    name={userProfile?.displayName}
-                    email={userProfile?.email}
-                    size="sm"
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
-                <span className="text-xs font-medium">
-                  {userProfile?.displayName || userProfile?.email || 'Settings'}
-                </span>
-              </TooltipContent>
-            </Tooltip>
           </div>
         </nav>
 
@@ -304,39 +276,6 @@ export function AppShell({ children }: AppShellProps) {
               />
             );
           })}
-          {/* Settings via user avatar */}
-          <button
-            onClick={() => setActiveTab('studio')}
-            className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 min-w-[48px] rounded-lg transition-colors duration-150 ease-out"
-          >
-            <div className="relative">
-              <div className={cn(
-                'rounded-full transition-all duration-150',
-                activeTab === 'studio' && 'ring-2 ring-bullseye-gold'
-              )}>
-                <UserAvatar
-                  src={userProfile?.avatarUrl}
-                  name={userProfile?.displayName}
-                  email={userProfile?.email}
-                  size="sm"
-                  className="w-5 h-5 text-[8px]"
-                />
-              </div>
-              {activeTab === 'studio' && (
-                <motion.div
-                  layoutId="mobile-nav-indicator"
-                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-gradient-gold"
-                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                />
-              )}
-            </div>
-            <span className={cn(
-              'text-[9px] font-medium leading-tight',
-              activeTab === 'studio' ? 'text-foreground' : 'text-muted-foreground'
-            )}>
-              Settings
-            </span>
-          </button>
         </nav>
       </div>
       <DraftUploadModal

@@ -10,7 +10,6 @@ import { CoverageView } from '@/components/coverage/coverage-view';
 import { FocusView } from '@/components/focus/focus-view';
 import { RevisionsView } from '@/components/revisions/revisions-view';
 import { PitchView } from '@/components/pitch/pitch-view';
-import { StudioView } from '@/components/studio/studio-view';
 
 export default function Home() {
   const { activeTab, currentStudio, studios, setCurrentStudio, addStudio } = useAppStore();
@@ -48,8 +47,6 @@ export default function Home() {
         return <ErrorBoundary key="revisions"><RevisionsView /></ErrorBoundary>;
       case 'pitch':
         return <ErrorBoundary key="pitch"><PitchView /></ErrorBoundary>;
-      case 'studio':
-        return <ErrorBoundary key="studio"><StudioView /></ErrorBoundary>;
       default:
         return <ErrorBoundary key="home"><HomeView /></ErrorBoundary>;
     }

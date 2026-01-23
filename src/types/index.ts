@@ -453,7 +453,7 @@ export interface AnalysisProgress {
 // ============================================
 
 export interface TabState {
-  activeTab: 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
+  activeTab: 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch';
 }
 
 export interface CoverageViewState {
