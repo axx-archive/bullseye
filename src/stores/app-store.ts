@@ -149,7 +149,7 @@ interface ChatState {
 // SCOUT SESSION STATE (Split-Screen UI)
 // ============================================
 
-import type { RightPanelPhase, ReaderStreamState, FocusGroupUIMessage } from '@/lib/agent-sdk/types';
+import type { RightPanelPhase, ReaderStreamState, FocusGroupUIMessage, ExecutiveStreamState } from '@/lib/agent-sdk/types';
 
 export interface ReaderChatMessage {
   id: string;
@@ -166,6 +166,7 @@ interface ScoutSessionState {
   focusGroupTypingSpeaker: string | null;
   activeReaderChatId: string | null; // For 1:1 reader chat
   readerChatMessages: Record<string, ReaderChatMessage[]>; // Keyed by readerId
+  executiveStates: Map<string, ExecutiveStreamState>; // Live executive eval states
 
   setSessionId: (id: string | null) => void;
   setRightPanelMode: (mode: RightPanelPhase) => void;
@@ -177,6 +178,8 @@ interface ScoutSessionState {
   setActiveReaderChatId: (readerId: string | null) => void;
   addReaderChatMessage: (readerId: string, message: ReaderChatMessage) => void;
   updateReaderChatMessage: (readerId: string, messageId: string, updates: Partial<ReaderChatMessage>) => void;
+  setExecutiveState: (executiveId: string, state: Partial<ExecutiveStreamState>) => void;
+  clearExecutiveStates: () => void;
 }
 
 // ============================================
@@ -355,6 +358,7 @@ export const useAppStore = create<AppStore>()(
         focusGroupTypingSpeaker: null,
         activeReaderChatId: null,
         readerChatMessages: {} as Record<string, ReaderChatMessage[]>,
+        executiveStates: new Map<string, ExecutiveStreamState>(),
 
         setSessionId: (id) => set({ sessionId: id }),
         setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
@@ -388,6 +392,14 @@ export const useAppStore = create<AppStore>()(
               ),
             },
           })),
+        setExecutiveState: (executiveId, state) =>
+          set((s) => {
+            const newMap = new Map(s.executiveStates);
+            const existing = newMap.get(executiveId) || { executiveId, executiveName: '', status: 'evaluating' as const };
+            newMap.set(executiveId, { ...existing, ...state } as ExecutiveStreamState);
+            return { executiveStates: newMap };
+          }),
+        clearExecutiveStates: () => set({ executiveStates: new Map() }),
 
         // ============ UI STATE ============
         sidebarOpen: true,

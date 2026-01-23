@@ -1,7 +1,7 @@
 // BULLSEYE SSE Event Router
 // Parses incoming SSE events and routes to appropriate store actions
 
-import type { ScoutSSEEvent, ReaderStreamState, FocusGroupUIMessage } from './types';
+import type { ScoutSSEEvent, ReaderStreamState, FocusGroupUIMessage, ExecutiveStreamState } from './types';
 import type { DraftDeliverable } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -23,6 +23,10 @@ export interface EventRouterCallbacks {
   onFocusGroupMessage: (message: FocusGroupUIMessage) => void;
   onFocusGroupTyping: (speaker: string, speakerType: 'moderator' | 'reader', readerId?: string) => void;
   onFocusGroupComplete: () => void;
+
+  // Executive evaluation
+  onExecutiveStart: (executiveId: string, executiveName: string) => void;
+  onExecutiveComplete: (executiveId: string, data: Partial<ExecutiveStreamState>) => void;
 
   // Phase changes
   onPhaseChange: (phase: 'idle' | 'analysis' | 'focus_group' | 'reader_chat' | 'executive') => void;
@@ -105,6 +109,11 @@ export function routeEvent(event: ScoutSSEEvent, callbacks: EventRouterCallbacks
 
     case 'executive':
       callbacks.onPhaseChange('executive');
+      if (event.type === 'executive_start' && event.executiveId) {
+        callbacks.onExecutiveStart(event.executiveId, event.executiveName || 'Executive');
+      } else if (event.type === 'executive_complete' && event.executiveId && event.data) {
+        callbacks.onExecutiveComplete(event.executiveId, event.data as Partial<ExecutiveStreamState>);
+      }
       break;
 
     case 'system':

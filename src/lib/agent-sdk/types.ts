@@ -18,6 +18,8 @@ export type ScoutEventType =
   | 'focus_group_complete'
   | 'reader_chat_typing'
   | 'reader_chat_message'
+  | 'executive_start'
+  | 'executive_complete'
   | 'error'
   | 'result';
 
@@ -31,6 +33,8 @@ export interface ScoutSSEEvent {
   speaker?: string;
   speakerType?: 'moderator' | 'reader';
   readerId?: string;
+  executiveId?: string;
+  executiveName?: string;
   error?: string;
   totalCostUsd?: number;
 }
@@ -66,6 +70,17 @@ export interface FocusGroupUIMessage {
   topic?: string;
   timestamp: Date;
   isStreaming?: boolean;
+}
+
+export interface ExecutiveStreamState {
+  executiveId: string;
+  executiveName: string;
+  status: 'evaluating' | 'complete';
+  verdict?: 'pursue' | 'pass';
+  confidence?: number;
+  rationale?: string;
+  keyFactors?: string[];
+  concerns?: string[];
 }
 
 export interface ScoutSessionState {

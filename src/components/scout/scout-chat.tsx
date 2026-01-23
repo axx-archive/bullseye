@@ -46,6 +46,7 @@ export function ScoutChat() {
     addFocusGroupMessage,
     setFocusGroupTyping,
     clearFocusGroupMessages,
+    setExecutiveState,
   } = useAppStore();
 
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -130,6 +131,19 @@ export function ScoutChat() {
       },
       onFocusGroupComplete: () => {
         setFocusGroupTyping(null, 'moderator');
+      },
+      onExecutiveStart: (executiveId, executiveName) => {
+        setExecutiveState(executiveId, { executiveId, executiveName, status: 'evaluating' });
+      },
+      onExecutiveComplete: (executiveId, data) => {
+        setExecutiveState(executiveId, {
+          status: 'complete',
+          verdict: data.verdict,
+          confidence: data.confidence,
+          rationale: data.rationale,
+          keyFactors: data.keyFactors,
+          concerns: data.concerns,
+        });
       },
       onPhaseChange: (phase) => {
         const currentMode = useAppStore.getState().rightPanelMode;
@@ -216,7 +230,7 @@ export function ScoutChat() {
       requestPayload,
       callbacks
     );
-  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage]);
+  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState]);
 
   const handleSendMessage = useCallback((content: string, attachment?: FileAttachment) => {
     // Build the user-facing message content

@@ -78,6 +78,8 @@ export function FocusGroupPanel() {
       onReaderComplete: () => {},
       onReaderError: () => {},
       onDeliverableReady: () => {},
+      onExecutiveStart: () => {},
+      onExecutiveComplete: () => {},
       onFocusGroupMessage: (message) => {
         useAppStore.getState().addFocusGroupMessage(message);
       },

@@ -5,6 +5,7 @@ import { ScoutChat } from './scout-chat';
 import { ReaderAnalysisPanel } from './reader-analysis-panel';
 import { FocusGroupPanel } from './focus-group-panel';
 import { ReaderChatPanel } from './reader-chat-panel';
+import { ExecutiveEvalPanel } from './executive-eval-panel';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function ScoutLayout() {
@@ -86,13 +87,9 @@ export function ScoutLayout() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
-              className="h-full flex items-center justify-center p-8"
+              className="h-full"
             >
-              <div className="text-center max-w-sm">
-                <p className="text-sm text-muted-foreground">
-                  Executive evaluations in progress...
-                </p>
-              </div>
+              <ExecutiveEvalPanel />
             </motion.div>
           )}
         </AnimatePresence>
