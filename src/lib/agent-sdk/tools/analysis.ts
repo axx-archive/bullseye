@@ -205,6 +205,11 @@ Overall: ${analysis.overallAssessment}
           memoriesPersisted++;
         } catch (error) {
           console.error(`Failed to persist memory for ${readerId}:`, error);
+          emitEvent({
+            source: 'system',
+            type: 'error',
+            error: `Warning: Reader memory for ${readerId} could not be saved.`,
+          });
         }
       }
     }
@@ -242,6 +247,11 @@ Overall: ${analysis.overallAssessment}
         });
       } catch (error) {
         console.error('Failed to persist deliverable:', error);
+        emitEvent({
+          source: 'system',
+          type: 'error',
+          error: 'Warning: Analysis results could not be saved to database. Your results are visible but may not persist after refresh.',
+        });
       }
     }
 

@@ -49,6 +49,19 @@ model User {
   ownedStudios          Studio[]            @relation("OwnedStudios")
   projects              Project[]
   chatMessages          ChatMessage[]
+  settings              UserSettings?
+}
+
+model UserSettings {
+  id                    String              @id @default(cuid())
+  userId                String              @unique
+  claudeApiKeyEncrypted String?
+  claudeApiKeyIv        String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {
@@ -65,6 +78,8 @@ model Project {
   genre                 String
   format                ProjectFormat
   status                ProjectStatus       @default(ACTIVE)
+  evaluationStatus      EvaluationStatus    @default(UNDER_CONSIDERATION)
+  sortOrder             Int                 @default(0)
   studioId              String
   createdByUserId       String
   createdAt             DateTime            @default(now())
@@ -90,6 +105,12 @@ enum ProjectStatus {
   ACTIVE
   ARCHIVED
   COMPLETED
+}
+
+enum EvaluationStatus {
+  UNDER_CONSIDERATION
+  APPROVED
+  REJECTED
 }
 
 model Draft {
@@ -319,6 +340,10 @@ model FocusGroupMessage {
   topic                 String?
   sentiment             Sentiment?
 
+  // Reader-to-reader reaction fields
+  replyToReaderId       String?             // Reader being replied to
+  reactionSentiment     ReactionSentiment?  // agrees | disagrees | builds_on
+
   // Ordering
   sequenceNumber        Int
 
@@ -335,6 +360,12 @@ enum SpeakerType {
   MODERATOR   // Scout
   READER
   USER
+}
+
+enum ReactionSentiment {
+  AGREES
+  DISAGREES
+  BUILDS_ON
 }
 
 enum Sentiment {

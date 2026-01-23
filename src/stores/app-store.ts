@@ -18,7 +18,7 @@ import type {
 // TAB STATE
 // ============================================
 
-export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio';
+export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio' | 'settings';
 
 interface TabState {
   activeTab: TabId;
@@ -131,11 +131,17 @@ export interface StoreChatMessage {
   toolCalls?: ToolCallStatus[];
 }
 
+interface PendingScoutAttachment {
+  filename: string;
+  content: string;
+}
+
 interface ChatState {
   chatMessages: StoreChatMessage[];
   isStreaming: boolean;
   activeAgent: 'scout' | 'reader' | null;
   activeReaderId: string | null;
+  pendingScoutAttachment: PendingScoutAttachment | null;
 
   addChatMessage: (message: StoreChatMessage) => void;
   updateChatMessage: (id: string, updates: Partial<StoreChatMessage>) => void;
@@ -143,6 +149,7 @@ interface ChatState {
   setStreaming: (isStreaming: boolean) => void;
   setActiveAgent: (agent: 'scout' | 'reader' | null, readerId?: string) => void;
   clearChat: () => void;
+  setPendingScoutAttachment: (attachment: PendingScoutAttachment | null) => void;
 }
 
 // ============================================
@@ -349,6 +356,8 @@ export const useAppStore = create<AppStore>()(
           set({ activeAgent: agent, activeReaderId: readerId || null }),
         clearChat: () =>
           set({ chatMessages: [], activeAgent: null, activeReaderId: null }),
+        pendingScoutAttachment: null,
+        setPendingScoutAttachment: (attachment) => set({ pendingScoutAttachment: attachment }),
 
         // ============ SCOUT SESSION STATE ============
         sessionId: null,

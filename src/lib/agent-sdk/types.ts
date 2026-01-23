@@ -33,6 +33,9 @@ export interface ScoutSSEEvent {
   speaker?: string;
   speakerType?: 'moderator' | 'reader';
   readerId?: string;
+  replyToReaderId?: string;
+  replyToReaderName?: string;
+  reactionSentiment?: 'agrees' | 'disagrees' | 'builds_on';
   executiveId?: string;
   executiveName?: string;
   error?: string;
@@ -70,6 +73,10 @@ export interface FocusGroupUIMessage {
   topic?: string;
   timestamp: Date;
   isStreaming?: boolean;
+  // Reader-to-reader reaction fields
+  replyToReaderId?: string;
+  replyToReaderName?: string;
+  reactionSentiment?: 'agrees' | 'disagrees' | 'builds_on';
 }
 
 export interface ExecutiveStreamState {

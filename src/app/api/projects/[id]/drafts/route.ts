@@ -87,14 +87,15 @@ export async function POST(
 
   const { error: uploadError } = await supabase.storage
     .from('scripts')
-    .upload(storagePath, uint8, {
+    .upload(storagePath, Buffer.from(uint8), {
       contentType: 'application/pdf',
       upsert: true,
     });
 
   if (uploadError) {
+    console.error('Supabase storage upload error:', uploadError.message);
     return NextResponse.json(
-      { error: 'Failed to upload file to storage' },
+      { error: `Failed to upload file to storage: ${uploadError.message}` },
       { status: 500 }
     );
   }
@@ -107,17 +108,28 @@ export async function POST(
   const scriptUrl = urlData.publicUrl;
 
   // Create Draft record
-  const draft = await db.draft.create({
-    data: {
-      projectId,
-      draftNumber,
-      scriptUrl,
-      scriptText,
-      pageCount,
-      notes: notes || null,
-      status: 'PENDING',
-    },
-  });
+  let draft;
+  try {
+    draft = await db.draft.create({
+      data: {
+        projectId,
+        draftNumber,
+        scriptUrl,
+        scriptText,
+        pageCount,
+        notes: notes || null,
+        status: 'PENDING',
+      },
+    });
+  } catch (error) {
+    // Clean up orphaned storage file if DB write fails
+    console.error('Failed to create draft record:', error);
+    await supabase.storage.from('scripts').remove([storagePath]);
+    return NextResponse.json(
+      { error: 'Failed to save draft to database. Please try again.' },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json(
     {
@@ -126,6 +138,7 @@ export async function POST(
       pageCount: draft.pageCount,
       status: draft.status,
       scriptUrl: draft.scriptUrl,
+      scriptText,
     },
     { status: 201 }
   );

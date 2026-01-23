@@ -1,19 +1,39 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
-import { useProjects } from '@/hooks/use-projects';
+import { useProjects, useUpdateProject, useDeleteProject, useReorderProjects, type ProjectWithCount } from '@/hooks/use-projects';
+import { useToastStore } from '@/stores/toast-store';
 import {
   Plus,
   Clock,
+  ChevronDown,
   ChevronRight,
   Layers,
   Target,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  GripVertical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
-import type { Project } from '@/types';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import type { EvaluationStatus } from '@/types';
 
 const FORMAT_LABELS: Record<string, string> = {
   FEATURE: 'Feature',
@@ -30,18 +50,165 @@ const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
   COMPLETED: { dot: 'bg-success', label: 'Completed' },
 };
 
-interface ProjectWithCount extends Project {
-  _count: { drafts: number };
+interface StudioGroup {
+  studioId: string;
+  studioName: string;
+  projects: ProjectWithCount[];
+}
+
+function groupProjectsByStudio(projects: ProjectWithCount[]): StudioGroup[] {
+  const studioMap = new Map<string, StudioGroup>();
+
+  for (const project of projects) {
+    const key = project.studio?.id || project.studioId;
+    const name = project.studio?.name || 'My Studio';
+
+    if (!studioMap.has(key)) {
+      studioMap.set(key, { studioId: key, studioName: name, projects: [] });
+    }
+    studioMap.get(key)!.projects.push(project);
+  }
+
+  // Sort studios alphabetically
+  return Array.from(studioMap.values()).sort((a, b) =>
+    a.studioName.localeCompare(b.studioName)
+  );
+}
+
+const EVALUATION_STATUS_CONFIG = {
+  UNDER_CONSIDERATION: { label: 'Under Consideration', className: 'text-amber-500' },
+  APPROVED: { label: 'Approved', className: 'text-green-500' },
+  REJECTED: { label: 'Rejected', className: 'text-red-400/70' },
+} as const;
+
+const EVALUATION_STATUS_DOT: Record<EvaluationStatus, string> = {
+  UNDER_CONSIDERATION: 'bg-amber-500',
+  APPROVED: 'bg-green-500',
+  REJECTED: 'bg-red-400',
+};
+
+function EvaluationStatusBadge({
+  projectId,
+  status,
+}: {
+  projectId: string;
+  status: EvaluationStatus;
+}) {
+  const { mutate: updateProject } = useUpdateProject();
+  const config = EVALUATION_STATUS_CONFIG[status];
+  const dotColor = EVALUATION_STATUS_DOT[status];
+
+  function handleSelect(newStatus: EvaluationStatus) {
+    if (newStatus !== status) {
+      updateProject({ id: projectId, evaluationStatus: newStatus });
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-elevated/50 transition-colors text-[10px]"
+        >
+          <div className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />
+          <span className={cn('font-medium', config.className)}>
+            {config.label}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48" onClick={(e) => e.stopPropagation()}>
+        {(Object.entries(EVALUATION_STATUS_CONFIG) as [EvaluationStatus, typeof config][]).map(
+          ([key, cfg]) => (
+            <DropdownMenuItem
+              key={key}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSelect(key);
+              }}
+              className="flex items-center gap-2"
+            >
+              <div className={cn('w-2 h-2 rounded-full', EVALUATION_STATUS_DOT[key])} />
+              <span className={cfg.className}>{cfg.label}</span>
+              {key === status && (
+                <span className="ml-auto text-muted-foreground text-xs">Current</span>
+              )}
+            </DropdownMenuItem>
+          )
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function StudioStats({ projects }: { projects: ProjectWithCount[] }) {
+  const counts = { UNDER_CONSIDERATION: 0, APPROVED: 0, REJECTED: 0 };
+  for (const project of projects) {
+    const status = project.evaluationStatus || 'UNDER_CONSIDERATION';
+    if (status in counts) {
+      counts[status as keyof typeof counts]++;
+    }
+  }
+
+  const entries = Object.entries(counts).filter(([, count]) => count > 0);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-3 mb-3 ml-6">
+      {entries.map(([status, count]) => {
+        const config = EVALUATION_STATUS_CONFIG[status as keyof typeof EVALUATION_STATUS_CONFIG];
+        return (
+          <span key={status} className="flex items-center gap-1 text-xs">
+            <span className={cn('font-medium', config.className)}>{count}</span>
+            <span className="text-muted-foreground">{config.label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 export function HomeView() {
   const { setCurrentProject, setActiveTab } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
+  const { mutate: deleteProject, isPending: isDeleting } = useDeleteProject();
+  const { mutate: reorderProjects } = useReorderProjects();
+  const addToast = useToastStore((s) => s.addToast);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [collapsedStudios, setCollapsedStudios] = useState<Set<string>>(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const studioGroups = projects ? groupProjectsByStudio(projects) : [];
 
   function handleOpenProject(project: ProjectWithCount) {
     setCurrentProject(project);
     setActiveTab('scout');
+  }
+
+  function toggleStudioCollapse(studioId: string) {
+    setCollapsedStudios((prev) => {
+      const next = new Set(prev);
+      if (next.has(studioId)) {
+        next.delete(studioId);
+      } else {
+        next.add(studioId);
+      }
+      return next;
+    });
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteConfirmId) return;
+    deleteProject(deleteConfirmId, {
+      onSuccess: () => {
+        addToast('Project deleted', 'success');
+        setDeleteConfirmId(null);
+      },
+      onError: (err) => {
+        addToast(err.message || 'Failed to delete project', 'error');
+        setDeleteConfirmId(null);
+      },
+    });
   }
 
   return (
@@ -51,11 +218,11 @@ export function HomeView() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Your Studio
+              Projects
             </h1>
             {!isLoading && projects && (
               <p className="text-sm text-muted-foreground mt-1">
-                {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+                {projects.length} {projects.length === 1 ? 'project' : 'projects'} across {studioGroups.length} {studioGroups.length === 1 ? 'studio' : 'studios'}
               </p>
             )}
           </div>
@@ -85,22 +252,59 @@ export function HomeView() {
           </div>
         )}
 
-        {/* Projects grid */}
+        {/* Projects grouped by studio */}
         {!isLoading && !error && projects && projects.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project, i) => (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05, duration: 0.3 }}
-              >
-                <ProjectCard
-                  project={project}
-                  onOpen={() => handleOpenProject(project)}
-                />
-              </motion.div>
-            ))}
+          <div className="space-y-6">
+            {studioGroups.map((group) => {
+              const isCollapsed = collapsedStudios.has(group.studioId);
+              return (
+                <div key={group.studioId}>
+                  {/* Studio header */}
+                  <button
+                    onClick={() => toggleStudioCollapse(group.studioId)}
+                    className="flex items-center gap-2 mb-3 group/header"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 text-muted-foreground transition-transform duration-200',
+                        isCollapsed && '-rotate-90'
+                      )}
+                    />
+                    <h2 className="text-lg font-semibold tracking-tight">
+                      {group.studioName}
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {group.projects.length} {group.projects.length === 1 ? 'project' : 'projects'}
+                    </span>
+                  </button>
+
+                  {/* Studio stat cards */}
+                  {!isCollapsed && group.projects.length > 0 && (
+                    <StudioStats projects={group.projects} />
+                  )}
+
+                  {/* Project cards */}
+                  <AnimatePresence initial={false}>
+                    {!isCollapsed && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <StudioProjectList
+                          projects={group.projects}
+                          onOpenProject={handleOpenProject}
+                          onDeleteProject={(id) => setDeleteConfirmId(id)}
+                          onReorder={(projectIds) => reorderProjects({ projectIds })}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -114,6 +318,33 @@ export function HomeView() {
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the project and all its drafts. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              onClick={() => setDeleteConfirmId(null)}
+              className="px-4 py-2 text-sm font-medium rounded-md border border-border hover:bg-elevated/50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -136,15 +367,170 @@ function ProjectCardSkeleton() {
   );
 }
 
-function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: () => void }) {
-  const draftCount = project._count?.drafts ?? 0;
-  const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
+function StudioProjectList({
+  projects,
+  onOpenProject,
+  onDeleteProject,
+  onReorder,
+}: {
+  projects: ProjectWithCount[];
+  onOpenProject: (project: ProjectWithCount) => void;
+  onDeleteProject: (id: string) => void;
+  onReorder: (projectIds: string[]) => void;
+}) {
+  const [orderedProjects, setOrderedProjects] = useState(projects);
+
+  // Sync local state with parent data when projects change (e.g., after server refetch)
+  useEffect(() => {
+    setOrderedProjects(projects);
+  }, [projects]);
+
+  const handleReorder = useCallback(
+    (newOrder: ProjectWithCount[]) => {
+      setOrderedProjects(newOrder);
+    },
+    []
+  );
+
+  const handleReorderEnd = useCallback(() => {
+    const newIds = orderedProjects.map((p) => p.id);
+    const originalIds = projects.map((p) => p.id);
+    // Only call API if order actually changed
+    if (JSON.stringify(newIds) !== JSON.stringify(originalIds)) {
+      onReorder(newIds);
+    }
+  }, [orderedProjects, projects, onReorder]);
 
   return (
-    <button
-      onClick={onOpen}
-      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group"
+    <Reorder.Group
+      axis="y"
+      values={orderedProjects}
+      onReorder={handleReorder}
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
     >
+      <AnimatePresence>
+        {orderedProjects.map((project) => (
+          <DraggableProjectItem
+            key={project.id}
+            project={project}
+            onOpen={() => onOpenProject(project)}
+            onDelete={() => onDeleteProject(project.id)}
+            onDragEnd={handleReorderEnd}
+          />
+        ))}
+      </AnimatePresence>
+    </Reorder.Group>
+  );
+}
+
+function DraggableProjectItem({
+  project,
+  onOpen,
+  onDelete,
+  onDragEnd,
+}: {
+  project: ProjectWithCount;
+  onOpen: () => void;
+  onDelete: () => void;
+  onDragEnd: () => void;
+}) {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      value={project}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragEnd={onDragEnd}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+      transition={{ duration: 0.3 }}
+      className="list-none"
+    >
+      <ProjectCard
+        project={project}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        showDragHandle
+        onDragHandlePointerDown={(e) => dragControls.start(e)}
+      />
+    </Reorder.Item>
+  );
+}
+
+function ProjectCard({ project, onOpen, onDelete, showDragHandle, onDragHandlePointerDown }: { project: ProjectWithCount; onOpen: () => void; onDelete: () => void; showDragHandle?: boolean; onDragHandlePointerDown?: (e: React.PointerEvent) => void }) {
+  const draftCount = project._count?.drafts ?? 0;
+  const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
+  const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(project.title);
+  const [editError, setEditError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { mutate: updateProject } = useUpdateProject();
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  function handleStartRename() {
+    setEditValue(project.title);
+    setEditError(false);
+    setIsEditing(true);
+  }
+
+  function handleSaveRename() {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setEditError(true);
+      return;
+    }
+    if (trimmed !== project.title) {
+      updateProject({ id: project.id, title: trimmed });
+    }
+    setIsEditing(false);
+    setEditError(false);
+  }
+
+  function handleCancelRename() {
+    setIsEditing(false);
+    setEditValue(project.title);
+    setEditError(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelRename();
+    }
+  }
+
+  return (
+    <div
+      onClick={isEditing ? undefined : onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (!isEditing && (e.key === 'Enter' || e.key === ' ')) onOpen(); }}
+      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer relative"
+    >
+      {showDragHandle && (
+        <div
+          className="absolute left-1 top-1/2 -translate-y-1/2 p-1 cursor-grab active:cursor-grabbing text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            onDragHandlePointerDown?.(e);
+          }}
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+      )}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={cn('w-1.5 h-1.5 rounded-full', status.dot)} />
@@ -152,27 +538,88 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
             {FORMAT_LABELS[project.format] || project.format}
           </span>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out" />
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-elevated/50 transition-all"
+                aria-label="Project actions"
+              >
+                <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStartRename();
+                }}
+                className="flex items-center gap-2"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="flex items-center gap-2 text-red-500 focus:text-red-500"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out" />
+        </div>
       </div>
 
-      <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>
+      {isEditing ? (
+        <div className="mb-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => {
+              setEditValue(e.target.value);
+              if (e.target.value.trim()) setEditError(false);
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSaveRename}
+            className={cn(
+              'w-full text-sm font-semibold bg-elevated/50 rounded px-2 py-1 outline-none border',
+              editError ? 'border-red-500' : 'border-border focus:border-bullseye-gold'
+            )}
+          />
+          {editError && (
+            <p className="text-[10px] text-red-500 mt-0.5">Name cannot be empty</p>
+          )}
+        </div>
+      ) : (
+        <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>
+      )}
       {project.logline && (
         <p className="text-xs text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
           {project.logline}
         </p>
       )}
 
-      <div className="flex items-center gap-4 mt-auto pt-2 border-t border-border/30">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Layers className="w-3 h-3" />
-          <span className="text-[11px]">{draftCount} {draftCount === 1 ? 'draft' : 'drafts'}</span>
+      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/30">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Layers className="w-3 h-3" />
+            <span className="text-[11px]">{draftCount} {draftCount === 1 ? 'draft' : 'drafts'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Clock className="w-3 h-3" />
+            <span className="text-[11px]">{formatRelativeDate(project.updatedAt)}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Clock className="w-3 h-3" />
-          <span className="text-[11px]">{formatRelativeDate(project.updatedAt)}</span>
-        </div>
+        <EvaluationStatusBadge projectId={project.id} status={evalStatus} />
       </div>
-    </button>
+    </div>
   );
 }
 

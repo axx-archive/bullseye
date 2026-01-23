@@ -237,6 +237,8 @@ export interface ExecutiveEvaluationResult {
 // FOCUS GROUP
 // ============================================
 
+export type ReactionSentiment = 'agrees' | 'disagrees' | 'builds_on';
+
 export interface FocusGroupMessage {
   id: string;
   speakerType: 'moderator' | 'reader' | 'user';
@@ -247,6 +249,11 @@ export interface FocusGroupMessage {
   content: string;
   topic?: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
+
+  // Reader-to-reader reaction fields
+  replyToReaderId?: string;
+  replyToReaderName?: string;
+  reactionSentiment?: ReactionSentiment;
 
   timestamp: Date;
   isStreaming?: boolean;
@@ -382,6 +389,7 @@ export type ProjectFormat =
   | 'DOCUMENTARY';
 
 export type ProjectStatus = 'ACTIVE' | 'ARCHIVED' | 'COMPLETED';
+export type EvaluationStatus = 'UNDER_CONSIDERATION' | 'APPROVED' | 'REJECTED';
 export type DraftStatus = 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
 
 export interface Project {
@@ -391,6 +399,8 @@ export interface Project {
   genre: string;
   format: ProjectFormat;
   status: ProjectStatus;
+  evaluationStatus: EvaluationStatus;
+  sortOrder: number;
   studioId: string;
   createdAt: Date;
   updatedAt: Date;

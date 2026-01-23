@@ -15,7 +15,7 @@ import type { ScoutSSEEvent } from '../types';
 
 export type { EventEmitter } from './readers';
 
-export function createBullseyeToolServer(emitEvent: (event: ScoutSSEEvent) => void) {
+export function createBullseyeToolServer(emitEvent: (event: ScoutSSEEvent) => void, apiKey?: string) {
   return createSdkMcpServer({
     name: 'bullseye-tools',
     version: '1.0.0',
@@ -24,7 +24,7 @@ export function createBullseyeToolServer(emitEvent: (event: ScoutSSEEvent) => vo
       createSpawnReadersTool(emitEvent),
       createHarmonizeAnalysesTool(emitEvent),
       generateFocusQuestionsTool,
-      createFocusGroupTool(emitEvent),
+      createFocusGroupTool(emitEvent, apiKey),
       createReaderChatTool(emitEvent),
       createExecutiveEvalTool(emitEvent),
       memoryReadTool,

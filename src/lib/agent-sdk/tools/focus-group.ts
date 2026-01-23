@@ -9,7 +9,7 @@ import { getLastReaderPerspectives, getLastProjectContext } from './readers';
 import { getLastDeliverable } from './analysis';
 import { db } from '@/lib/db';
 import type { SubAgentMemory } from '@/lib/memory';
-import type { Divergence, Rating } from '@/types';
+import type { Divergence, Rating, CoverageReport } from '@/types';
 import type { EventEmitter } from './readers';
 
 // Convert Prisma memory to SubAgentMemory
@@ -79,7 +79,7 @@ function prismaToSubAgentMemory(prismaMemory: {
   };
 }
 
-export function createFocusGroupTool(emitEvent: EventEmitter) {
+export function createFocusGroupTool(emitEvent: EventEmitter, apiKey?: string) {
   return tool(
     'run_focus_group',
     'Run a live focus group discussion between the readers. They will debate divergence points and answer specific questions. Events stream to the right panel in real-time. Automatically injects reader memories for consistent voices.',
@@ -102,6 +102,14 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
           isError: true,
         };
       }
+
+      // Warn if no deliverable available — readers won't have script context
+      if (!deliverable) {
+        console.warn('[FocusGroup] No completed deliverable found. Focus group readers will not have script context (synopsis, analysis). Run harmonize_analyses before run_focus_group for best results.');
+      }
+
+      // Get script context from the deliverable's harmonized coverage
+      const scriptContext: CoverageReport | undefined = deliverable?.harmonizedCoverage;
 
       // Get project context from deliverable, readers, or params
       const projectContext = getLastProjectContext();
@@ -179,6 +187,8 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
           readerPerspectives: perspectives,
           readerMemories,
           divergencePoints,
+          scriptContext,
+          apiKey,
         },
         (event) => {
           // Forward focus group events to SSE stream
@@ -190,6 +200,9 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
               speakerType: event.speakerType,
               readerId: event.readerId,
               text: event.content,
+              replyToReaderId: event.replyToReaderId,
+              replyToReaderName: event.replyToReaderName,
+              reactionSentiment: event.reactionSentiment,
             });
           } else if (event.type === 'typing') {
             emitEvent({
@@ -293,6 +306,11 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
                 : msg.sentiment === 'negative' ? 'NEGATIVE' as const
                 : msg.sentiment === 'neutral' ? 'NEUTRAL' as const
                 : null,
+              replyToReaderId: msg.replyToReaderId || null,
+              reactionSentiment: msg.reactionSentiment === 'agrees' ? 'AGREES' as const
+                : msg.reactionSentiment === 'disagrees' ? 'DISAGREES' as const
+                : msg.reactionSentiment === 'builds_on' ? 'BUILDS_ON' as const
+                : null,
               sequenceNumber: index,
             }));
 
@@ -302,6 +320,11 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
           }
         } catch (error) {
           console.error('Failed to persist focus group messages:', error);
+          emitEvent({
+            source: 'system',
+            type: 'error',
+            error: 'Warning: Focus group discussion could not be saved to database. The conversation is visible but may not persist after refresh.',
+          });
         }
       }
 

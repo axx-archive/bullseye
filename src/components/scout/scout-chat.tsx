@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/stores/app-store';
@@ -50,6 +50,8 @@ export function ScoutChat() {
     setFocusGroupTyping,
     clearFocusGroupMessages,
     setExecutiveState,
+    pendingScoutAttachment,
+    setPendingScoutAttachment,
   } = useAppStore();
 
   const queryClient = useQueryClient();
@@ -328,12 +330,35 @@ export function ScoutChat() {
     }
   }, [handleSendMessage]);
 
+  // Auto-send when a pending attachment arrives (e.g., after draft upload)
+  useEffect(() => {
+    if (pendingScoutAttachment && !isStreaming) {
+      const attachment: FileAttachment = {
+        file: new File([], pendingScoutAttachment.filename),
+        name: pendingScoutAttachment.filename,
+        size: pendingScoutAttachment.content.length,
+        type: 'application/pdf',
+        content: pendingScoutAttachment.content,
+        status: 'ready',
+      };
+      setPendingScoutAttachment(null);
+      handleSendMessage('Analyze this script', attachment);
+    }
+  }, [pendingScoutAttachment, isStreaming, handleSendMessage, setPendingScoutAttachment]);
+
   // Filter out internal error markers for display
   const displayMessages: ChatMessage[] = chatMessages.map((m) => {
     if (m.role === 'system' && m.content.startsWith('__error__')) {
+      const errorText = m.content.replace('__error__:', '');
+      if (errorText.includes('API key in Settings')) {
+        return {
+          ...m,
+          content: `${errorText} — Go to the Settings tab (gear icon) to add your key.`,
+        };
+      }
       return {
         ...m,
-        content: m.content.replace('__error__:', 'Error: ') + ' — Click Retry below to try again.',
+        content: `Error: ${errorText} — Click Retry below to try again.`,
       };
     }
     return m;
@@ -416,13 +441,22 @@ export function ScoutChat() {
           />
           {/* Retry button when last message is an error */}
           {!isStreaming && chatMessages.some((m) => m.role === 'system' && m.content.startsWith('__error__')) && (
-            <div className="flex justify-center pb-2">
-              <button
-                onClick={handleRetry}
-                className="px-4 py-2 rounded-full text-xs font-medium text-danger bg-danger/10 border border-danger/30 hover:bg-danger/20 transition-colors"
-              >
-                Retry
-              </button>
+            <div className="flex justify-center gap-2 pb-2">
+              {chatMessages.some((m) => m.role === 'system' && m.content.includes('API key in Settings')) ? (
+                <button
+                  onClick={() => useAppStore.getState().setActiveTab('settings')}
+                  className="px-4 py-2 rounded-full text-xs font-medium text-bullseye-gold bg-bullseye-gold/10 border border-bullseye-gold/30 hover:bg-bullseye-gold/20 transition-colors"
+                >
+                  Go to Settings
+                </button>
+              ) : (
+                <button
+                  onClick={handleRetry}
+                  className="px-4 py-2 rounded-full text-xs font-medium text-danger bg-danger/10 border border-danger/30 hover:bg-danger/20 transition-colors"
+                >
+                  Retry
+                </button>
+              )}
             </div>
           )}
           {!isStreaming && !chatMessages.some((m) => m.role === 'system' && m.content.startsWith('__error__')) && (
