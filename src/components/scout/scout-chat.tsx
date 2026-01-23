@@ -129,9 +129,12 @@ export function ScoutChat() {
         setFocusGroupTyping(null, 'moderator');
       },
       onPhaseChange: (phase) => {
-        setRightPanelMode(phase);
-        if (phase === 'focus_group') {
-          clearFocusGroupMessages();
+        const currentMode = useAppStore.getState().rightPanelMode;
+        if (currentMode !== phase) {
+          setRightPanelMode(phase);
+          if (phase === 'focus_group') {
+            clearFocusGroupMessages();
+          }
         }
       },
       onToolStart: (tool) => {
