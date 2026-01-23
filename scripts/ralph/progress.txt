@@ -281,3 +281,32 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - focus_group source events fire for every message — calling onPhaseChange every time is fine since the guard in scout-chat prevents redundant updates
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-012
+- What was implemented:
+  - Reader analysis right panel with live streaming results, expandable/collapsible cards, and harmonized scores
+  - 3 reader cards (Maya, Colton, Devon) with colored left borders when complete
+  - reader_start events set card to 'Analyzing...' with pulse animation (or progress bar if progress events arrive)
+  - reader_progress events (via analysis_stream SSE type) update a progress bar on the reader card
+  - reader_complete events populate: recommendation badge, overall score bar, strengths, concerns, standout quote
+  - ScoreBars component: 10-bar visualization with staggered left-to-right fill animation (300ms duration, 50ms stagger per bar)
+  - Harmonized Scores section appears at top after all 3 readers complete — averages all reader scores
+  - Cards are expandable/collapsible using Zustand expandedReaders state with ChevronDown rotation
+  - Collapsed card shows overall score + recommendation; expanded shows all dimension scores + strengths/concerns/quote
+  - Added progress field to ReaderStreamState type
+  - Added onReaderProgress callback to EventRouterCallbacks
+  - Added analysis_stream routing in event-router for progress updates
+- Files changed:
+  - src/components/scout/reader-analysis-panel.tsx (rewritten — expandable cards, score bars, harmonized scores, progress indicator)
+  - src/lib/agent-sdk/types.ts (modified — added progress field to ReaderStreamState)
+  - src/lib/agent-sdk/event-router.ts (modified — added onReaderProgress callback, analysis_stream routing)
+  - src/components/scout/scout-chat.tsx (modified — added onReaderProgress handler, progress init on reader start)
+- **Learnings for future iterations:**
+  - expandedReaders and toggleReaderExpanded are already in Zustand UI state — use these for any expand/collapse patterns
+  - ScoreBars uses Framer Motion scaleX with transformOrigin: 'left' for left-to-right fill animation
+  - numericToFilled(value) converts 0-100 scores to 0-10 filled bars (Math.round(value / 10))
+  - computeHarmonizedScores iterates all 3 readers and averages per dimension — graceful with missing data
+  - analysis_stream is the SSE event type for reader progress updates (not a separate reader_progress type)
+  - AnimatePresence with height: 0/auto for expand/collapse transitions needs overflow-hidden on the motion.div
+  - Browser verification not available — manual testing needed
+---
