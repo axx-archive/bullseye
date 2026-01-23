@@ -143,7 +143,7 @@ export function ScoutLayout() {
             Always mounted to maintain SSE connection and streaming refs.
             On mobile: uses opacity/pointer-events for fade transition. */}
         <div
-          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] md:border-r md:border-border/30 flex flex-col overflow-hidden transition-opacity duration-150 ease-out ${
+          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] md:border-r md:border-border/30 flex flex-col overflow-y-auto transition-opacity duration-150 ease-out ${
             mobilePanel === 'chat'
               ? 'opacity-100 z-10 md:z-auto'
               : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto md:z-auto z-0'
@@ -156,7 +156,7 @@ export function ScoutLayout() {
             On mobile: uses opacity/pointer-events for fade transition.
             SSE events update Zustand store regardless of visibility. */}
         <div
-          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] flex flex-col overflow-hidden transition-opacity duration-150 ease-out ${
+          className={`absolute inset-0 md:relative md:inset-auto md:flex-1 min-w-0 md:max-w-[50%] flex flex-col overflow-y-auto transition-opacity duration-150 ease-out ${
             mobilePanel === 'activity'
               ? 'opacity-100 z-10 md:z-auto'
               : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto md:z-auto z-0'

@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { ArrowUp, Target, Paperclip, X, FileText, Loader2, CheckCircle2 } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 export interface FileAttachment {
   file: File;
@@ -87,8 +86,12 @@ export function ChatInterface({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el) {
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      if (isNearBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   }, [messages]);
 
@@ -265,7 +268,7 @@ export function ChatInterface({
       </AnimatePresence>
 
       {/* Messages */}
-      <ScrollArea ref={scrollRef} className="flex-1 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
         <div className="space-y-5 max-w-2xl mx-auto px-4">
           <AnimatePresence initial={false}>
             {messages.map((message) => (
@@ -316,7 +319,7 @@ export function ChatInterface({
             </motion.div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input area */}
       <div className="px-4 pb-4 pt-2">
