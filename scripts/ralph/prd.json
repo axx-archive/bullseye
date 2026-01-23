@@ -253,7 +253,7 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "No mock data files were found in the codebase. Issue is likely stale data being passed to focus group prompts."
     },
     {

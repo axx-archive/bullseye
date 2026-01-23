@@ -30,6 +30,8 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Tooltip for disabled buttons: wrap the disabled element in `<Tooltip>` + `<TooltipTrigger asChild>` with a `<span>` wrapper (not a button, since disabled buttons don't trigger hover events)
 - ESLint forbids `setState` inside `useEffect` — use click handlers or refs to manage state sync
 - Independent panel scrolling: add `overflow-hidden` to panel containers, let children manage their own `overflow-y-auto` or `ScrollArea`
+- Focus group engine uses its own Anthropic client — pass `apiKey` through `FocusGroupConfig` and `scriptContext` (CoverageReport) for grounded discussion
+- `createBullseyeToolServer(emitEvent, apiKey?)` threads the user's API key to the focus group tool
 
 ---
 
@@ -259,4 +261,23 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - `overflow-hidden` creates a new block formatting context that constrains `h-full` / `flex-1` children to the actual available height
   - The panel structure is: outer `flex flex-col overflow-hidden` → child `h-full flex flex-col` → grandchild `flex-1 overflow-y-auto` (or ScrollArea)
   - `absolute inset-0` on mobile already constrains height, so `overflow-hidden` is harmless there
+---
+
+## 2026-01-23 - US-014
+- Audited FocusGroupEngine data flow: no mock data or hardcoded script references exist
+- Root cause identified: focus group reader prompts never received actual script content — only perspective summaries (scores, strengths, concerns). Readers were asked to "reference specific evidence from the script" but had no script text to reference.
+- Fix 1: Added `scriptContext` (CoverageReport) to `FocusGroupConfig` — now passes harmonized coverage (synopsis, analyses, strengths/weaknesses) to both moderator context and reader system prompts
+- Fix 2: Updated `FocusGroupEngine` to accept and use an `apiKey` parameter, passing it to `getAnthropicClient()` — previously the engine used env var `ANTHROPIC_API_KEY` instead of the user's stored key
+- Fix 3: Added `console.warn` when focus group is invoked without a completed deliverable (no harmonizedCoverage available)
+- Fix 4: Updated `createBullseyeToolServer` and `createFocusGroupTool` to thread `apiKey` from the Scout route through to the engine
+- Confirmed: `spawn_readers` correctly passes `getCurrentScript().scriptText` to reader analysis (full script text)
+- Confirmed: `scripts/seed.ts` contains only setup data (personas, executives, studio intelligence) — no script content
+- Confirmed: No hardcoded script references in reader persona `systemPromptBase` definitions
+- Files changed: src/lib/focus-group/index.ts, src/lib/agent-sdk/tools/focus-group.ts, src/lib/agent-sdk/tools/index.ts, src/app/api/scout/route.ts
+- **Learnings for future iterations:**
+  - The focus group engine creates its own Anthropic client independently of the Agent SDK — must explicitly pass API key
+  - `FocusGroupConfig.scriptContext` provides the CoverageReport so readers can reference actual script details (characters, plot, dialogue)
+  - The moderator system prompt includes the full conversation context; reader system prompts need script context appended separately
+  - Module-level `getAnthropicClient()` usage (without apiKey) falls back to env var — always pass apiKey explicitly for user-scoped operations
+  - Focus group data flow: `harmonize_analyses` → `DraftDeliverable.harmonizedCoverage` → `run_focus_group` config → engine context/prompts
 ---
