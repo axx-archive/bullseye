@@ -1,19 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
-import { useProjects } from '@/hooks/use-projects';
+import { useProjects, type ProjectWithCount } from '@/hooks/use-projects';
 import {
   Plus,
   Clock,
+  ChevronDown,
   ChevronRight,
   Layers,
   Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
-import type { Project } from '@/types';
 
 const FORMAT_LABELS: Record<string, string> = {
   FEATURE: 'Feature',
@@ -30,18 +30,54 @@ const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
   COMPLETED: { dot: 'bg-success', label: 'Completed' },
 };
 
-interface ProjectWithCount extends Project {
-  _count: { drafts: number };
+interface StudioGroup {
+  studioId: string;
+  studioName: string;
+  projects: ProjectWithCount[];
+}
+
+function groupProjectsByStudio(projects: ProjectWithCount[]): StudioGroup[] {
+  const studioMap = new Map<string, StudioGroup>();
+
+  for (const project of projects) {
+    const key = project.studio?.id || project.studioId;
+    const name = project.studio?.name || 'My Studio';
+
+    if (!studioMap.has(key)) {
+      studioMap.set(key, { studioId: key, studioName: name, projects: [] });
+    }
+    studioMap.get(key)!.projects.push(project);
+  }
+
+  // Sort studios alphabetically
+  return Array.from(studioMap.values()).sort((a, b) =>
+    a.studioName.localeCompare(b.studioName)
+  );
 }
 
 export function HomeView() {
   const { setCurrentProject, setActiveTab } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [collapsedStudios, setCollapsedStudios] = useState<Set<string>>(new Set());
+
+  const studioGroups = projects ? groupProjectsByStudio(projects) : [];
 
   function handleOpenProject(project: ProjectWithCount) {
     setCurrentProject(project);
     setActiveTab('scout');
+  }
+
+  function toggleStudioCollapse(studioId: string) {
+    setCollapsedStudios((prev) => {
+      const next = new Set(prev);
+      if (next.has(studioId)) {
+        next.delete(studioId);
+      } else {
+        next.add(studioId);
+      }
+      return next;
+    });
   }
 
   return (
@@ -51,11 +87,11 @@ export function HomeView() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Your Studio
+              Projects
             </h1>
             {!isLoading && projects && (
               <p className="text-sm text-muted-foreground mt-1">
-                {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+                {projects.length} {projects.length === 1 ? 'project' : 'projects'} across {studioGroups.length} {studioGroups.length === 1 ? 'studio' : 'studios'}
               </p>
             )}
           </div>
@@ -85,22 +121,63 @@ export function HomeView() {
           </div>
         )}
 
-        {/* Projects grid */}
+        {/* Projects grouped by studio */}
         {!isLoading && !error && projects && projects.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project, i) => (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05, duration: 0.3 }}
-              >
-                <ProjectCard
-                  project={project}
-                  onOpen={() => handleOpenProject(project)}
-                />
-              </motion.div>
-            ))}
+          <div className="space-y-6">
+            {studioGroups.map((group) => {
+              const isCollapsed = collapsedStudios.has(group.studioId);
+              return (
+                <div key={group.studioId}>
+                  {/* Studio header */}
+                  <button
+                    onClick={() => toggleStudioCollapse(group.studioId)}
+                    className="flex items-center gap-2 mb-3 group/header"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 text-muted-foreground transition-transform duration-200',
+                        isCollapsed && '-rotate-90'
+                      )}
+                    />
+                    <h2 className="text-lg font-semibold tracking-tight">
+                      {group.studioName}
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {group.projects.length} {group.projects.length === 1 ? 'project' : 'projects'}
+                    </span>
+                  </button>
+
+                  {/* Project cards */}
+                  <AnimatePresence initial={false}>
+                    {!isCollapsed && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {group.projects.map((project, i) => (
+                            <motion.div
+                              key={project.id}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: i * 0.05, duration: 0.3 }}
+                            >
+                              <ProjectCard
+                                project={project}
+                                onOpen={() => handleOpenProject(project)}
+                              />
+                            </motion.div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         )}
 

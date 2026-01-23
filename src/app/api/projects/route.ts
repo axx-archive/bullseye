@@ -10,9 +10,13 @@ export async function GET() {
 
   const projects = await db.project.findMany({
     where: { studioId: user.studioId },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { updatedAt: 'desc' },
+    ],
     include: {
       _count: { select: { drafts: true } },
+      studio: { select: { id: true, name: true } },
     },
   });
 

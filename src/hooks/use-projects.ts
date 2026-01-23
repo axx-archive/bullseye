@@ -16,8 +16,9 @@ export const projectKeys = {
 // API RESPONSE TYPES
 // ============================================
 
-interface ProjectWithCount extends Project {
+export interface ProjectWithCount extends Project {
   _count: { drafts: number };
+  studio: { id: string; name: string };
 }
 
 interface ProjectWithDrafts extends Omit<Project, 'drafts'> {
@@ -112,6 +113,7 @@ export function useCreateProject() {
         createdAt: new Date(),
         updatedAt: new Date(),
         _count: { drafts: 0 },
+        studio: { id: '', name: '' },
       };
 
       queryClient.setQueryData<ProjectWithCount[]>(projectKeys.all, (old) => [
