@@ -452,8 +452,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Skeleton base component at src/components/shared/skeleton.tsx uses bg-elevated with animate-pulse. All variant skeletons (ProjectCardSkeleton, ReaderCardSkeleton, ScoreBarSkeleton, ChatMessageSkeleton, TimelineItemSkeleton) match their real component dimensions exactly — same rounded corners, gaps, widths, and layout structure. Existing inline skeletons in view components already follow these patterns."
     },
     {
       "id": "US-025",

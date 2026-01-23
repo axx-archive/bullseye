@@ -593,3 +593,22 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - useMutation's onSuccess callback is the right place to invalidate queries + close edit mode — ensures fresh data replaces stale form values
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-024
+- What was implemented:
+  - Skeleton base component at src/components/shared/skeleton.tsx with bg-elevated and animate-pulse
+  - ProjectCardSkeleton: matches project card (rounded-2xl, p-5, status dot, title bar, logline lines, footer badges)
+  - ReaderCardSkeleton: matches reader card (avatar w-9 h-9 rounded-xl, name, 6 mini scores grid-cols-2, evidence bar, expand trigger)
+  - ScoreBarSkeleton: matches 10-bar ScoreIndicator (label w-[72px], 10 bars with gap-[2px] and rounded-[2px], rating label)
+  - ChatMessageSkeleton: matches chat bubble (avatar w-7 h-7 rounded-lg, agent name, 2-3 text lines varying widths)
+  - TimelineItemSkeleton: matches revisions timeline (dot w-3 h-3 rounded-full at left-2.5 top-4, draft number + badge, date, page count)
+  - All skeletons use rounded corners matching real component radii
+- Files changed:
+  - src/components/shared/skeleton.tsx (new)
+- **Learnings for future iterations:**
+  - Existing inline skeletons in home-view, coverage-view, revisions-view etc. already follow these exact patterns — the shared components are consistent with them
+  - Pre-existing ui/skeleton.tsx uses bg-accent — the shared/skeleton.tsx uses bg-elevated to match the app's actual skeleton usage pattern
+  - ChatMessageSkeleton accepts `lines` prop (2-3) for varying message lengths
+  - All skeleton components are named exports, no default export — import as `{ ProjectCardSkeleton }` etc.
+  - Browser verification not available — manual testing needed
+---
