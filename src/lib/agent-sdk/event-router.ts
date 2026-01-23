@@ -85,6 +85,9 @@ export function routeEvent(event: ScoutSSEEvent, callbacks: EventRouterCallbacks
           content: event.text || '',
           topic: undefined,
           timestamp: new Date(),
+          replyToReaderId: event.replyToReaderId,
+          replyToReaderName: event.replyToReaderName,
+          reactionSentiment: event.reactionSentiment,
         });
       } else if (event.type === 'focus_group_typing') {
         callbacks.onFocusGroupTyping(

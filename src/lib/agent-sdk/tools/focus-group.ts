@@ -200,6 +200,9 @@ export function createFocusGroupTool(emitEvent: EventEmitter, apiKey?: string) {
               speakerType: event.speakerType,
               readerId: event.readerId,
               text: event.content,
+              replyToReaderId: event.replyToReaderId,
+              replyToReaderName: event.replyToReaderName,
+              reactionSentiment: event.reactionSentiment,
             });
           } else if (event.type === 'typing') {
             emitEvent({
@@ -302,6 +305,11 @@ export function createFocusGroupTool(emitEvent: EventEmitter, apiKey?: string) {
               sentiment: msg.sentiment === 'positive' ? 'POSITIVE' as const
                 : msg.sentiment === 'negative' ? 'NEGATIVE' as const
                 : msg.sentiment === 'neutral' ? 'NEUTRAL' as const
+                : null,
+              replyToReaderId: msg.replyToReaderId || null,
+              reactionSentiment: msg.reactionSentiment === 'agrees' ? 'AGREES' as const
+                : msg.reactionSentiment === 'disagrees' ? 'DISAGREES' as const
+                : msg.reactionSentiment === 'builds_on' ? 'BUILDS_ON' as const
                 : null,
               sequenceNumber: index,
             }));

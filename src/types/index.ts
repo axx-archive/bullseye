@@ -237,6 +237,8 @@ export interface ExecutiveEvaluationResult {
 // FOCUS GROUP
 // ============================================
 
+export type ReactionSentiment = 'agrees' | 'disagrees' | 'builds_on';
+
 export interface FocusGroupMessage {
   id: string;
   speakerType: 'moderator' | 'reader' | 'user';
@@ -247,6 +249,11 @@ export interface FocusGroupMessage {
   content: string;
   topic?: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
+
+  // Reader-to-reader reaction fields
+  replyToReaderId?: string;
+  replyToReaderName?: string;
+  reactionSentiment?: ReactionSentiment;
 
   timestamp: Date;
   isStreaming?: boolean;

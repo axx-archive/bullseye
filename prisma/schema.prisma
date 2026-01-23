@@ -340,6 +340,10 @@ model FocusGroupMessage {
   topic                 String?
   sentiment             Sentiment?
 
+  // Reader-to-reader reaction fields
+  replyToReaderId       String?             // Reader being replied to
+  reactionSentiment     ReactionSentiment?  // agrees | disagrees | builds_on
+
   // Ordering
   sequenceNumber        Int
 
@@ -356,6 +360,12 @@ enum SpeakerType {
   MODERATOR   // Scout
   READER
   USER
+}
+
+enum ReactionSentiment {
+  AGREES
+  DISAGREES
+  BUILDS_ON
 }
 
 enum Sentiment {

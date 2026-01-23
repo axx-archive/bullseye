@@ -5,7 +5,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { getReaderById, DEFAULT_READERS } from '../agents/reader-personas';
 import { memoryReadEngine } from '../memory';
 import type { SubAgentMemory } from '../memory';
-import type { FocusGroupMessage, ReaderPerspective, Divergence, CoverageReport } from '@/types';
+import type { FocusGroupMessage, ReaderPerspective, Divergence, CoverageReport, ReactionSentiment } from '@/types';
 
 function getAnthropicClient(apiKey?: string): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -36,6 +36,10 @@ export interface FocusGroupStreamEvent {
   content?: string;
   partial?: string;
   error?: string;
+  // Reader-to-reader reaction fields
+  replyToReaderId?: string;
+  replyToReaderName?: string;
+  reactionSentiment?: 'agrees' | 'disagrees' | 'builds_on';
 }
 
 // ============================================
@@ -106,6 +110,7 @@ export class FocusGroupEngine {
     // Process each question
     for (const question of config.questions) {
       // Each reader responds
+      const roundMessages: FocusGroupMessage[] = [];
       for (const readerId of speakingOrder) {
         const reader = getReaderById(readerId);
         if (!reader) continue;
@@ -141,6 +146,7 @@ export class FocusGroupEngine {
           timestamp: new Date(),
         };
         messages.push(readerMessage);
+        roundMessages.push(readerMessage);
         onEvent({
           type: 'message',
           speaker: reader.name,
@@ -154,12 +160,77 @@ export class FocusGroupEngine {
         await this.delay(500);
       }
 
-      // Moderator synthesis after each question round
+      // Reader-to-reader reaction turns (1-2 rounds)
+      const reactionMessages: FocusGroupMessage[] = [];
+      for (let reactionRound = 0; reactionRound < 2; reactionRound++) {
+        let anyReacted = false;
+        for (const readerId of speakingOrder) {
+          const reader = getReaderById(readerId);
+          if (!reader) continue;
+
+          const perspective = config.readerPerspectives.find((p) => p.readerId === readerId);
+          const otherMessages = roundMessages.filter((m) => m.readerId !== readerId);
+          if (otherMessages.length === 0) continue;
+
+          // Signal typing
+          onEvent({
+            type: 'typing',
+            speaker: reader.name,
+            speakerType: 'reader',
+            readerId,
+          });
+
+          const reaction = await this.generateReactionTurn(
+            reader,
+            perspective,
+            otherMessages,
+            reactionMessages,
+            question
+          );
+
+          if (!reaction) continue; // Reader passed
+
+          anyReacted = true;
+          const reactionMessage: FocusGroupMessage = {
+            id: `msg-${sequenceNumber}`,
+            speakerType: 'reader',
+            readerId,
+            readerName: reader.name,
+            readerColor: reader.color,
+            content: reaction.content,
+            topic: question,
+            replyToReaderId: reaction.replyToReaderId,
+            replyToReaderName: reaction.replyToReaderName,
+            reactionSentiment: reaction.sentiment,
+            timestamp: new Date(),
+          };
+          messages.push(reactionMessage);
+          reactionMessages.push(reactionMessage);
+          onEvent({
+            type: 'message',
+            speaker: reader.name,
+            speakerType: 'reader',
+            readerId,
+            content: reaction.content,
+            replyToReaderId: reaction.replyToReaderId,
+            replyToReaderName: reaction.replyToReaderName,
+            reactionSentiment: reaction.sentiment,
+          });
+          sequenceNumber++;
+          await this.delay(500);
+        }
+
+        // If no one reacted in this round, skip further rounds
+        if (!anyReacted) break;
+      }
+
+      // Moderator synthesis after each question round (includes reactions)
+      const allRoundMessages = [...roundMessages, ...reactionMessages];
       const synthesis = await this.generateModeratorTurn(
         context,
         'synthesis',
         question,
-        messages.slice(-speakingOrder.length)
+        allRoundMessages
       );
 
       const synthesisMessage: FocusGroupMessage = {
@@ -223,6 +294,7 @@ export class FocusGroupEngine {
     const speakingOrder = this.determineSpeakingOrder(config);
 
     for (const question of config.questions) {
+      const roundMessages: FocusGroupMessage[] = [];
       for (const readerId of speakingOrder) {
         const reader = getReaderById(readerId);
         if (!reader) continue;
@@ -259,7 +331,7 @@ export class FocusGroupEngine {
           readerId,
           content: response,
         };
-        messages.push({
+        const readerMsg: FocusGroupMessage = {
           id: `msg-${sequenceNumber++}`,
           speakerType: 'reader',
           readerId,
@@ -268,17 +340,75 @@ export class FocusGroupEngine {
           content: response,
           topic: question,
           timestamp: new Date(),
-        });
+        };
+        messages.push(readerMsg);
+        roundMessages.push(readerMsg);
       }
 
-      // Synthesis
+      // Reader-to-reader reaction turns (1-2 rounds)
+      const reactionMessages: FocusGroupMessage[] = [];
+      for (let reactionRound = 0; reactionRound < 2; reactionRound++) {
+        let anyReacted = false;
+        for (const readerId of speakingOrder) {
+          const reader = getReaderById(readerId);
+          if (!reader) continue;
+
+          const perspective = config.readerPerspectives.find((p) => p.readerId === readerId);
+          const otherMessages = roundMessages.filter((m) => m.readerId !== readerId);
+          if (otherMessages.length === 0) continue;
+
+          yield { type: 'typing', speaker: reader.name, speakerType: 'reader', readerId };
+
+          const reaction = await this.generateReactionTurn(
+            reader,
+            perspective,
+            otherMessages,
+            reactionMessages,
+            question
+          );
+
+          if (!reaction) continue; // Reader passed
+
+          anyReacted = true;
+          const reactionMsg: FocusGroupMessage = {
+            id: `msg-${sequenceNumber++}`,
+            speakerType: 'reader',
+            readerId,
+            readerName: reader.name,
+            readerColor: reader.color,
+            content: reaction.content,
+            topic: question,
+            replyToReaderId: reaction.replyToReaderId,
+            replyToReaderName: reaction.replyToReaderName,
+            reactionSentiment: reaction.sentiment,
+            timestamp: new Date(),
+          };
+          messages.push(reactionMsg);
+          reactionMessages.push(reactionMsg);
+          yield {
+            type: 'message',
+            speaker: reader.name,
+            speakerType: 'reader',
+            readerId,
+            content: reaction.content,
+            replyToReaderId: reaction.replyToReaderId,
+            replyToReaderName: reaction.replyToReaderName,
+            reactionSentiment: reaction.sentiment,
+          };
+        }
+
+        if (!anyReacted) break;
+      }
+
+      // Synthesis (includes reactions)
       yield { type: 'typing', speaker: 'Scout', speakerType: 'moderator' };
 
+      const allRoundMessages = [...roundMessages, ...reactionMessages];
       const synthStream = this.streamModeratorTurn(
         context,
         'synthesis',
         question,
-        messages.slice(-speakingOrder.length)
+        allRoundMessages
       );
 
       let synthesis = '';
@@ -397,14 +527,21 @@ Set the stage briefly, acknowledge the divergence points you noticed in their an
 Keep it concise (2-3 sentences max for the intro, then the question).`;
     } else if (turnType === 'synthesis') {
       const recentContent = recentMessages
-        ?.map((m) => `${m.readerName}: "${m.content}"`)
+        ?.map((m) => {
+          if (m.replyToReaderName && m.reactionSentiment) {
+            return `${m.readerName} (${m.reactionSentiment} with ${m.replyToReaderName}): "${m.content}"`;
+          }
+          return `${m.readerName}: "${m.content}"`;
+        })
         .join('\n\n');
+
+      const hasReactions = recentMessages?.some((m) => m.replyToReaderId);
 
       prompt = `Synthesize what the readers just said:
 
 ${recentContent}
 
-Briefly summarize the key points of agreement and disagreement (1-2 sentences), then transition to a follow-up or the next topic.`;
+${hasReactions ? 'Note the reader-to-reader exchanges — acknowledge where they agreed, disagreed, or built on each other\'s points. ' : ''}Briefly summarize the key points of agreement and disagreement (1-2 sentences), then transition to a follow-up or the next topic.`;
     } else {
       prompt = `Close the focus group with a brief summary of the most important insights that emerged from the discussion. Thank the readers and indicate the session is complete.
 
@@ -436,10 +573,16 @@ Keep it to 2-3 sentences.`;
 Set the stage briefly, acknowledge the divergence points you noticed in their analyses, and pose the opening question to a specific reader. Keep it concise.`;
     } else if (turnType === 'synthesis') {
       const recentContent = recentMessages
-        ?.map((m) => `${m.readerName}: "${m.content}"`)
+        ?.map((m) => {
+          if (m.replyToReaderName && m.reactionSentiment) {
+            return `${m.readerName} (${m.reactionSentiment} with ${m.replyToReaderName}): "${m.content}"`;
+          }
+          return `${m.readerName}: "${m.content}"`;
+        })
         .join('\n\n');
 
-      prompt = `Synthesize what the readers just said:\n\n${recentContent}\n\nBriefly summarize, then transition.`;
+      const hasReactions = recentMessages?.some((m) => m.replyToReaderId);
+      prompt = `Synthesize what the readers just said:\n\n${recentContent}\n\n${hasReactions ? 'Acknowledge the reader-to-reader exchanges. ' : ''}Briefly summarize, then transition.`;
     } else {
       prompt = `Close the focus group with a brief summary. Keep it to 2-3 sentences.`;
     }
@@ -516,6 +659,123 @@ Synopsis: ${this.scriptContext.synopsis}`;
 
     const textContent = response.content.find((c) => c.type === 'text');
     return textContent?.type === 'text' ? textContent.text : '';
+  }
+
+  private async generateReactionTurn(
+    reader: (typeof DEFAULT_READERS)[0],
+    perspective: ReaderPerspective | undefined,
+    otherMessages: FocusGroupMessage[],
+    priorReactions: FocusGroupMessage[],
+    question: string
+  ): Promise<{ content: string; replyToReaderId: string; replyToReaderName: string; sentiment: ReactionSentiment } | null> {
+    const otherResponses = otherMessages
+      .map((m) => `${m.readerName}: "${m.content}"`)
+      .join('\n\n');
+
+    const priorReactionContext = priorReactions.length > 0
+      ? `\nPrevious reactions in this round:\n${priorReactions.map((m) => `${m.readerName} (${m.reactionSentiment} with ${m.replyToReaderName}): "${m.content}"`).join('\n')}\n`
+      : '';
+
+    const targetReaderNames = otherMessages
+      .map((m) => m.readerName)
+      .filter(Boolean)
+      .join(', ');
+
+    const prompt = `You are in a focus group discussion about: "${question}"
+
+The other readers just shared their thoughts:
+
+${otherResponses}
+${priorReactionContext}
+If you feel strongly about what another reader said, respond directly to them. You may:
+- AGREE with a specific point and add to it
+- DISAGREE with a specific point and explain why
+- BUILD ON a specific idea with new insight
+
+If you have nothing compelling to add, respond with exactly: PASS
+
+IMPORTANT FORMAT: If you DO respond, your first line must be exactly one of:
+AGREES_WITH: [Reader Name]
+DISAGREES_WITH: [Reader Name]
+BUILDS_ON: [Reader Name]
+
+Where [Reader Name] is one of: ${targetReaderNames}
+
+Then write your reaction (2-3 sentences). Reference specific script details. Stay in character as ${reader.name} (${reader.displayName}).`;
+
+    // Build system prompt with script context
+    let systemPrompt = reader.systemPromptBase;
+    if (this.scriptContext) {
+      systemPrompt += `\n\nSCRIPT CONTEXT (for reference during discussion):
+Title: "${this.scriptContext.title}" by ${this.scriptContext.author}
+Logline: ${this.scriptContext.logline}
+Synopsis: ${this.scriptContext.synopsis}`;
+    }
+
+    if (perspective) {
+      systemPrompt += `\n\nYour perspective: Overall ${perspective.scores.overall} (${perspective.scores.overallNumeric}/100), recommend: ${perspective.recommendation}`;
+    }
+
+    const response = await getAnthropicClient(this.apiKey).messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const textContent = response.content.find((c) => c.type === 'text');
+    const text = textContent?.type === 'text' ? textContent.text.trim() : '';
+
+    // Check for PASS
+    if (!text || text === 'PASS' || text.startsWith('PASS')) {
+      return null;
+    }
+
+    // Parse the reaction format
+    const lines = text.split('\n');
+    const firstLine = lines[0].trim();
+    let sentiment: ReactionSentiment = 'builds_on';
+    let targetReaderName = '';
+
+    if (firstLine.startsWith('AGREES_WITH:')) {
+      sentiment = 'agrees';
+      targetReaderName = firstLine.replace('AGREES_WITH:', '').trim();
+    } else if (firstLine.startsWith('DISAGREES_WITH:')) {
+      sentiment = 'disagrees';
+      targetReaderName = firstLine.replace('DISAGREES_WITH:', '').trim();
+    } else if (firstLine.startsWith('BUILDS_ON:')) {
+      sentiment = 'builds_on';
+      targetReaderName = firstLine.replace('BUILDS_ON:', '').trim();
+    } else {
+      // If the reader didn't follow the format, treat as builds_on targeting the first other reader
+      targetReaderName = otherMessages[0]?.readerName || '';
+      // Use the full text as content
+      const targetMessage = otherMessages.find((m) => m.readerName === targetReaderName);
+      return {
+        content: text,
+        replyToReaderId: targetMessage?.readerId || otherMessages[0]?.readerId || '',
+        replyToReaderName: targetReaderName,
+        sentiment,
+      };
+    }
+
+    // Get the content (everything after the first line)
+    const content = lines.slice(1).join('\n').trim();
+    if (!content) return null;
+
+    // Find the target reader's message
+    const targetMessage = otherMessages.find((m) =>
+      m.readerName?.toLowerCase() === targetReaderName.toLowerCase()
+    );
+    const replyToReaderId = targetMessage?.readerId || otherMessages[0]?.readerId || '';
+    const resolvedName = targetMessage?.readerName || targetReaderName;
+
+    return {
+      content,
+      replyToReaderId,
+      replyToReaderName: resolvedName,
+      sentiment,
+    };
   }
 
   private async *streamReaderTurn(
