@@ -55,6 +55,39 @@ function groupProjectsByStudio(projects: ProjectWithCount[]): StudioGroup[] {
   );
 }
 
+const EVALUATION_STATUS_CONFIG = {
+  UNDER_CONSIDERATION: { label: 'Under Consideration', className: 'text-amber-500' },
+  APPROVED: { label: 'Approved', className: 'text-green-500' },
+  REJECTED: { label: 'Rejected', className: 'text-red-400/70' },
+} as const;
+
+function StudioStats({ projects }: { projects: ProjectWithCount[] }) {
+  const counts = { UNDER_CONSIDERATION: 0, APPROVED: 0, REJECTED: 0 };
+  for (const project of projects) {
+    const status = project.evaluationStatus || 'UNDER_CONSIDERATION';
+    if (status in counts) {
+      counts[status as keyof typeof counts]++;
+    }
+  }
+
+  const entries = Object.entries(counts).filter(([, count]) => count > 0);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-3 mb-3 ml-6">
+      {entries.map(([status, count]) => {
+        const config = EVALUATION_STATUS_CONFIG[status as keyof typeof EVALUATION_STATUS_CONFIG];
+        return (
+          <span key={status} className="flex items-center gap-1 text-xs">
+            <span className={cn('font-medium', config.className)}>{count}</span>
+            <span className="text-muted-foreground">{config.label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function HomeView() {
   const { setCurrentProject, setActiveTab } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
@@ -146,6 +179,11 @@ export function HomeView() {
                       {group.projects.length} {group.projects.length === 1 ? 'project' : 'projects'}
                     </span>
                   </button>
+
+                  {/* Studio stat cards */}
+                  {!isCollapsed && group.projects.length > 0 && (
+                    <StudioStats projects={group.projects} />
+                  )}
 
                   {/* Project cards */}
                   <AnimatePresence initial={false}>
