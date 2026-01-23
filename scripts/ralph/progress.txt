@@ -152,3 +152,19 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - The PATCH route validates allowed fields explicitly and builds updateData dynamically — extendable for future fields
   - `useUpdateProject` hook is generic (accepts any updatable field) — reusable for rename, status changes, etc.
 ---
+
+## 2026-01-23 - US-009
+- Added context menu (MoreVertical kebab icon) to ProjectCard with "Rename" option
+- Implemented inline edit mode: title becomes an input field with current value, auto-focused and selected
+- Enter saves, Escape cancels, blur (click away) saves
+- Empty names rejected with red border and error message — does not submit
+- Uses existing `useUpdateProject` hook to PATCH title — React Query cache invalidates on success
+- Card click navigation disabled during edit mode to prevent accidental navigation
+- Context menu kebab icon and ChevronRight grouped together in top-right corner
+- Files changed: src/components/home/home-view.tsx
+- **Learnings for future iterations:**
+  - `MoreVertical` (kebab) and `Pencil` icons from lucide-react for context menu pattern
+  - For inline edit on blur, be careful with onBlur + button clicks — onBlur fires before onClick. Use `onBlur` for save-on-click-away behavior.
+  - When disabling parent `onClick` during edit mode, conditionally set `onClick={isEditing ? undefined : onOpen}`
+  - DropdownMenuTrigger with `opacity-0 group-hover:opacity-100` provides show-on-hover behavior for context menus
+---

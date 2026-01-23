@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
 import { useProjects, useUpdateProject, type ProjectWithCount } from '@/hooks/use-projects';
@@ -11,6 +11,8 @@ import {
   ChevronRight,
   Layers,
   Target,
+  MoreVertical,
+  Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
@@ -322,13 +324,60 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
   const draftCount = project._count?.drafts ?? 0;
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
   const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(project.title);
+  const [editError, setEditError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { mutate: updateProject } = useUpdateProject();
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  function handleStartRename() {
+    setEditValue(project.title);
+    setEditError(false);
+    setIsEditing(true);
+  }
+
+  function handleSaveRename() {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setEditError(true);
+      return;
+    }
+    if (trimmed !== project.title) {
+      updateProject({ id: project.id, title: trimmed });
+    }
+    setIsEditing(false);
+    setEditError(false);
+  }
+
+  function handleCancelRename() {
+    setIsEditing(false);
+    setEditValue(project.title);
+    setEditError(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelRename();
+    }
+  }
 
   return (
     <div
-      onClick={onOpen}
+      onClick={isEditing ? undefined : onOpen}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
+      onKeyDown={(e) => { if (!isEditing && (e.key === 'Enter' || e.key === ' ')) onOpen(); }}
       className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer"
     >
       <div className="flex items-start justify-between mb-3">
@@ -338,10 +387,58 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
             {FORMAT_LABELS[project.format] || project.format}
           </span>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out" />
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-elevated/50 transition-all"
+                aria-label="Project actions"
+              >
+                <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStartRename();
+                }}
+                className="flex items-center gap-2"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Rename
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out" />
+        </div>
       </div>
 
-      <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>
+      {isEditing ? (
+        <div className="mb-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => {
+              setEditValue(e.target.value);
+              if (e.target.value.trim()) setEditError(false);
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSaveRename}
+            className={cn(
+              'w-full text-sm font-semibold bg-elevated/50 rounded px-2 py-1 outline-none border',
+              editError ? 'border-red-500' : 'border-border focus:border-bullseye-gold'
+            )}
+          />
+          {editError && (
+            <p className="text-[10px] text-red-500 mt-0.5">Name cannot be empty</p>
+          )}
+        </div>
+      ) : (
+        <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>
+      )}
       {project.logline && (
         <p className="text-xs text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
           {project.logline}
