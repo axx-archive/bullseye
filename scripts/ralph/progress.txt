@@ -993,3 +993,31 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The StudioSwitcherDropdown and studio state (currentStudio, studios) remain in app-shell — only the Settings entry point was removed
   - TAB_LABELS is used by the context bar heading — removing entries won't cause errors since it falls back to the raw activeTab value
 ---
+
+## 2026-01-23 - US-008 (user-customization branch)
+- Implemented Studio Config view accessible via studio switcher dropdown
+- Added `isStudioConfigOpen` (boolean) and `previousTab` (TabId | null) to Zustand UIState
+- `openStudioConfig()` saves current tab and sets isStudioConfigOpen to true
+- `closeStudioConfig()` restores previousTab and sets isStudioConfigOpen to false
+- StudioSwitcherDropdown onSelect now calls openStudioConfig() instead of navigating to Home
+- page.tsx renders StudioView when isStudioConfigOpen is true (overrides normal tab content)
+- Context bar shows "Studio Config" heading with ArrowLeft back button and studio name badge
+- Nav rail shows Building2 icon with "Studio Config" tooltip and gold indicator when active
+- Home and project tab nav indicators suppressed when studio config is open
+- Clicking any nav tab while in studio config closes it and navigates to that tab
+- Studio name updates reactively: SettingsSection's saveMutation.onSuccess calls updateStudio() to update Zustand store
+- Studio switcher tooltip changed to "Studios" per AC
+- AnimatePresence key uses 'studioConfig' when open for proper transition
+- isStudioConfigOpen is NOT persisted (resets on page refresh) — transient UI state
+- Files changed:
+  - src/stores/app-store.ts (modified — added isStudioConfigOpen, previousTab, openStudioConfig, closeStudioConfig)
+  - src/components/layout/app-shell.tsx (modified — added Building2/ArrowLeft imports, studio config context bar, nav indicator, close behavior)
+  - src/app/page.tsx (modified — added StudioView import, renders when isStudioConfigOpen is true)
+  - src/components/studio/studio-view.tsx (modified — SettingsSection updates Zustand on studio name save)
+- **Learnings for future iterations:**
+  - Using a Zustand flag (isStudioConfigOpen) is simpler than adding 'studioConfig' to the TabId union — avoids changing route types and persistent state shape
+  - previousTab pattern: save the current tab before opening overlay view, restore on close — cleaner than always going to 'home'
+  - Studio name reactivity requires updating BOTH React Query cache (studioKeys.studio) and Zustand store (updateStudio) since the switcher reads from Zustand
+  - layoutId="nav-indicator" must be unique within a render — conditionally rendering the Building2 indicator prevents conflicts with Home/project tab indicators
+  - Browser verification not available — manual testing needed
+---
