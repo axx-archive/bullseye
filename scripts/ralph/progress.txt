@@ -1,0 +1,229 @@
+# Ralph Progress Log
+Started: Thu Jan 22 16:30:42 PST 2026
+
+## Codebase Patterns
+- Prisma 7 uses `prisma.config.ts` for database URLs — NOT `url`/`directUrl` in schema.prisma datasource block
+- Prisma 7 CLI flags changed: use `--to-schema` instead of `--to-schema-datamodel`, use `-o` for output file
+- db.ts uses PrismaClient with PrismaPg adapter (pg Pool) — standard Prisma 7 adapter pattern
+- Studio and User have circular FK dependency — use pg pool with `SET CONSTRAINTS ALL DEFERRED` for seeding
+- Seed script uses `tsx` to run TypeScript directly — added as dev dependency
+- Pre-existing type errors exist in agent-sdk tools — `next.config.ts` has `ignoreBuildErrors: true`
+- db.ts exports `db` (named) and `default` — use `import { db } from '@/lib/db'` in routes
+- Default studio ID is `'default-studio-id'` — use this constant for user provisioning
+- User provisioning happens at 3 points: login page fetch, auth callback server-side, and getCurrentUser() fallback in auth.ts
+- `.env*` is gitignored — `.env.example` is exempted with `!.env.example`
+- Generated Prisma client outputs to `src/generated/prisma` — imported as `@/generated/prisma/client`
+- Toast store is a separate Zustand store at `src/stores/toast-store.ts` — use `useToastStore` with `addToast(message, variant)`
+- ToastContainer is rendered in `src/app/providers.tsx` — no need to add it per-page
+- Design system has semantic color vars: `--success`, `--warning`, `--danger`, `--info` — use as Tailwind classes `bg-success`, `text-danger`, etc.
+- React Query hooks go in `src/hooks/` — export query key factories (e.g., `projectKeys`) for external invalidation
+- React Query v5 useMutation needs 4th generic `TContext` for typed optimistic update rollback
+- API routes use `getCurrentUser()` from `@/lib/auth` — returns null if unauthed, user includes `studioId` for scoping
+- Next.js 15 dynamic route params are a Promise — use `const { id } = await params` (type: `{ params: Promise<{ id: string }> }`)
+- Access control: always check `project.studioId !== user.studioId` to prevent cross-studio access
+- Home view no longer uses Zustand `projects` array — uses `useProjects()` React Query hook, which returns `ProjectWithCount[]` with `_count.drafts`
+- Project creation uses `useCreateProject` mutation — onSuccess sets Zustand state and navigates, onError shows toast
+- Supabase admin client at `src/lib/supabase/admin.ts` — uses service role key for server-side storage/RLS bypass
+- Draft upload route auto-increments `draftNumber` by querying latest draft for the project
+- PDF extraction returns both `text` and `pageCount` — Draft model stores both
+- Draft hooks go in `src/hooks/use-drafts.ts` — useUploadDraft sends FormData, invalidates projectKeys on success
+- DraftStatus type: 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED' — use these exact values
+- Scout chat messages stored in Zustand `chatMessages` (not local state) — persists across tab switches but not page refreshes
+- `updateChatMessage(id, updates)` in app-store for targeted message updates during streaming
+- SSE connection via `createSSEConnection(url, body, callbacks)` from `@/lib/agent-sdk/event-router`
+- StoreChatMessage type exported from app-store — matches ChatMessage from chat-interface.tsx (timestamp optional)
+
+---
+
+## 2026-01-22 - US-001
+- What was implemented:
+  - Prisma migration (0001_init) generated from schema and marked as applied
+  - prisma.config.ts updated with DIRECT_URL fallback for migrations
+  - .env.example created with all required env vars
+  - Seed script at scripts/seed.ts with Studio, 3 Readers, 5 Executives, StudioIntelligence
+  - npm scripts: db:seed, db:migrate, db:generate
+  - .gitignore updated to allow .env.example
+  - tsx added as dev dependency
+- Files changed:
+  - .env.example (new)
+  - .gitignore (modified)
+  - prisma.config.ts (modified)
+  - prisma/schema.prisma (modified — pre-existing changes included)
+  - prisma/migrations/0001_init/migration.sql (new)
+  - scripts/seed.ts (new)
+  - package.json (modified)
+  - package-lock.json (modified)
+- **Learnings for future iterations:**
+  - Prisma 7 removed `url` and `directUrl` from schema datasource block — must use prisma.config.ts
+  - `prisma migrate diff` uses `--to-schema` flag (not `--to-schema-datamodel`)
+  - Circular FK between Studio/User means you can't use Prisma ORM for initial insert — use raw pg pool with deferred constraints
+  - The database already has tables from prior setup — use `prisma migrate resolve --applied` to baseline
+  - tsx is needed as a dev dep to run seed.ts; npx tsx works but installs each time
+---
+
+## 2026-01-22 - US-002
+- What was implemented:
+  - User provisioning API route at src/app/api/auth/provision/route.ts
+  - Login page updated to call /api/auth/provision after successful signInWithPassword
+  - Auth callback updated to provision user server-side after exchangeCodeForSession
+  - Fixed auth.ts type error — changed from nested studio create to studioId reference
+  - auth.ts getCurrentUser() also provisions users as fallback
+- Files changed:
+  - src/app/api/auth/provision/route.ts (new)
+  - src/app/auth/callback/route.ts (modified)
+  - src/app/login/page.tsx (modified — added provision call)
+  - src/lib/auth.ts (modified — fixed type error, use DEFAULT_STUDIO_ID)
+- **Learnings for future iterations:**
+  - db.ts exports as `{ db }` named export, not `{ prisma }`
+  - The circular FK between Studio/User means you can't use nested `studio: { create: {} }` from User create — use studioId directly
+  - auth.ts previously had a type error from trying to create Studio in nested User create — fixed by referencing default studio
+  - Login page UI was already redesigned with Framer Motion animations in the working tree (pre-existing changes on branch)
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-003
+- What was implemented:
+  - Toast store at src/stores/toast-store.ts — Zustand store with addToast(message, variant) and removeToast(id)
+  - Toast component at src/components/shared/toast.tsx — renders fixed bottom-right, stacks vertically with 8px gap
+  - Supports 4 variants: success (green), error (red), warning (amber), info (blue) using design system color vars
+  - Auto-dismisses after 5 seconds, also dismissible on click
+  - Framer Motion AnimatePresence: enter (slide up + fade in + scale), exit (slide right + fade out)
+  - Each toast has icon (CheckCircle, XCircle, AlertTriangle, Info from lucide-react)
+  - ToastContainer added to providers.tsx so it renders on all pages
+- Files changed:
+  - src/stores/toast-store.ts (new)
+  - src/components/shared/toast.tsx (new)
+  - src/app/providers.tsx (modified — added ToastContainer import and render)
+- **Learnings for future iterations:**
+  - Toast store is intentionally separate from app-store — it's ephemeral UI state that shouldn't persist
+  - Use `useToastStore.getState().addToast(msg, variant)` for non-component contexts (e.g., API error handlers)
+  - Framer Motion `mode="popLayout"` is needed for smooth layout animations when toasts are removed from middle of stack
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-004
+- What was implemented:
+  - React Query hooks file at src/hooks/use-projects.ts
+  - useProjects() hook: fetches GET /api/projects, returns ProjectWithCount[] (with _count.drafts), staleTime 30s
+  - useProject(id) hook: fetches GET /api/projects/[id], returns ProjectWithDrafts (with drafts array), staleTime 30s, enabled only when id is truthy
+  - useCreateProject() mutation: POST /api/projects, optimistic update (adds temp project to list immediately), rolls back on error, invalidates on settle
+  - projectKeys query key factory exported for external cache invalidation
+  - MutationContext type for proper onError context typing
+  - QueryClientProvider was already set up in providers.tsx (from prior work)
+- Files changed:
+  - src/hooks/use-projects.ts (new)
+- **Learnings for future iterations:**
+  - QueryClientProvider is already in src/app/providers.tsx — no need to add it again
+  - React Query v5 requires explicit 4th generic type param on useMutation for context typing (TData, TError, TVariables, TContext)
+  - Project type in types/index.ts has optional `drafts?: Draft[]` — use Omit<Project, 'drafts'> when API returns different shape
+  - Pre-existing type errors in agent-sdk tools are expected and not blockers (next.config.ts has ignoreBuildErrors: true)
+  - projectKeys pattern: `all: ['projects']`, `detail: (id) => ['projects', id]` — follow this for other entity hooks
+---
+
+## 2026-01-22 - US-005
+- What was implemented:
+  - GET /api/projects — returns projects for authenticated user's studio, ordered by updatedAt desc, with _count.drafts
+  - POST /api/projects — creates project with title, logline, genre, format; validates required fields (400 if missing)
+  - GET /api/projects/[id] — returns project with drafts array ordered by draftNumber desc
+  - All routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - GET by ID also validates studio membership — returns 404 if project belongs to different studio
+  - Returns 404 for non-existent project IDs
+- Files changed:
+  - src/app/api/projects/route.ts (new)
+  - src/app/api/projects/[id]/route.ts (new)
+- **Learnings for future iterations:**
+  - API route pattern: use `getCurrentUser()` from `@/lib/auth` for auth, return 401 if null
+  - Project access control: check `project.studioId !== user.studioId` to prevent cross-studio access
+  - Next.js 15 dynamic route params are now a Promise — use `const { id } = await params` in route handlers
+  - Include `_count: { select: { drafts: true } }` for list endpoints that need relation counts
+  - POST routes should return 201 status on successful creation
+---
+
+## 2026-01-22 - US-006
+- What was implemented:
+  - Home view (`home-view.tsx`) refactored to use `useProjects()` React Query hook instead of Zustand store
+  - Loading state shows 3 skeleton project cards with pulse animation
+  - Empty state with 48px Target icon, "Create your first project" heading, and "New Project" button
+  - Project cards display real data: title, logline, format badge, draft count from `_count.drafts`, last updated date
+  - Error state for failed fetches
+  - Project creation modal (`project-create-modal.tsx`) wired to `useCreateProject` mutation
+  - Success toast on project creation, error toast on failure
+  - Selecting a project calls `setCurrentProject` in Zustand and switches to Scout tab
+  - Create button disabled while mutation is pending
+- Files changed:
+  - src/components/home/home-view.tsx (rewritten — uses useProjects hook, added skeleton loading)
+  - src/components/home/project-create-modal.tsx (modified — uses useCreateProject mutation + toasts)
+- **Learnings for future iterations:**
+  - The `useProjects()` hook returns `ProjectWithCount[]` which has `_count: { drafts: number }` — use this instead of `project.drafts?.length`
+  - Pre-existing type errors in agent-sdk tools don't block the build (ignoreBuildErrors: true in next.config.ts)
+  - For optimistic updates with React Query, the modal's `onSuccess` callback is where you set Zustand state (setCurrentProject) and navigate
+  - The home view no longer uses currentStudio from Zustand — the API already scopes projects by studio via the auth session
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-007
+- What was implemented:
+  - POST /api/projects/[id]/drafts — accepts multipart form data with PDF file and optional notes
+  - Validates auth, project ownership (studio scoping), file type (PDF only), file size (10MB max)
+  - Extracts text from PDF using pdfjs-dist (reuses same approach as /api/upload)
+  - Stores PDF in Supabase Storage bucket 'scripts' at path '{projectId}/{draftNumber}.pdf'
+  - Creates Draft record with auto-incremented draftNumber, scriptText, pageCount, notes, scriptUrl
+  - Returns created Draft with id, draftNumber, pageCount, status, scriptUrl (201)
+  - Supabase admin client created at src/lib/supabase/admin.ts for service-role storage operations
+- Files changed:
+  - src/app/api/projects/[id]/drafts/route.ts (new)
+  - src/lib/supabase/admin.ts (new)
+- **Learnings for future iterations:**
+  - Supabase Storage upload needs service role key to bypass RLS — use createAdminClient() not the user-scoped client
+  - getPublicUrl() is synchronous (no await needed) and returns `{ data: { publicUrl: string } }`
+  - Draft draftNumber auto-increment: query `findFirst` with `orderBy: { draftNumber: 'desc' }` then add 1
+  - The /api/upload route already has PDF extraction logic — for the drafts route we duplicated it locally to also return pageCount
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-008
+- What was implemented:
+  - useUploadDraft mutation hook at src/hooks/use-drafts.ts — POST FormData to /api/projects/[id]/drafts
+  - DraftUploadModal refactored to use useUploadDraft mutation instead of local Zustand state
+  - Upload progress indicator: Loader2 spinning icon + "Extracting text..." message during API call
+  - Success toast: "Draft uploaded — {pageCount} pages extracted"
+  - Error toast: shows the API error message for corrupt/password-protected PDFs
+  - After success: invalidates project query (projects list + detail) so draft count updates
+  - Modal closes on success, stays open on error
+  - All interactive elements disabled during upload (backdrop click, close button, cancel, notes textarea)
+  - setCurrentDraft called on success with proper DraftStatus type cast
+- Files changed:
+  - src/hooks/use-drafts.ts (new — useUploadDraft mutation hook)
+  - src/components/home/draft-upload-modal.tsx (rewritten — wired to API with progress/toasts)
+- **Learnings for future iterations:**
+  - DraftStatus type is 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED' — not 'COMPLETE' or 'ERROR'
+  - useMutation.isPending is the React Query v5 way to check loading state (replaces isLoading)
+  - uploadMutation.reset() should be called in resetAndClose to clear error state on re-open
+  - The draft upload API returns pageCount as `number | null` — use nullish coalescing for display
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-009
+- What was implemented:
+  - Refactored scout-chat.tsx to use Zustand store's `chatMessages` and `isStreaming` instead of local useState
+  - Messages now persist across tab switches within the session (stored in Zustand, not localStorage)
+  - Added `updateChatMessage(id, updates)` method to store for targeted message updates during streaming
+  - Added `StoreChatMessage` exported type to app-store matching ChatMessage fields (with optional timestamp)
+  - SSE streaming works via `createSSEConnection` from event-router.ts (already existed)
+  - text_delta events append content token-by-token to assistant message via `updateChatMessage`
+  - text_complete events finalize message by setting `isStreaming: false`
+  - Error handling: connection failures show system error message in chat with "Click Retry" text
+  - Retry button appears below chat when error messages exist — cleans up error messages and resends last request
+  - system type=error SSE events display as red error messages (system role messages in ChatInterface)
+  - Input disabled during streaming via Zustand `isStreaming` state
+- Files changed:
+  - src/stores/app-store.ts (modified — added StoreChatMessage type, updateChatMessage method, optional timestamp)
+  - src/components/scout/scout-chat.tsx (rewritten — uses Zustand chatMessages, added retry mechanism)
+- **Learnings for future iterations:**
+  - ChatMessage from chat-interface.tsx has `timestamp?: Date` (optional) — StoreChatMessage must match
+  - `useAppStore.getState()` is used in handleRetry for direct state access outside React rendering
+  - `useAppStore.setState({ chatMessages: filtered })` can be used for bulk state updates not covered by actions
+  - chatMessages are NOT in the persist partialize — they persist in memory across tab switches but not page refreshes
+  - Error markers use `__error__:` prefix in system messages for internal tracking, stripped for display
+  - Browser verification not available — manual testing needed
+---

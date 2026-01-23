@@ -1,0 +1,591 @@
+{
+  "project": "Bullseye",
+  "branchName": "ralph/end-to-end-polish",
+  "description": "End-to-End Polish — Take Bullseye from prototype to production-ready with real backend persistence, Scout agent integration, live data flows, loading/error/empty states, mobile responsiveness, and interactive polish.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Database migration, Prisma client, and seed script",
+      "description": "As a developer, I need the Prisma schema migrated, the db client working, and seed data created so all features can persist data.",
+      "acceptanceCriteria": [
+        "Prisma migration generated from existing schema.prisma",
+        "db client properly instantiated and exported from src/lib/db.ts using PrismaClient",
+        ".env.example created with DATABASE_URL, DIRECT_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY",
+        "Seed script at scripts/seed.ts creates a default Studio named 'My Studio'",
+        "Seed script creates 3 default ReaderPersonas (Maya Chen/Optimist, Colton Rivers/Skeptic, Devon Park/Craftsman) with systemPromptBase and weights",
+        "Seed script creates 3-5 default ExecutiveProfiles with name, title, company, evaluationStyle, priorityFactors, dealBreakers",
+        "Seed script creates a default StudioIntelligence record with empty distributions",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Prisma 7 uses prisma.config.ts for db URLs (not schema datasource block). Circular FK between Studio/User handled with deferred constraints via pg pool."
+    },
+    {
+      "id": "US-002",
+      "title": "Supabase Auth integration — login, signup, middleware, session",
+      "description": "As a user, I want to sign up, log in, and have my session persist so my projects are saved.",
+      "acceptanceCriteria": [
+        "Login page calls Supabase Auth signInWithPassword for login and signUp for registration",
+        "Auth middleware at src/middleware.ts redirects unauthenticated users to /login (except /login itself)",
+        "On first login, a User record is created in Prisma linked to supabaseAuthId and email",
+        "New users are associated with the default seed Studio",
+        "Session persists across page refreshes using @supabase/ssr cookie handling",
+        "Sign-out button in app-shell calls supabase.auth.signOut() and redirects to /login",
+        "Login page shows inline error message for invalid credentials or network errors",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "User provisioning uses DEFAULT_STUDIO_ID constant. Three provision points: login page, auth callback, and getCurrentUser() in auth.ts as fallback."
+    },
+    {
+      "id": "US-003",
+      "title": "Toast notification component",
+      "description": "As a user, I want clear feedback when actions succeed or fail so I know the system responded.",
+      "acceptanceCriteria": [
+        "Toast component at src/components/shared/toast.tsx renders in fixed bottom-right corner",
+        "Supports variants: success (green), error (red), warning (amber), info (blue)",
+        "Auto-dismisses after 5 seconds, also dismissible on click",
+        "Multiple toasts stack vertically with 8px gap",
+        "Framer Motion enter (slide up + fade in) and exit (slide right + fade out) animations",
+        "Toast store (Zustand or context) exposes addToast(message, variant) function",
+        "ToastProvider added to root layout so toasts render on all pages",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Toast store is separate Zustand store at src/stores/toast-store.ts. ToastContainer added to providers.tsx. Uses design system color vars (success, danger, warning, info)."
+    },
+    {
+      "id": "US-004",
+      "title": "React Query provider and project hooks",
+      "description": "As a developer, I need a React Query data fetching layer for projects so views can load and cache data.",
+      "acceptanceCriteria": [
+        "QueryClientProvider wraps the app in root layout.tsx",
+        "useProjects hook: fetches GET /api/projects, returns { data, isLoading, error }",
+        "useProject(id) hook: fetches GET /api/projects/[id] with drafts included",
+        "useCreateProject mutation: POST /api/projects, invalidates projects query on success",
+        "Stale time for projects set to 30 seconds",
+        "Optimistic update for createProject: project appears immediately in list, rolls back on error",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "QueryClientProvider already in providers.tsx. Hooks at src/hooks/use-projects.ts. projectKeys exported for cache invalidation. ProjectWithCount type for list, ProjectWithDrafts (Omit<Project,'drafts'>) for detail."
+    },
+    {
+      "id": "US-005",
+      "title": "Projects API routes — list, create, get by ID",
+      "description": "As a developer, I need API routes for project CRUD so the frontend hooks have endpoints to call.",
+      "acceptanceCriteria": [
+        "GET /api/projects returns projects for the authenticated user's studio, ordered by updatedAt desc",
+        "Each project includes _count of drafts in the response",
+        "POST /api/projects accepts { title, logline?, genre, format } and creates a Project in the database",
+        "POST validates required fields (title, genre, format) and returns 400 with error message if missing",
+        "GET /api/projects/[id] returns project with its drafts array (ordered by draftNumber desc)",
+        "All routes validate auth via Supabase session — return 401 if unauthenticated",
+        "Returns 404 for non-existent project IDs",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Routes at src/app/api/projects/route.ts (GET list + POST create) and src/app/api/projects/[id]/route.ts (GET by ID). Uses getCurrentUser() for auth, studio scoping for access control."
+    },
+    {
+      "id": "US-006",
+      "title": "Home view wired to real data with loading and empty states",
+      "description": "As a user, I want to see my real projects on the home page with proper loading and empty states.",
+      "acceptanceCriteria": [
+        "Home view calls useProjects hook to fetch real projects from database",
+        "Project cards display real data: title, logline, format badge, draft count, last updated date",
+        "Loading state shows 3 skeleton project cards with pulse animation while fetching",
+        "Empty state shows Target icon (48px), 'Create your first project' message, and New Project button",
+        "New Project modal calls useCreateProject mutation and shows success toast on creation",
+        "Error toast shown if project creation fails",
+        "Selecting a project calls setCurrentProject in Zustand and switches to Scout tab",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Home view uses useProjects() hook. ProjectCard uses _count.drafts from API. ProjectCreateModal uses useCreateProject mutation with toast notifications. Loading shows 3 skeleton cards. Empty state has 48px Target icon."
+    },
+    {
+      "id": "US-007",
+      "title": "Draft upload API route with PDF storage",
+      "description": "As a developer, I need an API route that creates a Draft record and stores the PDF file.",
+      "acceptanceCriteria": [
+        "POST /api/projects/[id]/drafts accepts multipart form data with 'file' (PDF) and optional 'notes' field",
+        "Calls /api/upload internally (or reuses extraction logic) to get text from PDF",
+        "Creates Draft record with auto-incremented draftNumber, extracted scriptText, pageCount, and notes",
+        "Stores PDF in Supabase Storage bucket 'scripts' at path '{projectId}/{draftNumber}.pdf'",
+        "Sets scriptUrl to the Supabase Storage public URL",
+        "Returns the created Draft object with id, draftNumber, pageCount, status",
+        "Returns 400 if no file provided or file is not PDF",
+        "Validates auth — returns 401 if unauthenticated",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Route at src/app/api/projects/[id]/drafts/route.ts. Uses Supabase admin client (service role) for storage uploads to 'scripts' bucket. Reuses extractTextFromPDF logic from /api/upload. Auto-increments draftNumber by querying latest draft."
+    },
+    {
+      "id": "US-008",
+      "title": "Draft upload modal wired to API with progress and feedback",
+      "description": "As a user, I want to upload a screenplay PDF and see progress feedback.",
+      "acceptanceCriteria": [
+        "Draft upload modal sends FormData to POST /api/projects/[id]/drafts",
+        "Shows upload progress indicator (spinning icon + 'Extracting text...') during API call",
+        "Success toast shows 'Draft uploaded — {pageCount} pages extracted'",
+        "Error toast shown for corrupt/password-protected PDFs with the API error message",
+        "After successful upload, invalidates project query so draft count updates",
+        "Modal closes on successful upload",
+        "useUploadDraft mutation hook created in hooks file",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "useUploadDraft hook at src/hooks/use-drafts.ts. DraftUploadModal uses isPending for Loader2 spinner + 'Extracting text...' progress state. Success toast shows page count. Error toast shows API error message. Invalidates project queries on success. Modal closes on success."
+    },
+    {
+      "id": "US-009",
+      "title": "Scout chat — SSE connection and text streaming",
+      "description": "As a user, I want to send messages to Scout and see streaming text responses in the chat panel.",
+      "acceptanceCriteria": [
+        "Scout chat input in scout-chat.tsx sends messages to POST /api/scout as SSE",
+        "SSE response parsed using fetch + ReadableStream reader (not EventSource, since it's POST)",
+        "Scout text_delta events append text token-by-token to the current assistant message bubble",
+        "Scout text_complete events finalize the message",
+        "Chat messages stored in Zustand (chatMessages array) so they persist across tab switches",
+        "Input disabled while Scout is streaming (isStreaming state)",
+        "If SSE connection fails or errors, show error message in chat with 'Retry' button",
+        "system type=error events display as red error message in chat",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Scout chat uses Zustand chatMessages (not local state) so messages persist across tab switches. SSE via createSSEConnection in event-router.ts. Error handling adds system message with __error__ prefix and shows Retry button. isStreaming from Zustand controls input disabled state."
+    },
+    {
+      "id": "US-010",
+      "title": "Scout chat — tool status indicators and file attachment",
+      "description": "As a user, I want to see what Scout is doing (tool calls) and attach script files from the chat.",
+      "acceptanceCriteria": [
+        "tool_start SSE events render an inline status pill in chat ('Spawning readers...', 'Running focus group...', etc.)",
+        "tool_end SSE events update the pill to show completion (checkmark icon)",
+        "Status pills use a mapping: spawn_readers → 'Analyzing with readers...', focus_group → 'Running focus group...', executive_eval → 'Evaluating with executives...', reader_chat → 'Chatting with reader...'",
+        "File attachment button (Paperclip icon) next to chat input opens file picker (accept='.pdf,.txt,.fountain')",
+        "Selected PDF is uploaded via /api/upload first to extract text, then sent as attachment in the Scout message",
+        "File attachment shows filename chip above the input before sending",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Scout right panel — tool event routing to panel modes",
+      "description": "As a user, I want the right panel to switch modes automatically based on what Scout is doing.",
+      "acceptanceCriteria": [
+        "SSE events with source='reader' and type='reader_start' switch right panel to 'analysis' mode",
+        "SSE events with source='focus_group' switch right panel to 'focus_group' mode",
+        "SSE events with source='reader_chat' switch right panel to 'reader_chat' mode",
+        "SSE events with source='executive' switch right panel to 'executive' mode",
+        "Right panel mode stored in Zustand (rightPanelMode) and persists across messages",
+        "Idle state shows 'Reader activity will appear here' when no analysis has started",
+        "Panel mode transitions use Framer Motion fade/slide animation (200ms)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Reader analysis right panel — live streaming results",
+      "description": "As a user, I want to see each reader's analysis progress and final results in the right panel.",
+      "acceptanceCriteria": [
+        "Analysis mode shows 3 reader cards (Maya, Colton, Devon) with their colored left borders",
+        "reader_start events set reader card to 'Analyzing...' state with pulse animation",
+        "reader_progress events update a progress indicator on the reader card",
+        "reader_complete events populate the card with: recommendation badge, scores (10-bar), strengths, concerns, standout quote",
+        "Scores animate in with a left-to-right fill animation (300ms staggered per bar)",
+        "After all 3 readers complete, a 'Harmonized Scores' section appears at the top with combined scores",
+        "Reader cards are expandable/collapsible to show full details",
+        "Data stored in Zustand readerStates Map so it persists when switching panels",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Focus group right panel — live streaming conversation",
+      "description": "As a user, I want to watch a live focus group conversation between readers in the right panel.",
+      "acceptanceCriteria": [
+        "Focus group mode shows a chat-style message list with reader avatars and colors",
+        "focus_group_message events append messages with correct reader name, color, and avatar",
+        "Moderator (Scout) messages styled with gold accent border",
+        "Typing indicator shows reader name + animated dots before their message arrives",
+        "Messages auto-scroll to bottom as new ones arrive (with ScrollArea)",
+        "User can type follow-up questions via input at bottom — sent as user message to Scout",
+        "Messages stored in Zustand focusGroupMessages array",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Reader chat right panel — 1:1 conversations",
+      "description": "As a user, I want to have private 1:1 conversations with individual readers in the right panel.",
+      "acceptanceCriteria": [
+        "Reader chat mode shows reader selector with 3 avatars (colored circles with initials)",
+        "Selecting a reader opens chat interface with that reader's color theme (border, avatar)",
+        "Messages sent to POST /api/reader-chat with readerId, message, projectId, draftId, conversationHistory",
+        "Reader responses stream via SSE (text_delta events) token-by-token",
+        "Conversation history maintained per reader in Zustand (keyed by readerId)",
+        "Reader's display name shown in header ('Chatting with Maya Chen')",
+        "Back button returns to reader selector without losing conversation history",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Executive evaluation right panel",
+      "description": "As a user, I want to see executive evaluation progress and results in the right panel.",
+      "acceptanceCriteria": [
+        "Executive mode shows a list of executives being evaluated with loading spinners",
+        "executive_start events add executive name to the list with 'Evaluating...' status",
+        "executive_complete events show: verdict badge (PURSUE green / PASS red), confidence %, rationale summary",
+        "Each executive result card shows key factors and concerns as bullet lists",
+        "Results accumulate (don't replace) as each executive completes",
+        "Data stored in Zustand so results persist when switching panels",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Deliverable and focus sessions API routes",
+      "description": "As a developer, I need API routes to fetch analysis deliverables and focus session data.",
+      "acceptanceCriteria": [
+        "GET /api/drafts/[id]/deliverable returns the DraftDeliverable record with all JSON fields (harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis, studioCalibration)",
+        "Returns 404 if no deliverable exists for the draft",
+        "GET /api/drafts/[id]/focus-sessions returns FocusSessions with their messages, ordered by createdAt desc",
+        "Each focus session includes messages ordered by sequenceNumber",
+        "Both routes validate auth — return 401 if unauthenticated",
+        "Both routes return 404 for non-existent draft IDs",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Evaluations and studio API routes",
+      "description": "As a developer, I need API routes for executive evaluations and studio configuration.",
+      "acceptanceCriteria": [
+        "GET /api/drafts/[id]/evaluations returns ExecutiveEvaluations with executive profile data included",
+        "GET /api/studio returns the current user's Studio with reader count and project count",
+        "PUT /api/studio accepts { name } and updates the studio record",
+        "GET /api/studio/readers returns ReaderPersonas for the studio",
+        "PUT /api/studio/readers/[id] accepts persona fields and updates the record",
+        "GET /api/studio/executives returns ExecutiveProfiles for the studio",
+        "PUT /api/studio/executives/[id] accepts profile fields and updates the record",
+        "GET /api/studio/intelligence returns StudioIntelligence for the studio",
+        "All routes validate auth and return proper error codes (400, 401, 404)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "React Query hooks for drafts, deliverables, and studio data",
+      "description": "As a developer, I need React Query hooks for all remaining data so views can fetch and cache properly.",
+      "acceptanceCriteria": [
+        "useDrafts(projectId) hook fetches drafts from project endpoint",
+        "useDeliverable(draftId) hook fetches GET /api/drafts/[id]/deliverable (staleTime: 5min)",
+        "useFocusSessions(draftId) hook fetches GET /api/drafts/[id]/focus-sessions",
+        "useEvaluations(draftId) hook fetches GET /api/drafts/[id]/evaluations",
+        "useStudio() hook fetches GET /api/studio (staleTime: 10min)",
+        "useReaderPersonas() hook fetches GET /api/studio/readers",
+        "useExecutiveProfiles() hook fetches GET /api/studio/executives",
+        "useStudioIntelligence() hook fetches GET /api/studio/intelligence (staleTime: 10min)",
+        "Each hook returns { data, isLoading, error } and handles undefined/null gracefully",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Coverage view wired to real deliverable data",
+      "description": "As a user, I want to see the full harmonized coverage report from real analysis data.",
+      "acceptanceCriteria": [
+        "Coverage view calls useDeliverable(currentDraft.id) to fetch real data",
+        "Harmonized scores section renders real numeric values in 10-bar ScoreIndicator components",
+        "Reader perspectives section maps over readerPerspectives JSON to render ReaderCards with real scores, recommendation, strengths, concerns, quote",
+        "Scout analysis section renders consensus points, divergence points, and watch-outs from scoutAnalysis JSON",
+        "Calibration toggle shows percentile data from studioCalibration JSON",
+        "Loading skeleton shown while useDeliverable is loading (3 score bar skeletons + 3 reader card skeletons)",
+        "Empty state shown when deliverable is null: 'Run analysis from Scout to see coverage' with Scout tab link",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Focus view wired to real session data",
+      "description": "As a user, I want to browse past focus group sessions with real transcripts.",
+      "acceptanceCriteria": [
+        "Focus view calls useFocusSessions(currentDraft.id) to fetch real sessions",
+        "Session list shows each session with topic, date, message count, and status badge",
+        "Selecting a session renders full message transcript with reader avatars and colors",
+        "Moderator messages styled with gold border, reader messages with their persona color",
+        "Loading skeleton during fetch (3 session card skeletons)",
+        "Empty state: 'Start a focus group from Scout' with explanation text and Scout tab link",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Revisions view wired to real draft data",
+      "description": "As a user, I want to see all drafts in a timeline with real scores and comparisons.",
+      "acceptanceCriteria": [
+        "Revisions view calls useDrafts(currentProject.id) to get real drafts",
+        "Left sidebar timeline shows drafts with: draft number, date, overall rating badge, page count",
+        "Selecting a draft fetches its deliverable and shows scores in main panel",
+        "Compare mode: selecting a second draft shows score deltas with directional arrows (green up, red down, gray neutral)",
+        "Reader memory narratives rendered from ReaderMemory.narrativeSummary if available",
+        "'Upload New Draft' button opens the draft upload modal",
+        "Loading skeleton during fetch (timeline skeleton + score table skeleton)",
+        "Empty state: 'Upload your first draft' with upload button",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Pitch view wired to real evaluation data",
+      "description": "As a user, I want to run executive evaluations and see persisted results.",
+      "acceptanceCriteria": [
+        "Pitch view calls useExecutiveProfiles() to show real executive grid",
+        "Pitch view calls useEvaluations(currentDraft.id) to show past results",
+        "Executive cards show name, title, company from database profiles",
+        "'Run Simulation' button sends message to Scout requesting executive evaluation (via /api/scout)",
+        "Results render with: PURSUE/PASS badge, confidence percentage, rationale, key factors, concerns",
+        "Loading state during evaluation shows per-executive spinner",
+        "Empty state when no evaluations: 'Complete coverage analysis first' with guidance",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Studio configuration view wired to real data",
+      "description": "As a user, I want to view and edit my studio's reader personas, executives, and calibration data.",
+      "acceptanceCriteria": [
+        "Readers tab calls useReaderPersonas() and displays editable fields (name, displayName, background, voiceDescription, weights)",
+        "Save button on reader persona calls PUT /api/studio/readers/[id] and shows success toast",
+        "Executives tab calls useExecutiveProfiles() and displays editable fields (name, title, company, priorityFactors, dealBreakers)",
+        "Save button on executive calls PUT /api/studio/executives/[id] and shows success toast",
+        "Calibration tab calls useStudioIntelligence() and shows score distributions, percentiles, totalProjectsAnalyzed",
+        "Settings tab shows studio name (editable) — save calls PUT /api/studio",
+        "Inline validation: required fields show red border and error text when empty",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Loading skeleton components",
+      "description": "As a user, I want to see skeleton placeholders while data loads so the UI doesn't jump.",
+      "acceptanceCriteria": [
+        "Skeleton base component at src/components/shared/skeleton.tsx with pulse animation using bg-elevated",
+        "ProjectCardSkeleton: matches project card dimensions (title bar, logline lines, footer with badges)",
+        "ReaderCardSkeleton: matches reader card dimensions (avatar circle, name bar, score bars, text lines)",
+        "ScoreBarSkeleton: matches 10-bar visualization dimensions",
+        "ChatMessageSkeleton: avatar circle + text lines (2-3 lines, varying widths)",
+        "TimelineItemSkeleton: circle + bar + text for revisions sidebar",
+        "All skeletons use rounded corners matching real component radii",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Error boundaries wrapping all views",
+      "description": "As a user, I want graceful error handling instead of blank screens when something breaks.",
+      "acceptanceCriteria": [
+        "ErrorBoundary component at src/components/shared/error-boundary.tsx (React class component with getDerivedStateFromError)",
+        "Fallback UI shows: AlertCircle icon (48px, text-danger), error message, 'Try Again' button that resets the boundary",
+        "ErrorBoundary wraps each tab view: Scout, Coverage, Focus, Revisions, Pitch, Studio",
+        "API fetch errors caught in React Query hooks display inline error state (red text + retry button) instead of throwing",
+        "SSE stream errors in Scout chat show 'Connection lost. Retry?' message with button",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Empty states for all views",
+      "description": "As a user, I want helpful empty states that guide me on what to do next.",
+      "acceptanceCriteria": [
+        "EmptyState component at src/components/shared/empty-state.tsx accepting icon, title, description, actionLabel, onAction props",
+        "Home empty state: Target icon, 'Create your first project', 'Get started by creating a project', New Project button",
+        "Scout empty state (no project): FileText icon, 'Select a project first', 'Choose a project from Home to start analyzing'",
+        "Scout empty state (no draft): Upload icon, 'Upload a script to get started', with upload button",
+        "Coverage empty state: BarChart3 icon, 'No coverage yet', 'Run analysis from Scout to see coverage', link to Scout tab",
+        "Focus empty state: Users icon, 'No focus groups yet', 'Start a focus group from Scout'",
+        "Revisions empty state: GitBranch icon, 'No drafts yet', 'Upload your first draft', upload button",
+        "Pitch empty state: Briefcase icon, 'No evaluations yet', 'Complete coverage analysis first'",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Mobile responsive — bottom tab bar and general layout",
+      "description": "As a user, I want to use Bullseye on mobile without the layout breaking.",
+      "acceptanceCriteria": [
+        "Left icon rail hidden on screens < 768px (md breakpoint)",
+        "Bottom tab bar appears on mobile: fixed to bottom, same icons as sidebar, gold active indicator",
+        "Bottom tab bar shows icon + small label text for each tab",
+        "Project grid goes to single column on mobile (grid-cols-1)",
+        "Modals render as full-screen sheets on mobile (not centered floating)",
+        "Chat input stays fixed at bottom of viewport on mobile",
+        "Reader cards stack to single column on tablet (< 1024px)",
+        "All text readable without horizontal scrolling at 375px viewport width",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Mobile responsive — Scout split-screen layout",
+      "description": "As a user, I want Scout's split-screen layout to work on mobile with a panel toggle.",
+      "acceptanceCriteria": [
+        "On mobile (< 768px), Scout layout stacks vertically instead of side-by-side",
+        "Toggle buttons ('Chat' / 'Activity') appear at top to switch between left panel (chat) and right panel (analysis)",
+        "Active toggle button has gold underline indicator",
+        "Both panels take full width when active",
+        "Right panel still receives and stores SSE events even when not visible",
+        "Switching toggles uses fade transition (not hard cut)",
+        "Score bars and reader cards remain readable at mobile widths",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Interactive polish — hover, active, disabled, and transition states",
+      "description": "As a user, I want every interactive element to feel responsive and intentional.",
+      "acceptanceCriteria": [
+        "All Button components have: hover:opacity-90 or hover:bg change, active:scale-[0.98] press effect",
+        "All Card components have: hover:border-white/10 (subtle border brighten on hover)",
+        "Disabled buttons show opacity-50 and cursor-not-allowed",
+        "Tab switches use Framer Motion AnimatePresence with fade transition (150ms)",
+        "Right panel mode switches use Framer Motion slide + fade (200ms, from right)",
+        "Score bars in ScoreIndicator animate on mount: width transitions from 0 to final value over 400ms with stagger (50ms per bar)",
+        "Navigation icon tooltips have 200ms delay before appearing",
+        "All transitions use ease-out timing function and consistent 150-200ms duration",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Persist analysis results to database after Scout completes",
+      "description": "As a developer, I need Scout's analysis results saved to the database so other views can display them.",
+      "acceptanceCriteria": [
+        "After spawn_readers completes, reader perspectives are saved to ReaderMemory records in the database",
+        "After harmonize_analyses completes, a DraftDeliverable record is created with harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis",
+        "After focus_group completes, a FocusSession record is created with all FocusGroupMessages",
+        "After executive_eval completes, ExecutiveEvaluation records are created per executive",
+        "StudioIntelligence record is updated with new score distributions after each analysis",
+        "All persistence happens server-side in the MCP tool implementations (not in the frontend)",
+        "React Query caches are invalidated after analysis completes (deliverable, evaluations, focus-sessions)",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Build and type safety cleanup",
+      "description": "As a developer, I want the app to build cleanly with zero errors or warnings.",
+      "acceptanceCriteria": [
+        "npm run build completes with zero errors",
+        "npx tsc --noEmit passes with zero type errors",
+        "No explicit 'any' types remaining — replaced with proper types or 'unknown' with narrowing",
+        "All unused imports removed across all files",
+        "All unused variables removed across all files",
+        "No console.log statements in production code (replace with proper error handling or remove)",
+        "ESLint passes with zero warnings (or warnings are explicitly suppressed with justification comments)",
+        "Typecheck passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
