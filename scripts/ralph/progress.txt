@@ -32,6 +32,9 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Independent panel scrolling: add `overflow-hidden` to panel containers, let children manage their own `overflow-y-auto` or `ScrollArea`
 - Focus group engine uses its own Anthropic client — pass `apiKey` through `FocusGroupConfig` and `scriptContext` (CoverageReport) for grounded discussion
 - `createBullseyeToolServer(emitEvent, apiKey?)` threads the user's API key to the focus group tool
+- Focus group reaction turns: after reader round, `generateReactionTurn()` returns `{ content, replyToReaderId, replyToReaderName, sentiment }` or null (PASS). Uses structured prefix format for parsing.
+- FocusGroupMessage/FocusGroupUIMessage: `replyToReaderId`, `replyToReaderName`, `reactionSentiment` fields identify reader-to-reader replies
+- ReactionSentiment: TypeScript uses `'agrees' | 'disagrees' | 'builds_on'`, Prisma enum uses `AGREES | DISAGREES | BUILDS_ON`
 
 ---
 
@@ -280,4 +283,30 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - The moderator system prompt includes the full conversation context; reader system prompts need script context appended separately
   - Module-level `getAnthropicClient()` usage (without apiKey) falls back to env var — always pass apiKey explicitly for user-scoped operations
   - Focus group data flow: `harmonize_analyses` → `DraftDeliverable.harmonizedCoverage` → `run_focus_group` config → engine context/prompts
+---
+
+## 2026-01-23 - US-015
+- Implemented reader-to-reader reaction turns in FocusGroupEngine (both `runFocusGroup` and `streamFocusGroup`)
+- After all readers respond to each SCOUT question, 1-2 reaction rounds run where each reader can agree/disagree/build_on another reader's point
+- Reader reaction prompt uses structured format (AGREES_WITH/DISAGREES_WITH/BUILDS_ON: [Name]) for reliable parsing
+- Readers respond with PASS if they have nothing compelling to add — skipped from output
+- Added `replyToReaderId`, `replyToReaderName`, `reactionSentiment` fields to:
+  - `FocusGroupMessage` type in `src/types/index.ts`
+  - `FocusGroupUIMessage` type in `src/lib/agent-sdk/types.ts`
+  - `FocusGroupStreamEvent` in `src/lib/focus-group/index.ts`
+  - `ScoutSSEEvent` in `src/lib/agent-sdk/types.ts`
+- Added `ReactionSentiment` enum to Prisma schema and `replyToReaderId`/`reactionSentiment` fields to FocusGroupMessage model
+- Generated and applied migration `20260123151148_add_reaction_fields_to_focus_group_message`
+- Updated event-router to pass reaction fields through to FocusGroupUIMessage
+- Updated focus-group tool SSE emission and persistence to include reaction fields
+- Updated moderator synthesis prompts to acknowledge reader-to-reader exchanges
+- Files changed: src/lib/focus-group/index.ts, src/lib/agent-sdk/types.ts, src/lib/agent-sdk/event-router.ts, src/lib/agent-sdk/tools/focus-group.ts, src/types/index.ts, prisma/schema.prisma, prisma/migrations/
+- **Learnings for future iterations:**
+  - Reaction turn architecture: after reader responses in `roundMessages`, run separate loop for `reactionMessages`, then pass both to moderator synthesis
+  - The `generateReactionTurn` method uses structured output format (AGREES_WITH/DISAGREES_WITH/BUILDS_ON prefix) for reliable sentiment parsing
+  - `PASS` detection handles both exact "PASS" and "PASS" as first word — readers can be verbose about passing
+  - When reader doesn't follow the format (no prefix line), fallback assigns `builds_on` sentiment targeting the first other reader
+  - The `reactionSentiment` field uses lowercase in TypeScript types (`'agrees' | 'disagrees' | 'builds_on'`) but uppercase in Prisma enum (`AGREES | DISAGREES | BUILDS_ON`) — map between them in persistence code
+  - Max 300 tokens for reaction responses (shorter than normal 512) since reactions should be brief
+  - Both `runFocusGroup` (non-streaming) and `streamFocusGroup` (streaming) must be kept in sync for feature parity
 ---

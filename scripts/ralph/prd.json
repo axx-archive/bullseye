@@ -272,7 +272,7 @@
         "Typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Modify src/lib/focus-group/index.ts. Add replyToReaderId and sentiment to FocusGroupMessage type."
     },
     {
