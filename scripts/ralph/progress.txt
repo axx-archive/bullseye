@@ -310,3 +310,21 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - Max 300 tokens for reaction responses (shorter than normal 512) since reactions should be brief
   - Both `runFocusGroup` (non-streaming) and `streamFocusGroup` (streaming) must be kept in sync for feature parity
 ---
+
+## 2026-01-23 - US-016
+- Implemented threaded reader-to-reader reply UI in focus-group-panel.tsx
+- Messages with `replyToReaderId` render indented (ml-6 pl-3) with a left border in the replying reader's color
+- Each threaded reply shows: smaller avatar (w-6 h-6), reader name, "replying to [Name]" muted label, and message content
+- Sentiment badge rendered as a pill next to the "replying to" label: agrees (green), disagrees (red/coral), builds on (blue)
+- Used `SENTIMENT_CONFIG` constant for clean label/color mapping
+- Non-reply messages (direct responses to SCOUT) continue to render at full width as before
+- Smooth animation: threaded messages use `initial={{ opacity: 0, x: -12 }}` (slide-in from left) with spring transition
+- All type fields (`replyToReaderId`, `replyToReaderName`, `reactionSentiment`) were already added to `FocusGroupUIMessage` in US-015
+- Files changed: src/components/scout/focus-group-panel.tsx
+- **Learnings for future iterations:**
+  - `FocusGroupUIMessage` type already includes reaction fields from US-015 — no type changes needed for UI rendering
+  - Thread nesting is guaranteed max 1 level deep by the engine (never generates reply-to-reply)
+  - Use `x: -12` initial animation (slide from left) for threaded replies to visually distinguish from normal `y: 8` (slide up) messages
+  - `READER_COLORS` and `READER_NAMES` maps at module level are the source of truth for reader display info in the focus group panel
+  - The `isReaction` check (presence of `replyToReaderId`) cleanly separates threaded vs non-threaded rendering paths
+---
