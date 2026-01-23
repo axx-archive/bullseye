@@ -24,6 +24,7 @@ export interface FocusGroupConfig {
   readerPerspectives: ReaderPerspective[];
   readerMemories: Map<string, SubAgentMemory>;
   divergencePoints: Divergence[];
+  userName?: string;
 }
 
 export interface FocusGroupStreamEvent {
@@ -309,7 +310,13 @@ TOPIC: ${config.topic || 'General script discussion'}
 
 QUESTIONS TO COVER:
 ${config.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+`;
 
+    if (config.userName) {
+      context += `\nThe user you are working with is named ${config.userName}. Address them by name occasionally in conversation — naturally, not forced.\n`;
+    }
+
+    context += `
 READER PERSPECTIVES SUMMARY:
 `;
 

@@ -6,6 +6,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createBullseyeToolServer } from '@/lib/agent-sdk/tools';
 import { setCurrentScript } from '@/lib/agent-sdk/tools/ingest';
 import { SCOUT_AGENT_SYSTEM_PROMPT } from '@/lib/agent-sdk/prompts';
+import { getCurrentUser } from '@/lib/auth';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
 
 export const maxDuration = 300; // 5 minute timeout for long analysis runs
@@ -72,6 +73,15 @@ export async function POST(req: Request) {
     prompt += `\n\n[UPLOADED SCRIPT FILE: "${attachment.filename}"]\nThe script has been automatically ingested and is ready for analysis. Title: "${titleFromFilename}", estimated ${estimatedPages} pages. Do NOT call ingest_script — the script is already loaded. Proceed directly to spawn_readers (ask the user about genre/format first if unclear, but do not block on it).`;
   }
 
+  // Get the authenticated user for personalization
+  const user = await getCurrentUser();
+
+  // Build system prompt with optional user name context
+  let systemPrompt = SCOUT_AGENT_SYSTEM_PROMPT;
+  if (user?.name) {
+    systemPrompt += `\n\nThe user you are working with is named ${user.name}. Address them by name occasionally in conversation — naturally, not forced.`;
+  }
+
   // Create the SSE stream
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -93,7 +103,7 @@ export async function POST(req: Request) {
         const q = query({
           prompt,
           options: {
-            systemPrompt: SCOUT_AGENT_SYSTEM_PROMPT,
+            systemPrompt,
             model: 'claude-sonnet-4-20250514',
             mcpServers: {
               'bullseye-tools': toolServer,

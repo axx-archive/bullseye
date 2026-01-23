@@ -8,6 +8,7 @@ import { FocusGroupEngine } from '@/lib/focus-group';
 import { getLastReaderPerspectives, getLastProjectContext } from './readers';
 import { getLastDeliverable } from './analysis';
 import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import type { SubAgentMemory } from '@/lib/memory';
 import type { Divergence, Rating } from '@/types';
 import type { EventEmitter } from './readers';
@@ -170,6 +171,9 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
         }
       }
 
+      // Get user name for personalization
+      const user = await getCurrentUser();
+
       const engine = new FocusGroupEngine();
       const messages = await engine.runFocusGroup(
         {
@@ -179,6 +183,7 @@ export function createFocusGroupTool(emitEvent: EventEmitter) {
           readerPerspectives: perspectives,
           readerMemories,
           divergencePoints,
+          userName: user?.name || undefined,
         },
         (event) => {
           // Forward focus group events to SSE stream

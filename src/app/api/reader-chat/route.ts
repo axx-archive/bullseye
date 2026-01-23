@@ -4,6 +4,7 @@
 
 import { getReaderById } from '@/lib/agents/reader-personas';
 import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import { memoryReadEngine } from '@/lib/memory';
 import type { SubAgentMemory } from '@/lib/memory';
 import type { Rating } from '@/types';
@@ -152,6 +153,12 @@ export async function POST(req: Request) {
 You are having a direct conversation with a user who wants to discuss the script. Respond naturally in your voice as ${reader.displayName}. Be conversational but maintain your perspective and analytical focus. Reference specific elements from the script and your analysis when relevant.
 
 Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer response is warranted.`;
+
+  // Inject user name context if available
+  const user = await getCurrentUser();
+  if (user?.name) {
+    systemPrompt += `\n\nThe user you are working with is named ${user.name}. Address them by name occasionally in conversation — naturally, not forced.`;
+  }
 
   // Build messages array
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
