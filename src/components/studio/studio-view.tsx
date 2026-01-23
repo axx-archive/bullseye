@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Upload,
   LogOut,
+  Trash2,
 } from 'lucide-react';
 import {
   useStudio,
@@ -36,6 +37,7 @@ import {
 } from '@/hooks/use-studio';
 import { useUserProfile, useUpdateDisplayName, useUploadAvatar } from '@/hooks/use-user-profile';
 import { UserAvatar } from '@/components/shared/user-avatar';
+import { useProjects, projectKeys } from '@/hooks/use-projects';
 import { useToastStore } from '@/stores/toast-store';
 import { useAppStore } from '@/stores/app-store';
 
@@ -140,6 +142,7 @@ export function StudioView() {
             <TabsContent value="settings" className="space-y-8 mt-6">
               <ProfileSection />
               <SettingsSection />
+              <DangerZoneSection />
             </TabsContent>
           </Tabs>
         </div>
@@ -1028,6 +1031,156 @@ function SettingsSection() {
 
       {/* Sign out */}
       <SignOutSection />
+    </div>
+  );
+}
+
+// ============================================
+// DANGER ZONE SECTION
+// ============================================
+
+function DangerZoneSection() {
+  const { data: studio } = useStudio();
+  const { data: projects } = useProjects();
+  const { currentStudio, studios, setCurrentStudio, removeStudio, closeStudioConfig, setActiveTab } = useAppStore();
+  const { addToast } = useToastStore();
+  const queryClient = useQueryClient();
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const projectCount = projects?.length ?? 0;
+  const studioName = studio?.name ?? currentStudio?.name ?? '';
+  const studioId = currentStudio?.id;
+
+  // Cannot delete if this is the only studio
+  const isOnlyStudio = studios.length <= 1;
+
+  const canConfirm = projectCount === 0 || confirmText === studioName;
+
+  const handleDelete = async () => {
+    if (!studioId || !canConfirm) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/studio/${studioId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to delete studio' }));
+        throw new Error(data.error || 'Failed to delete studio');
+      }
+
+      // Remove from Zustand
+      removeStudio(studioId);
+
+      // Switch to another available studio
+      const remaining = studios.filter((s) => s.id !== studioId);
+      if (remaining.length > 0) {
+        setCurrentStudio(remaining[0]);
+      }
+
+      // Close studio config and navigate to Home
+      closeStudioConfig();
+      setActiveTab('home');
+
+      // Invalidate caches
+      queryClient.invalidateQueries({ queryKey: studioKeys.studio });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+
+      addToast('Studio deleted', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete studio', 'error');
+    } finally {
+      setIsDeleting(false);
+      setShowConfirm(false);
+      setConfirmText('');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-danger">Danger Zone</h2>
+        <p className="text-sm text-muted-foreground">
+          Irreversible and destructive actions
+        </p>
+      </div>
+
+      <Card className="border-danger/30">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Delete Studio</p>
+              <p className="text-xs text-muted-foreground">
+                Permanently delete this studio and all its data
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              className="gap-2"
+              onClick={() => setShowConfirm(true)}
+              disabled={isOnlyStudio}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Studio
+            </Button>
+          </div>
+          {isOnlyStudio && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Cannot delete your only studio
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Confirmation overlay */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full mx-4 space-y-4 border border-border shadow-xl">
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-danger">Delete Studio</h3>
+              <p className="text-sm font-medium">{studioName}</p>
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete this studio and all{' '}
+                <span className="font-semibold text-foreground">{projectCount} {projectCount === 1 ? 'project' : 'projects'}</span>{' '}
+                within it. This cannot be undone.
+              </p>
+            </div>
+
+            {projectCount > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Type <span className="font-mono text-danger">{studioName}</span> to confirm
+                </label>
+                <Input
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder={studioName}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => { setShowConfirm(false); setConfirmText(''); }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={!canConfirm || isDeleting}
+                className="gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete Studio
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
