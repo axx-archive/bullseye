@@ -320,6 +320,11 @@ export function createFocusGroupTool(emitEvent: EventEmitter, apiKey?: string) {
           }
         } catch (error) {
           console.error('Failed to persist focus group messages:', error);
+          emitEvent({
+            source: 'system',
+            type: 'error',
+            error: 'Warning: Focus group discussion could not be saved to database. The conversation is visible but may not persist after refresh.',
+          });
         }
       }
 

@@ -90,6 +90,11 @@ export function createExecutiveEvalTool(emitEvent: EventEmitter) {
             });
           } catch (error) {
             console.error(`Failed to persist evaluation for ${r.executiveId}:`, error);
+            emitEvent({
+              source: 'executive',
+              type: 'error',
+              error: `Warning: Evaluation for ${r.executiveName} could not be saved to database.`,
+            });
           }
         }
       }

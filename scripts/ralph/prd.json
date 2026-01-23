@@ -311,7 +311,7 @@
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "This is an audit story — may result in small fixes rather than large new code."
     }
   ]

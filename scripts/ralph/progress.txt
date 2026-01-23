@@ -35,6 +35,9 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Focus group reaction turns: after reader round, `generateReactionTurn()` returns `{ content, replyToReaderId, replyToReaderName, sentiment }` or null (PASS). Uses structured prefix format for parsing.
 - FocusGroupMessage/FocusGroupUIMessage: `replyToReaderId`, `replyToReaderName`, `reactionSentiment` fields identify reader-to-reader replies
 - ReactionSentiment: TypeScript uses `'agrees' | 'disagrees' | 'builds_on'`, Prisma enum uses `AGREES | DISAGREES | BUILDS_ON`
+- SSE error events use `error` field (not `message`) — see `ScoutSSEEvent` type in `src/lib/agent-sdk/types.ts`
+- Tool persistence failures should emit `{ source, type: 'error', error: '...' }` via `emitEvent` to notify users
+- ChatMessage table exists but is unused — reader chat exchanges persist to `ReaderMemory.chatHighlights` instead
 
 ---
 
@@ -327,4 +330,28 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - Use `x: -12` initial animation (slide from left) for threaded replies to visually distinguish from normal `y: 8` (slide up) messages
   - `READER_COLORS` and `READER_NAMES` maps at module level are the source of truth for reader display info in the focus group panel
   - The `isReaction` check (presence of `replyToReaderId`) cleanly separates threaded vs non-threaded rendering paths
+---
+
+## 2026-01-23 - US-017
+- Comprehensive save system audit covering all persistence flows
+- **Draft upload flow:** Verified correct — PDF parsed, uploaded to Supabase Storage, Draft record created with extracted text. Added try/catch around `db.draft.create()` to clean up orphaned storage files on DB failure.
+- **Analysis results (DraftDeliverable):** Verified correct — upsert pattern with harmonized scores, coverage, perspectives, scout analysis, calibration. Added error event emission on persistence failure (previously swallowed).
+- **Focus group messages:** Verified correct — FocusSession + FocusGroupMessage records with proper sequenceNumber ordering and reaction fields. Added error event emission on persistence failure.
+- **Executive evaluations:** Verified correct — ExecutiveEvaluation records with unique constraint per draft+executive. Added error event emission on persistence failure.
+- **Reader memory:** Verified correct — upsert pattern accumulates across drafts, chat highlights and focus group items append via array spread. Memory persistence failure in analysis tool now emits error event.
+- **Chat messages:** ChatMessage model exists but is NOT used for direct persistence. Chat exchanges persist to ReaderMemory.chatHighlights as a design choice. This is intentional — reader memory provides better context for future interactions.
+- **React Query cache invalidation:** All mutations (create, delete, update, reorder, draft upload/update/delete) properly call `invalidateQueries` in onSuccess/onSettled callbacks.
+- **New feature persistence:** evaluationStatus persists via PATCH /api/projects/[id], sortOrder persists via PATCH /api/projects/reorder with $transaction. Both already working correctly.
+- **Error handling fixes applied:**
+  - `src/app/api/projects/[id]/drafts/route.ts`: Added try/catch around db.draft.create — cleans up orphaned Supabase file on DB failure
+  - `src/lib/agent-sdk/tools/analysis.ts`: Added emitEvent error for deliverable persistence failure and reader memory persistence failure
+  - `src/lib/agent-sdk/tools/focus-group.ts`: Added emitEvent error for focus group message persistence failure
+  - `src/lib/agent-sdk/tools/executive.ts`: Added emitEvent error for executive evaluation persistence failure
+- Files changed: src/app/api/projects/[id]/drafts/route.ts, src/lib/agent-sdk/tools/analysis.ts, src/lib/agent-sdk/tools/focus-group.ts, src/lib/agent-sdk/tools/executive.ts
+- **Learnings for future iterations:**
+  - `ScoutSSEEvent.error` (not `message`) is the field for error text in SSE events
+  - The ChatMessage table exists but is unused — reader chat goes to ReaderMemory.chatHighlights instead
+  - All tools receive `emitEvent` as a closure parameter — use it for user-facing warnings
+  - When storage upload succeeds but DB write fails, always clean up the orphaned file
+  - The `EventEmitter` type is exported from `src/lib/agent-sdk/tools/readers.ts` and used across all tool files
 ---
