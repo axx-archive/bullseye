@@ -244,8 +244,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "FocusGroupPanel uses native div with overflow-y-auto for scroll (not Radix ScrollArea which doesn't support ref forwarding). Gold accent border on moderator messages via border-l-2 with inline borderLeftColor style. Follow-up input sends to /api/scout with full EventRouterCallbacks — focus group messages routed back into Zustand focusGroupMessages."
     },
     {
       "id": "US-014",

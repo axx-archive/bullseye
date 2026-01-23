@@ -275,7 +275,9 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - src/components/scout/scout-layout.tsx (modified — updated idle text, changed transition duration to 0.2s)
   - src/components/scout/scout-chat.tsx (modified — added phase change guard to prevent redundant updates)
 - **Learnings for future iterations:**
-  - Event router's `routeEvent` function switches on `event.source` — new source types need case statements here
+  - Radix ScrollArea doesn't forward refs — use native `div` with `overflow-y-auto` when you need scrollTop access
+- For follow-up inputs in sub-panels, wire full EventRouterCallbacks to createSSEConnection — use `useAppStore.getState()` in callbacks
+- Event router's `routeEvent` function switches on `event.source` — new source types need case statements here
   - Phase change guard pattern: `const currentMode = useAppStore.getState().rightPanelMode; if (currentMode !== phase) { ... }` prevents redundant state updates and side effects like clearing messages
   - ScoutLayout uses AnimatePresence with `mode="wait"` for sequential panel transitions (exit → enter, not overlap)
   - focus_group source events fire for every message — calling onPhaseChange every time is fine since the guard in scout-chat prevents redundant updates
@@ -308,5 +310,25 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - computeHarmonizedScores iterates all 3 readers and averages per dimension — graceful with missing data
   - analysis_stream is the SSE event type for reader progress updates (not a separate reader_progress type)
   - AnimatePresence with height: 0/auto for expand/collapse transitions needs overflow-hidden on the motion.div
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-013
+- What was implemented:
+  - Focus group panel with chat-style message list, reader avatars, and colors
+  - focus_group_message SSE events append messages with reader name, color, and avatar (was already wired via event-router)
+  - Moderator (Scout) messages styled with gold accent border (border-l-2, #D4A84B color)
+  - Typing indicator shows reader name + animated dots before message arrives
+  - Messages auto-scroll to bottom via native div with overflow-y-auto + useEffect scrollTop
+  - Follow-up question input at bottom — sends user message to Scout via /api/scout SSE
+  - Follow-up input wires full EventRouterCallbacks so focus group messages still route to Zustand
+  - Messages stored in Zustand focusGroupMessages array (persists across tab switches)
+- Files changed:
+  - src/components/scout/focus-group-panel.tsx (rewritten — added gold border, follow-up input, scroll fix, proper ES imports)
+- **Learnings for future iterations:**
+  - Radix ScrollArea doesn't forward refs to the viewport — use native `div` with `overflow-y-auto` when you need `scrollRef.current.scrollTop` access
+  - For follow-up inputs in sub-panels (focus group, reader chat), wire a full EventRouterCallbacks object to createSSEConnection — use `useAppStore.getState()` in callbacks for fresh state
+  - Gold accent color for moderator/Scout is `#D4A84B` — use `border-l-2` with inline `borderLeftColor` style (Tailwind can't do arbitrary colors inline)
+  - The focus-group-panel.tsx file was previously untracked — it's a new file in this branch
   - Browser verification not available — manual testing needed
 ---
