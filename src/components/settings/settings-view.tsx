@@ -70,8 +70,9 @@ export function SettingsView() {
         const data = await res.json();
         setError(data.error || 'Failed to save API key');
       }
-    } catch {
-      setError('Failed to save API key');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      setError(`Failed to save API key: ${message}`);
     } finally {
       setSaving(false);
     }
