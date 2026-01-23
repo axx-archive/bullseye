@@ -1,157 +1,160 @@
 {
   "project": "Bullseye",
-  "branchName": "ralph/settings-studio-cleanup",
-  "description": "Fix API key saving, clear stale studios, dedicated user settings page, and Studio Info tab with POV/Pillars/Beliefs/Mandates",
+  "branchName": "ralph/scout-tab-fixes",
+  "description": "Fix Scout tab scrolling, score bars, script upload flow, metadata extraction, and reader engagement UX",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add POV, Pillars, Beliefs, Mandates fields to Studio model",
-      "description": "As a developer, I need to store studio identity fields (POV, Pillars, Beliefs, Mandates) in the database so they persist across sessions.",
+      "title": "Fix left panel (Scout chat) scrolling",
+      "description": "As a user, I want the Scout chat panel to scroll independently and auto-scroll to the latest message so I can follow the conversation.",
       "acceptanceCriteria": [
-        "Add fields to Studio model in prisma/schema.prisma: pov String? (nullable text), pillars String[] (default []), beliefs String[] (default []), mandates String[] (default [])",
-        "Generate Prisma migration successfully (npx prisma migrate dev --name add_studio_identity_fields)",
-        "Prisma client regenerates with new fields available on Studio type",
-        "Typecheck passes"
+        "Left panel in scout-layout.tsx uses overflow-y-auto instead of overflow-hidden",
+        "Chat messages container in scout-chat.tsx auto-scrolls to bottom when new messages arrive (useRef + scrollIntoView or scrollTop = scrollHeight)",
+        "Auto-scroll only triggers if user is near the bottom (within 100px threshold) — don't interrupt if user scrolled up",
+        "Right panel retains overflow-y-auto for independent user-controlled scrolling (no auto-scroll)",
+        "Both panels scroll independently without affecting each other",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Schema-only change. API updates in next story."
+      "notes": "The left panel currently has overflow-hidden in scout-layout.tsx. The chat container in scout-chat.tsx needs a ref to track scroll position. Use useEffect watching messages length to trigger scroll. Check isNearBottom before auto-scrolling."
     },
     {
       "id": "US-002",
-      "title": "Update Studio API to support identity fields",
-      "description": "As a developer, I need the PUT /api/studio endpoint to accept and persist pov, pillars, beliefs, and mandates fields.",
+      "title": "Fix reader score bar visualization",
+      "description": "As a user, I want to see the actual score values rendered as filled bars when reader evaluations come in.",
       "acceptanceCriteria": [
-        "PUT /api/studio accepts optional fields: pov (string | null), pillars (string[]), beliefs (string[]), mandates (string[])",
-        "GET /api/studio returns the new fields in the response (pov, pillars, beliefs, mandates)",
-        "Partial updates work — sending only { pov: 'new value' } updates pov without clearing pillars/beliefs/mandates",
-        "Typecheck passes"
+        "Debug the data flow: check if analysis_complete SSE events include scores in the payload (log the event data in event-router.ts or scout-chat.tsx)",
+        "Verify readerStates in Zustand store gets populated with score objects containing numeric values for each dimension (premise, character, dialogue, structure, commerciality, overall)",
+        "If the issue is the event payload: fix the reader tool (tools/readers.ts) to include scores in the analysis_complete event",
+        "If the issue is the UI: fix ReaderAnalysisPanel to correctly read scores from readerStates Map entries",
+        "numericToFilled() correctly converts score 0-100 to 0-10 filled bars",
+        "Individual reader cards show filled colored bars for each dimension when status is 'complete'",
+        "Harmonized scores section appears with golden styling and averaged bars when all 3 readers complete",
+        "Recommendation badge shows correct color: recommend=green, consider=yellow, low_consider=orange, pass=red",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Uses existing conditional spread pattern for partial updates: ...(body.field !== undefined && { field: body.field })"
+      "notes": "The ReaderAnalysisPanel code has the rendering logic for bars and harmonized scores. The issue is likely that readerStates entries don't have scores populated, or the event-router isn't mapping analysis_complete data correctly. Check the shape of data emitted by spawn_readers in tools/readers.ts vs what ReaderAnalysisPanel expects."
     },
     {
       "id": "US-003",
-      "title": "Fix API key save failure",
-      "description": "As a user, I want to save my Anthropic API key without getting 'Failed to save API key' error.",
+      "title": "Add writer field to Project model",
+      "description": "As a developer, I need to store the script writer on the Project so metadata persists and can be displayed.",
       "acceptanceCriteria": [
-        "Identify and fix root cause of save failure in /api/settings/route.ts (check DB connection, encryption, auth, UserSettings upsert)",
-        "API key with valid sk-ant- prefix saves successfully to UserSettings table",
-        "Success feedback shown after save (e.g., toast or inline 'API key saved successfully' message)",
-        "Error messages are specific (show actual error reason, not generic 'Failed to save API key')",
-        "Key persists across page refreshes (verify by reloading settings page — key indicator shows 'saved')",
+        "Add writer String? field to Project model in prisma/schema.prisma (nullable)",
+        "Run Prisma migration: npx prisma migrate dev --name add_project_writer",
+        "Prisma client regenerates with writer available on Project type",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "The catch block in settings-view.tsx:74 swallows errors. The actual failure is likely in the API route — check DB upsert, encryption setup, or auth. Console.error the real error server-side."
+      "notes": "Simple schema addition. The Project model already has genre (String) and format (ProjectFormat enum). Writer is new and nullable since existing projects won't have it."
     },
     {
       "id": "US-004",
-      "title": "Migration script to clear all studios",
-      "description": "As a developer, I need a one-time script to delete all existing studios across all user accounts to remove stale/undeletable studios from early accounts.",
+      "title": "Auto-extract metadata from script text",
+      "description": "As a user, I want Scout to automatically extract genre, format, and writer from my script so I don't have to provide that info manually.",
       "acceptanceCriteria": [
-        "Script at scripts/clear-all-studios.ts that connects to the database",
-        "Deletes ALL Studio records with Prisma cascade (projects, drafts, deliverables, focus sessions, reader personas, executive profiles, studio intelligence all removed)",
-        "Cleans up Supabase Storage files: lists and removes all files in 'scripts' bucket",
-        "Resets all User records: sets studioId to null (or removes the FK reference) so users get fresh onboarding",
-        "Script is idempotent (safe to run when no studios exist)",
-        "Script logs progress: number of studios deleted, storage files cleaned, users reset",
-        "Can be run via: npx tsx scripts/clear-all-studios.ts",
+        "Create a metadata extraction step in the scout agent flow that reads the first ~5 pages (first 15000 chars) of script text",
+        "Use an LLM call (via the Anthropic SDK already in the project) to extract: title, writer, genre, format from the script content",
+        "LLM prompt asks for structured JSON response: { title: string, writer: string, genre: string, format: 'FEATURE' | 'TV_PILOT' | 'TV_EPISODE' | 'SHORT' }",
+        "Extraction happens within the ingest_script tool or as a new step after ingest but before spawn_readers",
+        "Extracted values overwrite the defaults set during pre-ingestion (genre='Drama', author='Unknown')",
+        "If extraction fails or returns uncertain results, keep existing defaults gracefully (no crash)",
+        "The extracted metadata is stored on the session IngestedScript object (currentScript in Zustand)",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Use Prisma deleteMany for studios. Use Supabase admin client for storage cleanup. Must handle the User.studioId FK — either set to null or handle the constraint."
+      "notes": "The Anthropic SDK is already imported in the project (@anthropic-ai/sdk). The extraction can use a small fast call with claude-haiku or claude-sonnet. Script text is available via currentScript.scriptText in the Zustand store or the ingest tool context. Extract from scriptText.slice(0, 15000)."
     },
     {
       "id": "US-005",
-      "title": "Studio Config — Add Studio Info tab as first tab",
-      "description": "As a user, I want to define my studio's POV, Pillars, Beliefs, and Mandates in a dedicated Studio Info tab so the AI analysis reflects my creative identity.",
+      "title": "Persist extracted metadata to Project record",
+      "description": "As a developer, I need extracted metadata saved to the Project record so it's available across the app.",
       "acceptanceCriteria": [
-        "New 'Studio Info' tab added as the FIRST tab in Studio Config (tab order: Studio Info, Readers, Executives, Calibration, Settings)",
-        "TabsList grid updated from grid-cols-4 to grid-cols-5",
-        "Studio Info tab displays: POV section with textarea (label: 'Point of View', helper text explaining purpose), Pillars section with editable list, Beliefs section with editable list, Mandates section with editable list",
-        "Each list section (Pillars/Beliefs/Mandates) has: existing items displayed as removable entries, input field with '+' or 'Add' button to add new items, remove button (X icon) on each item",
-        "Save button at bottom calls PUT /api/studio with updated pov, pillars, beliefs, mandates",
-        "Save shows Loader2 spinner while pending, success toast on completion",
-        "Data pre-filled from useStudio() hook on mount",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "After metadata extraction, update the Project record: db.project.update({ where: { id: projectId }, data: { genre, writer, format } })",
+        "Only update fields that have meaningful extracted values (not 'Unknown' or 'Unclassified')",
+        "If project already has a non-default genre (not 'Drama') or already has a writer set, don't overwrite (respect user-set values)",
+        "The update happens in the scout API route after extraction completes (within the same request lifecycle)",
+        "GET responses for projects include the writer field",
+        "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Use the existing useStudio() hook for data fetching. Invalidate studioKeys.studio on save. Follow existing edit patterns from ReadersSection/ExecutivesSection."
+      "notes": "The project update should guard against overwriting: if (project.genre === 'Drama' || !project.genre) update genre. if (!project.writer) update writer. The projectId is available in the scout route context."
     },
     {
       "id": "US-006",
-      "title": "Create dedicated User Settings page at /settings",
-      "description": "As a user, I want a dedicated settings page for my account with User Settings, API Keys, and Account Settings sections.",
+      "title": "Display metadata pills on Home screen project cards",
+      "description": "As a user, I want to see genre, format, and writer as small pills on my project cards on the Home screen.",
       "acceptanceCriteria": [
-        "New page at src/app/settings/page.tsx (Next.js App Router)",
-        "Page has 3 clearly separated sections with headings: 'User Settings' section — display name input (pre-filled from useUserProfile), avatar upload (click avatar to open file picker, shows UserAvatar lg), email as read-only text. 'API Keys' section — Anthropic API key input with save button, validation (sk-ant- prefix), success/error feedback (reuse logic from settings-view.tsx). 'Account Settings' section — Sign Out button (uses Supabase signOut + router push to /login)",
-        "Page has a header with 'Settings' title and back button (ArrowLeft icon) that navigates to previous page (router.back())",
-        "Page is styled consistently with existing app (bg-background, card sections with bg-surface, proper padding)",
-        "Page is protected — redirects to /login if unauthenticated",
+        "Home screen project cards (find the component in src/components/home/) display up to 3 metadata pills in a flex-wrap row",
+        "Genre pill: shows extracted genre string (e.g., 'Action/Thriller', 'Drama') — skip if null or 'Unclassified'",
+        "Format pill: shows human-readable label ('Feature', 'TV Pilot', 'Short', 'TV Episode', 'Limited Series', 'Documentary') — not the raw enum value",
+        "Writer pill: shows author name — skip if null or 'Unknown'",
+        "Pill styling: text-xs bg-muted/50 text-muted-foreground rounded-full px-2 py-0.5",
+        "Pills wrap to second line if needed (container uses flex-wrap gap-1)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 6,
-      "passes": true,
-      "notes": "Reuse useUserProfile, useUpdateDisplayName, useUploadAvatar hooks. Reuse API key save logic from settings-view.tsx (encryption via /api/settings). This is a standalone page, not a tab in the app shell."
+      "passes": false,
+      "notes": "Find the project card component in src/components/home/. The Project data should already be fetched with the writer field after US-003 migration. Map ProjectFormat enum to display labels: FEATURE→'Feature', TV_PILOT→'TV Pilot', etc."
     },
     {
       "id": "US-007",
-      "title": "Studio Config Settings tab — remove user-level content",
-      "description": "As a user, I want the Studio Config Settings tab to only show studio-specific settings (name and delete), not user profile or API key.",
+      "title": "Script upload immediately engages Scout and readers",
+      "description": "As a user, I want the center upload prompt to hand off my script to Scout and immediately start reader analysis without extra steps.",
       "acceptanceCriteria": [
-        "Settings tab in studio-view.tsx contains ONLY: SettingsSection (studio name input with save) and DangerZoneSection (delete studio with confirmation)",
-        "ProfileSection component removed from Settings tab rendering",
-        "SignOutSection component removed from Settings tab rendering",
-        "Any API key references removed from this tab (API key is now in /settings page)",
+        "When user uploads via center EmptyState prompt, script is sent to Scout with message 'Analyze this script' (existing pendingScoutAttachment flow)",
+        "Scout immediately ingests (extracts metadata) and proceeds to spawn_readers without asking any questions",
+        "The right panel switches from idle to analysis mode showing reader progress cards",
+        "Upload flow works identically whether triggered from center prompt or chat attachment button",
+        "No intermediate questions from Scout about genre/format/writer (those are auto-extracted)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "ProfileSection and SignOutSection code can be deleted from studio-view.tsx since they're now in the /settings page."
+      "passes": false,
+      "notes": "The existing pendingScoutAttachment auto-send effect in scout-chat.tsx already sends 'Analyze this script'. The key change is ensuring Scout's system prompt doesn't ask for clarification — it just proceeds. This depends on US-009 (prompt update)."
     },
     {
       "id": "US-008",
-      "title": "Add user avatar to bottom-left of app shell, navigate to /settings",
-      "description": "As a user, I want my avatar always visible in the bottom-left corner of the app shell so I can quickly access my account settings page.",
+      "title": "Scout gives process heads-up before engaging readers",
+      "description": "As a user, I want Scout to briefly explain what's about to happen before engaging the readers so I understand the process.",
       "acceptanceCriteria": [
-        "User avatar (UserAvatar component, size='sm') rendered in the bottom-left of the app shell sidebar/nav rail, below the studio switcher",
-        "Avatar displays user image if set, otherwise initials with color-coded background (uses useUserProfile hook)",
-        "Avatar is always visible regardless of which tab/view is active",
-        "Clicking the avatar navigates to /settings page (router.push('/settings'))",
-        "Tooltip on avatar shows display name if set, otherwise email, fallback 'Settings'",
-        "Mobile bottom tab bar: avatar shown at the end/right of the tab bar, same click behavior",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "After ingesting a script, before calling spawn_readers, Scout sends an orientation message to the user",
+        "Message content: 'I'm sending your script to three readers — Maya Chen (The Optimist), Colton Rivers (The Skeptic), and Devon Park (The Craftsman). They'll each provide independent evaluations across premise, character, dialogue, structure, and commerciality. Once all three finish, I'll harmonize their scores into a unified coverage report. You can follow their progress in the panel on the right.'",
+        "This orientation only happens on the FIRST analysis in a session (not on re-analysis or subsequent scripts in same session)",
+        "The message appears as a regular Scout chat message in the left panel (not a toast or system message)",
+        "Add this behavior to the SCOUT_AGENT_SYSTEM_PROMPT as a required step between ingest and spawn_readers",
+        "Typecheck passes"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "Use Next.js router for navigation to /settings. The avatar was previously used for tab switching — now it's a router.push to a dedicated page."
+      "passes": false,
+      "notes": "Add instruction to the system prompt after the ingest step: 'Before spawning readers for the FIRST script in a session, send a brief orientation message explaining the process.' The agent will naturally emit this as a text_delta event which renders in the chat."
     },
     {
       "id": "US-009",
-      "title": "Handle empty studio state after migration",
-      "description": "As a user, after the studio cleanup migration, I want the app to gracefully handle having no studios and prompt me to create one.",
+      "title": "Remove metadata questions from Scout system prompt",
+      "description": "As a developer, I need to update the Scout agent system prompt to stop asking users for genre/format/writer since it's now auto-extracted.",
       "acceptanceCriteria": [
-        "App shell checks if user has any studios on mount (via useStudio or GET /api/studio)",
-        "If no studios exist: app shows a create-studio prompt/modal (studio name input + Create button)",
-        "Creating a studio calls POST /api/studio (create the endpoint if it doesn't exist) with the name",
-        "After creation: sets new studio as currentStudio in Zustand, navigates to Home tab",
-        "Zustand store handles currentStudio being null without crashing (guards throughout the app)",
-        "If localStorage bullseye-storage references a deleted studio ID, the app resets gracefully (doesn't crash)",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "In src/lib/agent-sdk/prompts.ts, update SCOUT_AGENT_SYSTEM_PROMPT step 1 (Acknowledge & Clarify)",
+        "Remove: 'Ask about genre, format, and any specific concerns'",
+        "Replace with: 'Extract metadata (genre, format, writer) automatically from the script text. Do not ask the user for this information.'",
+        "Keep an optional note: 'If the user volunteers specific concerns or focus areas in their message, note them for the readers.'",
+        "Add instruction: 'If user provides genre/format/writer explicitly in their message, use that instead of extracting.'",
+        "Scout no longer asks clarifying questions about the script before proceeding — just extracts and goes",
+        "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "The Zustand store persists currentStudio and studios in localStorage. After migration clears the DB, these will be stale. The app must detect the mismatch and reset."
+      "passes": false,
+      "notes": "The system prompt is in src/lib/agent-sdk/prompts.ts. The 'Acknowledge & Clarify' step is around lines 68-73. Update it to reflect the new auto-extraction flow. This is the foundational change that makes US-007 and US-008 work correctly."
     }
   ]
 }

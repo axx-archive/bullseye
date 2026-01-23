@@ -1,118 +1,102 @@
 # Ralph Progress Log
-Started: Fri Jan 23 09:01:14 PST 2026
+Started: Fri Jan 23 13:42:16 PST 2026
 
 ## Codebase Patterns
-- For list editing UIs, use Badge + X button for display, Input + Plus button for adding (see StudioInfoSection)
-- `StudioResponse` in `use-studio.ts` must match the Prisma Studio model fields — update it when schema changes
-- Settings navigation: use `router.push('/settings')` (dedicated page) — do NOT use `setActiveTab('settings')` (deprecated)
-- Standalone scripts use pattern: `import 'dotenv/config'` + `pg.Pool` + `PrismaPg` adapter + `PrismaClient` (see `scripts/seed.ts`)
-- Studio cascade-deletes: Users (ActiveStudio), Projects, ReaderPersonas, ExecutiveProfiles, StudioIntelligence. User re-provisions via `/api/auth/provision`.
-- Prisma generated client is gitignored (`src/generated/prisma/`) — regenerate with `npx prisma generate` after pulling migrations
-- Prisma config is in `prisma.config.ts` (not default), loaded automatically
-- Use `npx prisma migrate dev --name <name>` for migrations (connects to Supabase Postgres)
-- Studio model is the central entity — users belong to studios, projects belong to studios
-- `User.studioId` is a required FK to the active studio (not nullable in current schema)
-- PUT endpoints use conditional spread pattern for partial updates: `...(body.field !== undefined && { field: body.field })`
-- GET endpoints return full Prisma objects — new schema fields are automatically included in responses
-- API routes need try/catch around encrypt/decrypt and DB operations — `ENCRYPTION_KEY` env var can throw if missing
-- The `encrypt()` function in `src/lib/encryption.ts` throws if `ENCRYPTION_KEY` is not set or not 32-byte hex
-- Toast store is at `@/stores/toast-store` — use `useToastStore((s) => s.addToast)` for notifications
-- Settings API is at `/api/settings` with GET/PUT/DELETE for API key management
-- POST /api/studio creates a new studio + user record (handles both new and existing auth users)
-- On app load, validate studio exists server-side before trusting localStorage state — use `GET /api/studio` which returns 404 if studio is deleted
-- After studio migration/deletion, User records are cascade-deleted — provision flow returns `needsStudio: true` for the client to call POST /api/studio
+- ScrollArea component (radix) does NOT forward refs to the viewport — use a plain div with overflow-y-auto for direct scroll control
+- scout-layout.tsx uses absolute/relative positioning with opacity transitions for mobile panel switching
+- Chat messages are rendered via ChatInterface component in src/components/chat/chat-interface.tsx, not directly in scout-chat.tsx
+- Use `overflow-y-auto` on panel containers to enable independent panel scrolling
+- ReaderAnalysisOutput.scores has BOTH string ratings (premise, character, etc.) AND numeric values (*Numeric fields) — the UI (ReaderStreamState) expects only numeric values keyed by dimension name
+- SSE event data must be transformed to match the UI store's type expectations — don't pass raw LLM output objects directly
+- Prisma generated client is at `src/generated/prisma` and is gitignored — only commit schema.prisma + migrations
+- Prisma config lives in `prisma.config.ts` (auto-detected by CLI commands)
+- For LLM utility calls within tools, use dynamic import: `const AnthropicSDK = (await import('@anthropic-ai/sdk')).default; const client = new AnthropicSDK();`
+- Use `claude-haiku-4-20250414` for fast structured extraction tasks (cheaper/faster than sonnet)
+- The in-memory `currentScript` in ingest.ts IS the server-side session state — there is no separate Zustand store on the server
+- Prisma `findMany`/`findUnique` returns ALL scalar fields by default — newly added columns are included automatically in GET responses
+- Non-critical DB operations in the scout route should be wrapped in try/catch so failures don't block the analysis flow
 
 ---
 
-## 2026-01-23 09:02 PST - US-001
-- What was implemented: Added `pov String?`, `pillars String[] @default([])`, `beliefs String[] @default([])`, `mandates String[] @default([])` fields to the Studio model in prisma/schema.prisma
-- Files changed: `prisma/schema.prisma`, `prisma/migrations/20260123170210_add_studio_identity_fields/migration.sql`
+## 2026-01-23 - US-001
+- Implemented independent scrolling for left (Scout chat) and right (Reader activity) panels
+- Changed overflow-hidden to overflow-y-auto on both panel containers in scout-layout.tsx
+- Replaced ScrollArea with plain div + overflow-y-auto in chat-interface.tsx for direct ref access
+- Added near-bottom threshold check (100px) before auto-scrolling to avoid interrupting user scroll-up
+- Removed unused ScrollArea import
+- Files changed:
+  - src/components/scout/scout-layout.tsx (line 146, 159: overflow-hidden → overflow-y-auto)
+  - src/components/chat/chat-interface.tsx (lines 89-93: auto-scroll with threshold, line 268: ScrollArea → div)
 - **Learnings for future iterations:**
-  - The generated Prisma client in `src/generated/prisma/` is gitignored — don't try to commit it
-  - Migration applies directly to the live Supabase database via `prisma migrate dev`
-  - String[] fields with `@default([])` map to PostgreSQL TEXT[] with DEFAULT '{}'
-  - Typecheck passes cleanly after schema changes since generated types aren't committed
+  - Radix ScrollArea doesn't forward ref to viewport — can't use scrollRef.current.scrollTop on it directly
+  - Both panels need overflow-y-auto (not just left) for independent scrolling to work
+  - The near-bottom check pattern: `scrollHeight - scrollTop - clientHeight < threshold`
 ---
 
 ## 2026-01-23 - US-002
-- What was implemented: Updated PUT /api/studio to accept optional `pov`, `pillars`, `beliefs`, and `mandates` fields using conditional spread pattern. Made `name` optional (partial updates). Added validation for empty updates. GET already returns new fields since Prisma returns full objects.
-- Files changed: `src/app/api/studio/route.ts`
+- Fixed reader score bar visualization by transforming event payload scores
+- Root cause: `analysis.scores` from ReaderAnalysisOutput contains string enum ratings (e.g. 'excellent', 'very_good') keyed by dimension name (premise, character, etc.), but ReaderStreamState.scores expects numeric values (0-100)
+- The numeric values existed as `*Numeric` suffixed keys (premiseNumeric, overallNumeric, etc.) but weren't being mapped to the UI's expected shape
+- Fix: Transform scores in the emitEvent call to map `analysis.scores.premiseNumeric` → `scores.premise`, etc.
+- Files changed:
+  - src/lib/agent-sdk/tools/readers.ts (lines 217-231: transform scores object in analysis_complete event)
 - **Learnings for future iterations:**
-  - The studio PUT endpoint previously required `name` — now all fields are optional for partial updates
-  - Prisma `findUnique` returns all model fields by default, so new schema fields appear in GET responses without code changes
-  - The conditional spread pattern `...(body.field !== undefined && { field: body.field })` allows `null` values to be set (for nullable fields like `pov`)
-  - An empty `data` object to Prisma `update` would be a no-op — validate at least one field is provided
+  - ReaderAnalysisOutput.scores is a flat object with BOTH string ratings AND numeric values — always extract the numeric versions for UI consumption
+  - The event-router passes `event.data` through as `Partial<ReaderStreamState>` — the shape must match exactly
+  - numericToFilled() expects 0-100 input, divides by 10 — passing a string silently produces NaN and empty bars (no runtime error)
 ---
 
 ## 2026-01-23 - US-003
-- What was implemented: Added try/catch error handling to all three API route handlers (GET, PUT, DELETE) in `/api/settings/route.ts`. Each handler now catches errors from encrypt/decrypt and DB operations, logs them server-side with `console.error`, and returns specific error messages to the client. Also improved the client-side catch in `settings-view.tsx` to surface the actual error message instead of a generic string.
-- Files changed: `src/app/api/settings/route.ts`, `src/components/settings/settings-view.tsx`
+- Added `writer String?` field to Project model in prisma/schema.prisma
+- Ran Prisma migration: `20260123214921_add_project_writer`
+- Regenerated Prisma client — writer is now available on Project type
+- Typecheck passes cleanly
+- Files changed:
+  - prisma/schema.prisma (line 86: added `writer String?`)
+  - prisma/migrations/20260123214921_add_project_writer/migration.sql (new file)
 - **Learnings for future iterations:**
-  - The root cause of "Failed to save API key" was unhandled throws from `encrypt()` when `ENCRYPTION_KEY` env var is missing — the error went to a generic 500 with no body
-  - The client-side `settings-view.tsx` already had proper success feedback (toast + masked key display) — the issue was purely server-side error handling
-  - Always wrap `encrypt`/`decrypt` calls in try/catch since they depend on env vars that may not be set in all environments
-  - The `UserSettings` upsert pattern works correctly — no schema/FK issues
+  - Prisma config is in prisma.config.ts (not default), loaded automatically by `npx prisma` commands
+  - Generated Prisma client output is at `src/generated/prisma` (configured in schema generator block)
+  - The generated client files are gitignored — only schema.prisma and migrations need to be committed
 ---
 
 ## 2026-01-23 - US-004
-- What was implemented: Created `scripts/clear-all-studios.ts` — a one-time migration script that deletes all Studio records (cascade-deletes projects, drafts, deliverables, focus sessions, reader personas, executive profiles, studio intelligence, and users), cleans up Supabase Storage files in the 'scripts' bucket, and cleans up orphaned ResourceArchive records.
-- Files changed: `scripts/clear-all-studios.ts`
+- Implemented auto-extraction of metadata (title, writer, genre, format) from script text using LLM
+- Added `extractScriptMetadata()` function to `src/lib/agent-sdk/tools/ingest.ts` that:
+  - Reads first 15000 chars of script text
+  - Calls claude-haiku-4 with structured JSON extraction prompt
+  - Validates and normalizes the format enum value
+  - Returns null gracefully on any failure
+- Integrated extraction into `src/app/api/scout/route.ts` after pre-ingestion:
+  - Calls `extractScriptMetadata()` after `setCurrentScript()` sets defaults
+  - Updates currentScript with extracted values (only overwrites if meaningful — skips 'Unknown' writer)
+  - Updated the prompt injected to Scout to include extracted title/writer/genre/format
+- Files changed:
+  - src/lib/agent-sdk/tools/ingest.ts (added `extractScriptMetadata` export function)
+  - src/app/api/scout/route.ts (import extractScriptMetadata + getCurrentScript, call extraction after pre-ingest, update prompt)
 - **Learnings for future iterations:**
-  - `User.studioId` is a required FK with `onDelete: Cascade` on the Studio relation — deleting a studio cascade-deletes its active users. Users re-provision via `/api/auth/provision` on next login.
-  - The seed script pattern (`import 'dotenv/config'` + `pg.Pool` + `PrismaPg` adapter + `PrismaClient`) is the standard way to write standalone scripts in this project.
-  - Supabase Storage `list()` defaults to root folder and `remove()` accepts an array of file paths.
-  - `ResourceArchive` records are not FK-linked to studios — they need separate cleanup.
-  - The provision endpoint (`/api/auth/provision`) hard-codes `DEFAULT_STUDIO_ID = 'default-studio-id'` — after clearing studios, this will need updating (see US-009).
+  - Dynamic import pattern for @anthropic-ai/sdk works cleanly in Next.js API routes and tool files
+  - claude-haiku-4-20250414 is fast enough for synchronous metadata extraction without noticeable delay
+  - JSON extraction from LLM responses: use `.match(/\{[\s\S]*\}/)` for objects, `/\[[\s\S]*\]/` for arrays
+  - The format enum normalization (uppercase + replace spaces/hyphens with underscores) handles edge cases from LLM output
+  - Extraction is graceful — returns null on any failure, so the caller keeps defaults
 ---
 
 ## 2026-01-23 - US-005
-- What was implemented: Added "Studio Info" as the first tab in Studio Config with POV textarea, and editable lists (add/remove) for Pillars, Beliefs, and Mandates. Updated `StudioResponse` type to include identity fields. Save calls PUT /api/studio and invalidates studioKeys.studio.
-- Files changed: `src/components/studio/studio-view.tsx`, `src/hooks/use-studio.ts`
+- Implemented persistence of extracted metadata (genre, writer, format) to the Project database record
+- Added `projectId` to ScoutRequest interface and passed it from scout-chat.tsx via the request payload
+- After metadata extraction, the route fetches the Project and conditionally updates fields:
+  - Genre: only if project has default ('Drama') or null genre, and extraction result is meaningful
+  - Writer: only if project doesn't already have a writer set, and extracted value isn't 'Unknown'
+  - Format: only if the extracted format is a valid ProjectFormat enum value
+- Added `db` import and `ProjectFormat` type import to the scout route
+- GET responses for projects already include writer field (Prisma returns all scalar fields by default)
+- Files changed:
+  - src/app/api/scout/route.ts (added db import, projectId destructuring, Project update logic after extraction)
+  - src/components/scout/scout-chat.tsx (pass projectId from app store in request payload)
 - **Learnings for future iterations:**
-  - The `StudioResponse` type in `use-studio.ts` must be updated when new fields are added to the Prisma schema — the hook returns the full Prisma object but the TS type was narrower
-  - For list editing UIs (add/remove items), use Badge + X button for display and Input + Plus button for adding — this is now the established pattern in the Studio Info section
-  - The `initialized` state pattern (used in SettingsSection and ProfileSection) is the standard way to sync form state with async-fetched data in this codebase
-  - `grid-cols-5` with `max-w-lg` is used for the 5-tab layout; previously it was `grid-cols-4` with `max-w-md`
-  - Default tab changed from `'readers'` to `'info'` since Studio Info is now the first tab
----
-
-## 2026-01-23 - US-006
-- What was implemented: Created dedicated `/settings` page at `src/app/settings/page.tsx` with three sections: User Settings (display name, avatar upload, email), API Keys (Anthropic key with validation/save/delete), and Account Settings (sign out). Header has back button using `router.back()`. Page uses existing middleware auth protection.
-- Files changed: `src/app/settings/page.tsx` (new file)
-- **Learnings for future iterations:**
-  - The existing Supabase middleware already protects all routes except `/login`, `/auth`, `/signup` — no additional auth guards needed for new pages
-  - The `settings-view.tsx` component is a reusable reference for API key UI but is a standalone component (not a page) — for the /settings page, the logic was inlined into section components
-  - The `ProfileSection` in `studio-view.tsx` uses the "initialized state" pattern (`nameInitialized` flag) to sync form state with async data — this pattern was replicated in the new page
-  - Supabase client-side signOut uses `createClient()` from `@/lib/supabase/client` + `router.push('/login')` + `router.refresh()` — the server-side route at `/auth/signout` is an alternative but client-side is simpler for SPAs
-  - Card sections on this page use `rounded-xl border border-border/50 bg-surface p-6` pattern instead of the Card component — consistent with settings-view.tsx styling
----
-
-## 2026-01-23 - US-007
-- What was implemented: Removed `ProfileSection` and `SignOutSection` components from the Studio Config Settings tab. The Settings tab now only shows `SettingsSection` (studio name input with save) and `DangerZoneSection` (delete studio with confirmation). Deleted the component code entirely and cleaned up unused imports (`useRouter`, `createClient`, `useUserProfile`, `useUpdateDisplayName`, `useUploadAvatar`, `UserAvatar`, `Upload`, `LogOut`).
-- Files changed: `src/components/studio/studio-view.tsx`
-- **Learnings for future iterations:**
-  - The `SignOutSection` was rendered inside `SettingsSection` (not as a sibling in the TabsContent) — check component internals when removing rendered components
-  - After removing components, always grep for their named imports to confirm they're not referenced elsewhere in the codebase
-  - This file went from ~1537 lines to ~1339 lines — significant cleanup of user-level concerns now handled by `/settings` page
----
-
-## 2026-01-23 - US-008
-- What was implemented: Added UserAvatar component to the app shell sidebar (desktop) and bottom tab bar (mobile) that navigates to `/settings` on click. Removed the old Settings gear icon from the desktop nav rail. Updated the "Go to Settings" button in scout-chat.tsx to use `router.push('/settings')` instead of `setActiveTab('settings')`. Avatar shows tooltip with display name, email, or fallback 'Settings'.
-- Files changed: `src/components/layout/app-shell.tsx`, `src/components/scout/scout-chat.tsx`
-- **Learnings for future iterations:**
-  - The `TabId` type in `app-store.ts` still includes `'settings'` — it's now dead code but harmless. Could be removed in a future cleanup.
-  - The `activeTab !== 'settings'` check in the context bar conditional remains but is unreachable from UI — safe to leave.
-  - `scout-chat.tsx` had a "Go to Settings" button that used `useAppStore.getState().setActiveTab('settings')` — when moving settings to a dedicated page, grep for all `setActiveTab('settings')` references.
-  - The mobile bottom tab bar uses raw buttons (not `MobileTabButton` component) for the avatar since it's not a tab-style icon but a circular avatar.
----
-
-## 2026-01-23 - US-009
-- What was implemented: Handle empty studio state after migration. Created POST /api/studio endpoint for studio creation. Updated page.tsx to validate studios exist on the server (handles stale localStorage). Created CreateStudioPrompt component shown when no studios exist. Updated getCurrentUser in auth.ts to return null if user doesn't exist (instead of creating with hardcoded DEFAULT_STUDIO_ID). Updated provision endpoint to not create users with hardcoded studio IDs.
-- Files changed: `src/app/api/studio/route.ts` (added POST handler), `src/app/page.tsx` (studio validation + create prompt), `src/components/studio/create-studio-prompt.tsx` (new), `src/lib/auth.ts` (removed hardcoded DEFAULT_STUDIO_ID), `src/app/api/auth/provision/route.ts` (removed hardcoded DEFAULT_STUDIO_ID, returns needsStudio flag)
-- **Learnings for future iterations:**
-  - After clearing studios, `User` records cascade-delete too (FK with onDelete: Cascade). Users don't exist in the DB after migration — `getCurrentUser` returns null, and the POST /api/studio endpoint handles creating both the studio and user record.
-  - The Zustand persist middleware loads stale data from localStorage before React effects run — always validate server-side before trusting local state.
-  - The `addStudio` Zustand action doesn't check for duplicates — when syncing with server, use `setStudios([studioData])` to replace rather than append.
-  - The provision endpoint previously created users linked to a non-existent `DEFAULT_STUDIO_ID` — this was a silent FK constraint violation waiting to happen. Now it returns a flag indicating the client should create a studio first.
-  - For studio creation, slug is derived from name: `name.toLowerCase().replace(/[^a-z0-9]+/g, '-')`. The `@@unique([ownerId, slug])` constraint means two studios owned by the same user can't have the same slug.
+  - Prisma `findMany`/`findUnique` without `select` returns ALL scalar fields — no need to add newly added fields explicitly
+  - Use `useAppStore.getState()` inside callbacks to get the latest state (avoids stale closure issues)
+  - Guard all metadata persistence with try/catch — it's non-critical and shouldn't block the analysis flow
+  - The ProjectFormat enum values from Prisma are string literals matching the schema exactly (FEATURE, TV_PILOT, etc.)
 ---

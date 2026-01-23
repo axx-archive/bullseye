@@ -8,6 +8,8 @@ import { setCurrentScript, getCurrentScript, extractScriptMetadata } from '@/lib
 import { SCOUT_AGENT_SYSTEM_PROMPT } from '@/lib/agent-sdk/prompts';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
 import { getCurrentUser, getUserApiKey } from '@/lib/auth';
+import { db } from '@/lib/db';
+import type { ProjectFormat } from '@/generated/prisma/client';
 
 export const maxDuration = 300; // 5 minute timeout for long analysis runs
 
@@ -15,11 +17,12 @@ interface ScoutRequest {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   attachment?: { filename: string; content: string; mimeType: string };
   sessionId?: string;
+  projectId?: string;
 }
 
 export async function POST(req: Request) {
   const body = (await req.json()) as ScoutRequest;
-  const { messages, attachment } = body;
+  const { messages, attachment, projectId } = body;
 
   if (!messages || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'No messages provided' }), {
@@ -102,6 +105,39 @@ export async function POST(req: Request) {
 
     const updatedScript = getCurrentScript()!;
     prompt += `\n\n[UPLOADED SCRIPT FILE: "${attachment.filename}"]\nThe script has been automatically ingested and is ready for analysis. Title: "${updatedScript.title}", Writer: "${updatedScript.author}", Genre: "${updatedScript.genre}", Format: "${updatedScript.format}", estimated ${estimatedPages} pages. Do NOT call ingest_script — the script is already loaded. Proceed directly to spawn_readers.`;
+
+    // Persist extracted metadata to the Project record
+    if (projectId && extracted) {
+      try {
+        const project = await db.project.findUnique({ where: { id: projectId } });
+        if (project) {
+          const validFormats: ProjectFormat[] = ['FEATURE', 'TV_PILOT', 'TV_EPISODE', 'SHORT', 'LIMITED_SERIES', 'DOCUMENTARY'];
+          const updateData: { genre?: string; writer?: string; format?: ProjectFormat } = {};
+
+          // Only update genre if project has default/empty genre and extraction found something meaningful
+          if ((!project.genre || project.genre === 'Drama') && extracted.genre && extracted.genre !== 'Unclassified') {
+            updateData.genre = extracted.genre;
+          }
+
+          // Only update writer if project doesn't already have one set
+          if (!project.writer && extracted.writer && extracted.writer !== 'Unknown') {
+            updateData.writer = extracted.writer;
+          }
+
+          // Only update format if extraction found a valid enum value
+          const extractedFormat = extracted.format?.toUpperCase().replace(/[\s-]/g, '_') as ProjectFormat;
+          if (validFormats.includes(extractedFormat)) {
+            updateData.format = extractedFormat;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await db.project.update({ where: { id: projectId }, data: updateData });
+          }
+        }
+      } catch {
+        // Non-critical: metadata persistence failure shouldn't block analysis
+      }
+    }
   }
 
   // Build system prompt with optional user name context

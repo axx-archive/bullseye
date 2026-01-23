@@ -85,10 +85,12 @@ export function ScoutChat() {
     }));
 
     // Build the request payload, including attachment content if present
+    const projectId = useAppStore.getState().currentProject?.id;
     const requestPayload: {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       attachment?: { filename: string; content: string; mimeType: string };
-    } = { messages: allMessages };
+      projectId?: string;
+    } = { messages: allMessages, projectId };
 
     if (attachment?.status === 'ready' && attachment.content) {
       requestPayload.attachment = {
