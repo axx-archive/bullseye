@@ -162,7 +162,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Check that Prisma schema has onDelete: Cascade on the Project → Studio relation. If not, delete projects manually first."
     },
     {

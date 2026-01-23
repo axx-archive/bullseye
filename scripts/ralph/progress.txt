@@ -1021,3 +1021,21 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - layoutId="nav-indicator" must be unique within a render — conditionally rendering the Building2 indicator prevents conflicts with Home/project tab indicators
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-23 - US-009 (user-customization branch)
+- Implemented DELETE /api/studio/[id] route at src/app/api/studio/[id]/route.ts
+- Validates auth via getCurrentUser() — returns 401 if unauthenticated
+- Verifies user is the studio owner (studio.ownerId === user.id) — returns 403 if not
+- Returns 404 for non-existent studio IDs
+- Checks studio count for the owner — returns 400 if trying to delete their only studio
+- Cleans up Supabase Storage: lists and removes all files under scripts/{projectId}/ for each project in the studio
+- Deletes the studio record — Prisma onDelete: Cascade handles all child records (projects, drafts, deliverables, focus sessions, reader memories, executive evaluations, chat messages, reader personas, executive profiles, studio intelligence)
+- Returns { deletedProjects: number } with the count of projects that were deleted
+- Files changed: src/app/api/studio/[id]/route.ts (new)
+- **Learnings for future iterations:**
+  - All Studio child relations have onDelete: Cascade in the Prisma schema — no manual deletion needed for child records
+  - Storage cleanup must happen BEFORE the Prisma delete since we need projectIds to construct file paths
+  - Supabase storage.list(prefix) returns files in a directory — map to full paths for storage.remove()
+  - Next.js 15 dynamic route params are a Promise — use `const { id } = await params`
+  - Studio ownership check uses studio.ownerId (not user.studioId) — a user can own multiple studios but only have one active
+---
