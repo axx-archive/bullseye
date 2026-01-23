@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectKeys } from './use-projects';
 
 // ============================================
@@ -24,8 +24,35 @@ interface UploadDraftResponse {
 }
 
 // ============================================
+// QUERY KEYS
+// ============================================
+
+export const draftKeys = {
+  list: (projectId: string) => ['drafts', projectId] as const,
+  deliverable: (draftId: string) => ['drafts', draftId, 'deliverable'] as const,
+  focusSessions: (draftId: string) => ['drafts', draftId, 'focus-sessions'] as const,
+  evaluations: (draftId: string) => ['drafts', draftId, 'evaluations'] as const,
+};
+
+// ============================================
 // HOOKS
 // ============================================
+
+export function useDrafts(projectId: string | null) {
+  return useQuery<UploadDraftResponse[]>({
+    queryKey: draftKeys.list(projectId!),
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch project');
+      }
+      const project = await res.json();
+      return project.drafts ?? [];
+    },
+    enabled: !!projectId,
+    staleTime: 30 * 1000,
+  });
+}
 
 export function useUploadDraft() {
   const queryClient = useQueryClient();
