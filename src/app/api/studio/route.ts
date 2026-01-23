@@ -34,15 +34,27 @@ export async function PUT(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name } = body;
 
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  // Validate name if provided
+  if (body.name !== undefined && (typeof body.name !== 'string' || body.name.trim().length === 0)) {
+    return NextResponse.json({ error: 'Name must be a non-empty string' }, { status: 400 });
+  }
+
+  const data = {
+    ...(body.name !== undefined && { name: body.name.trim() }),
+    ...(body.pov !== undefined && { pov: body.pov }),
+    ...(body.pillars !== undefined && { pillars: body.pillars }),
+    ...(body.beliefs !== undefined && { beliefs: body.beliefs }),
+    ...(body.mandates !== undefined && { mandates: body.mandates }),
+  };
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
   const studio = await db.studio.update({
     where: { id: user.studioId },
-    data: { name: name.trim() },
+    data,
   });
 
   return NextResponse.json(studio);
