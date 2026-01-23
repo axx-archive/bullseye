@@ -224,7 +224,7 @@ function ApiKeysSection() {
         setMaskedKey(data.maskedKey);
         setApiKey('');
         setError(null);
-        addToast('API key saved successfully', 'success');
+        addToast('API key saved', 'success');
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to save API key');
