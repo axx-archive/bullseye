@@ -84,7 +84,7 @@ export default function Home() {
 
   // Show create studio prompt if no studio exists
   if (needsStudio || (!currentStudio && studios.length === 0)) {
-    return <CreateStudioPrompt />;
+    return <CreateStudioPrompt isFirstStudio={studios.length === 0} />;
   }
 
   const renderContent = () => {
