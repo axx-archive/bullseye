@@ -491,3 +491,25 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Loading skeletons should match real component dimensions closely — use same rounded corners, gaps, and grid layouts as the populated state
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-020
+- What was implemented:
+  - Focus view refactored to use `useFocusSessions(currentDraft.id)` React Query hook for real session data
+  - Session list shows each session with topic (or "Focus Group Session" fallback), formatted date, message count, and status badge (Completed green, Active amber)
+  - Selecting a session renders full message transcript with reader avatars and persona colors
+  - Moderator (Scout) messages styled with gold accent border (2px solid #D4A84B) and gold name color
+  - Reader messages styled with 3px left border in their persona color (from DEFAULT_READERS lookup)
+  - User messages styled right-aligned with primary color background
+  - Back button in transcript header returns to session list without losing context
+  - Loading skeleton shows 3 session card skeletons with title, badge, date, and message count placeholders
+  - Empty state uses Users icon (48px), "No Focus Groups Yet" heading, explanation text, and "Go to Scout" button that calls setActiveTab('scout')
+  - Removed all simulated/demo focus group logic — view is now purely data-driven from API
+- Files changed:
+  - src/components/focus/focus-view.tsx (rewritten — uses useFocusSessions hook, session list + transcript views, loading/empty states)
+- **Learnings for future iterations:**
+  - FocusSessionMessage speakerType from DB is uppercase ('MODERATOR', 'READER', 'USER') — different from the FocusGroupMessage type which uses lowercase ('moderator', 'reader', 'user')
+  - Reader info for transcript messages should use DEFAULT_READERS lookup by readerId — not the readerPerspectives from Zustand (which may not be populated if user navigates directly to Focus tab)
+  - Session list uses motion.button (not motion.div with onClick) for proper keyboard accessibility
+  - Native div with overflow-y-auto for scroll containers (pattern from US-013/US-014)
+  - Browser verification not available — manual testing needed
+---

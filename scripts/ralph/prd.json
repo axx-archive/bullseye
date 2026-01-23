@@ -375,8 +375,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Focus view uses useFocusSessions(currentDraft.id) from use-studio.ts. Session list shows topic, date, message count, and status badge. Selecting a session renders full transcript with reader avatars/colors. Moderator messages styled with gold border (#D4A84B). Reader messages styled with reader persona color left border. Loading skeleton shows 3 session card skeletons. Empty state uses Users icon with 'Start a focus group from Scout' text and Scout tab link button."
     },
     {
       "id": "US-021",
