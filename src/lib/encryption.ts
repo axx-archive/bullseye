@@ -1,12 +1,52 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { existsSync, readFileSync, appendFileSync, writeFileSync } from 'fs'
+import path from 'path'
 
 const ALGORITHM = 'aes-256-gcm'
 
-function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) {
-    throw new Error('ENCRYPTION_KEY environment variable is not set')
+function generateAndPersistKey(): string {
+  const key = randomBytes(32).toString('hex')
+  const envLocalPath = path.resolve(process.cwd(), '.env.local')
+
+  if (existsSync(envLocalPath)) {
+    const contents = readFileSync(envLocalPath, 'utf8')
+    if (!contents.includes('ENCRYPTION_KEY=')) {
+      appendFileSync(envLocalPath, `\nENCRYPTION_KEY=${key}\n`)
+    }
+  } else {
+    writeFileSync(envLocalPath, `ENCRYPTION_KEY=${key}\n`)
   }
+
+  process.env.ENCRYPTION_KEY = key
+  console.log('Generated ENCRYPTION_KEY and saved to .env.local')
+  return key
+}
+
+function getEncryptionKey(): Buffer {
+  let key = process.env.ENCRYPTION_KEY
+
+  if (!key) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY must be set in production environment')
+    }
+
+    // Check if .env.local already has a key (process might not have loaded it)
+    const envLocalPath = path.resolve(process.cwd(), '.env.local')
+    if (existsSync(envLocalPath)) {
+      const contents = readFileSync(envLocalPath, 'utf8')
+      const match = contents.match(/^ENCRYPTION_KEY=(.+)$/m)
+      if (match) {
+        key = match[1].trim()
+        process.env.ENCRYPTION_KEY = key
+      }
+    }
+
+    // Still no key — generate one
+    if (!key) {
+      key = generateAndPersistKey()
+    }
+  }
+
   const buffer = Buffer.from(key, 'hex')
   if (buffer.length !== 32) {
     throw new Error('ENCRYPTION_KEY must be a 32-byte hex string (64 hex characters)')
