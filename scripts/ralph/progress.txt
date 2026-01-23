@@ -9,6 +9,8 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Commit message format: `feat: [Story ID] - [Story Title]`
 - Encryption utility at `src/lib/encryption.ts` uses AES-256-GCM with ENCRYPTION_KEY env var (32-byte hex)
 - UserSettings model stores encrypted API keys — use `encrypt()`/`decrypt()` from encryption.ts
+- New tabs: add to `TabId` union in app-store.ts, `renderContent` switch in page.tsx, nav rail + mobile nav in app-shell.tsx
+- Toast: `useToastStore((s) => s.addToast)` then `addToast('msg', 'success'|'error'|'warning'|'info')`
 
 ---
 
@@ -37,4 +39,34 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - AES-256-GCM auth tag is appended to ciphertext with `:` separator for storage in a single field
   - IV (12 bytes for GCM) stored separately to allow decryption
   - The encryption utility validates key length at runtime — will throw clear error if misconfigured
+---
+
+## 2026-01-23 - US-003
+- Created GET/PUT/DELETE `/api/settings` route at `src/app/api/settings/route.ts`
+- GET returns `{ hasApiKey: boolean, maskedKey: string | null }` — decrypts key to show last 4 chars
+- PUT accepts `{ claudeApiKey: string }`, validates `sk-ant-` prefix, encrypts and stores via upsert
+- DELETE nulls out the encrypted key fields (keeps the UserSettings record)
+- All routes validate auth via `getCurrentUser()` — return 401 if unauthenticated
+- Files changed: src/app/api/settings/route.ts (new)
+- **Learnings for future iterations:**
+  - Use `db.userSettings.upsert()` for create-or-update semantics on 1:1 relations
+  - Prisma client must be regenerated (`npx prisma generate`) after schema changes before types are available
+  - For masked key display, decrypt to get the full key but only expose last 4 chars
+  - DELETE route nulls fields rather than deleting the record — avoids needing to recreate on next PUT
+---
+
+## 2026-01-23 - US-004
+- Created `src/components/settings/settings-view.tsx` with full API key management UI
+- Added `'settings'` to `TabId` type in `src/stores/app-store.ts`
+- Added Settings tab (Settings2 gear icon) to app-shell.tsx nav rail (after project tabs, always accessible)
+- Added Settings tab to mobile bottom nav bar
+- Added `case 'settings'` to `page.tsx` renderContent switch with SettingsView import
+- Excluded 'settings' tab from project context bar display
+- Features: password input with show/hide toggle, save button with PUT call, masked key display, trash icon delete with confirmation, validation error styling
+- Files changed: src/components/settings/settings-view.tsx (new), src/components/layout/app-shell.tsx, src/app/page.tsx, src/stores/app-store.ts
+- **Learnings for future iterations:**
+  - `Settings` icon from lucide is already used for the "Studio" tab — use `Settings2` for actual settings
+  - Settings tab is always accessible (not gated by `hasProject`) — excluded from context bar like 'home'
+  - Toast store uses `addToast(message, variant)` pattern — import from `@/stores/toast-store`
+  - The app-shell has both desktop (icon rail) and mobile (bottom bar) nav — must add to both
 ---
