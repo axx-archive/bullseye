@@ -1,18 +1,20 @@
 {
   "project": "Bullseye",
-  "branchName": "ralph/home-studio-organization",
-  "description": "Home Screen studio organization, file management, settings, Scout UX fixes, and Focus Group reader-to-reader interactions",
+  "branchName": "ralph/user-customization",
+  "description": "User customization (avatar, display name), agent personalization, and studio deletion with cascade warnings",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add evaluationStatus and sortOrder fields to Project model",
-      "description": "As a developer, I need new database fields on Project to support evaluation tracking and custom ordering.",
+      "title": "Reusable UserAvatar component",
+      "description": "As a developer, I need a reusable avatar component that shows an uploaded image or falls back to styled initials.",
       "acceptanceCriteria": [
-        "Add evaluationStatus enum to Prisma schema: UNDER_CONSIDERATION | APPROVED | REJECTED (default: UNDER_CONSIDERATION)",
-        "Add sortOrder Int field to Project model (default: 0)",
-        "Generate and run Prisma migration successfully",
-        "Update TypeScript types in src/types/index.ts to include evaluationStatus and sortOrder",
-        "Existing projects default to UNDER_CONSIDERATION and sortOrder 0",
+        "Shared component at src/components/shared/user-avatar.tsx",
+        "Props: src (string | null | undefined), name (string | null | undefined), email (string | undefined), size ('sm' | 'md' | 'lg') where sm=28px, md=40px, lg=64px",
+        "If src provided: renders circular img with object-cover and rounded-full",
+        "If no src: renders initials (first letter of name, or first letter of email, or '?') in a colored circle",
+        "Initials background color derived deterministically from name/email string (hash to a small palette of muted colors)",
+        "Text color is white for all background colors",
+        "Component exported as named export",
         "Typecheck passes"
       ],
       "priority": 1,
@@ -21,50 +23,52 @@
     },
     {
       "id": "US-002",
-      "title": "Add UserSettings model for API key storage",
-      "description": "As a developer, I need a database table to securely store user settings including their Claude API key.",
+      "title": "User profile API routes",
+      "description": "As a developer, I need API routes for reading and updating the user's display name and avatar URL.",
       "acceptanceCriteria": [
-        "Add UserSettings model to Prisma schema with: id, userId (unique, relation to User), claudeApiKeyEncrypted (String?), claudeApiKeyIv (String?), createdAt, updatedAt",
-        "Generate and run Prisma migration successfully",
-        "Create encryption utility at src/lib/encryption.ts using Node.js crypto (AES-256-GCM)",
-        "Utility exports encrypt(plaintext) and decrypt(ciphertext, iv) functions",
-        "Encryption uses ENCRYPTION_KEY env var (32-byte hex string)",
-        "Add ENCRYPTION_KEY to .env.example",
+        "GET /api/user/profile returns { displayName: string | null, email: string, avatarUrl: string | null }",
+        "PUT /api/user/profile accepts { displayName?: string, avatarUrl?: string } and updates the User record in Prisma",
+        "displayName validated: trimmed, 1-50 characters if provided, returns 400 if empty string or over 50 chars",
+        "Both routes validate auth via getCurrentUser() — return 401 if unauthenticated",
+        "PUT returns the updated user profile object",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": ""
+      "notes": "User model already has name and avatarUrl fields in Prisma schema"
     },
     {
       "id": "US-003",
-      "title": "Settings API routes for Claude API key",
-      "description": "As a developer, I need API routes to securely store and retrieve the user's Claude API key.",
+      "title": "Avatar upload API route",
+      "description": "As a developer, I need an API route to upload avatar images to Supabase Storage.",
       "acceptanceCriteria": [
-        "GET /api/settings returns { hasApiKey: boolean, maskedKey: string | null } where maskedKey shows 'sk-ant-...XXXX' (last 4 chars)",
-        "PUT /api/settings accepts { claudeApiKey: string } and encrypts before storing",
-        "PUT validates key starts with 'sk-ant-' — returns 400 if invalid format",
-        "DELETE /api/settings removes the stored key",
-        "All routes validate auth — return 401 if unauthenticated",
-        "Create or update UserSettings record for the authenticated user",
+        "POST /api/user/avatar accepts multipart form data with an image file field",
+        "Validates file type: only jpg, jpeg, png, webp, gif accepted — returns 400 for others",
+        "File size limit: 2MB — returns 400 if exceeded",
+        "Stores image in Supabase Storage bucket 'avatars' at path '{userId}.{ext}' (overwrites previous avatar)",
+        "Uses Supabase admin client (service role) for storage upload",
+        "Updates User record's avatarUrl field with the public URL from Supabase Storage",
+        "Returns { avatarUrl: string } with the new public URL",
+        "Route validates auth — returns 401 if unauthenticated",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Depends on US-002 for UserSettings model and encryption utility"
+      "notes": "Use createAdminClient() from src/lib/supabase/admin.ts for storage operations"
     },
     {
       "id": "US-004",
-      "title": "Settings tab UI with API key management",
-      "description": "As a user, I want a Settings tab where I can enter my Claude API key.",
+      "title": "Settings — user profile section UI",
+      "description": "As a user, I want to edit my display name and avatar in Settings so I can personalize my experience.",
       "acceptanceCriteria": [
-        "New 'Settings' tab added to main tab navigation in app-shell (gear icon from lucide-react, after Studio tab)",
-        "Settings view component at src/components/settings/settings-view.tsx",
-        "Claude API Key section with password-type input and show/hide toggle (Eye/EyeOff icons)",
-        "Save button calls PUT /api/settings, shows success toast on save",
-        "If key already saved, input shows masked value from GET /api/settings",
-        "Remove button (trash icon) calls DELETE /api/settings with confirmation",
-        "Validation: show red border and error text if key doesn't start with 'sk-ant-'",
+        "Settings view shows a 'Profile' section above the existing 'Claude API Key' section",
+        "Profile section displays: circular avatar preview (64px using UserAvatar component with size='lg'), display name input, email as read-only muted text",
+        "Avatar area: clicking opens file picker (accept='image/jpeg,image/png,image/webp,image/gif')",
+        "After file selected: uploads to POST /api/user/avatar, shows Loader2 spinner during upload, updates preview on success",
+        "If no avatar uploaded: UserAvatar shows initials with subtle 'Upload' text overlay on hover (opacity transition)",
+        "Display name input: pre-filled from GET /api/user/profile, saves on blur or Enter via PUT /api/user/profile",
+        "Success toast shown on display name save and avatar upload",
+        "Email shown as read-only label below display name with text: 'Username (cannot be changed)'",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
@@ -74,49 +78,50 @@
     },
     {
       "id": "US-005",
-      "title": "Scout uses user's API key from settings",
-      "description": "As a developer, I need the Scout API route to use the user's stored API key instead of an environment variable.",
+      "title": "Nav avatar replaces gear icon for Settings access",
+      "description": "As a user, I want my avatar in the bottom-left nav to be the way to access Settings.",
       "acceptanceCriteria": [
-        "Scout API route (src/app/api/scout/route.ts) retrieves user's API key from UserSettings table",
-        "Decrypts the key using the encryption utility before passing to Claude Agent SDK",
-        "If no API key stored, returns SSE error event: 'Please add your Claude API key in Settings'",
-        "Scout chat UI shows a prompt directing user to Settings tab when this error is received",
-        "Reader chat API route also uses user's stored key",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Home Screen grouped by studio with collapsible headers",
-      "description": "As a user, I want projects on the Home Screen grouped under their studio name.",
-      "acceptanceCriteria": [
-        "Projects grouped under collapsible studio headers (ChevronDown icon rotates on collapse)",
-        "Each studio header displays studio name prominently (text-lg font-semibold)",
-        "Studio groups maintain alphabetical ordering",
-        "Project cards within each studio maintain current design (status, format, draft count, last updated)",
-        "Projects ordered by sortOrder within each studio, then by updatedAt desc",
-        "Collapse state persists in component state (not database)",
+        "Remove the existing Settings tab entry (gear icon) from the nav rail tab list",
+        "The user avatar circle in the bottom-left nav now calls setActiveTab('settings') on click",
+        "Avatar renders using UserAvatar component with size='sm', passing avatarUrl and displayName from user state",
+        "User profile data fetched via GET /api/user/profile on app mount (React Query hook useUserProfile with long staleTime)",
+        "Tooltip on avatar shows display name if set, otherwise email",
+        "Active state: ring-2 ring-bullseye-gold around avatar when Settings tab is active",
+        "Mobile bottom tab bar: replace Settings gear icon with UserAvatar size='sm'",
+        "Remove the old sign-out button from nav — move sign-out to Settings page instead",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Keep Settings as a valid tab in the activeTab type. Just change the nav entry point from gear icon to avatar."
+    },
+    {
+      "id": "US-006",
+      "title": "Inject user display name into agent prompts",
+      "description": "As a user, I want Scout and readers to know my name so interactions feel personalized.",
+      "acceptanceCriteria": [
+        "Scout API route retrieves user's name field from the User record (already have user from getCurrentUser())",
+        "If user.name is set, append to Scout system prompt: 'The user you are working with is named {name}. Address them by name occasionally in conversation — naturally, not forced.'",
+        "If no display name set, do not inject any user name context (agents behave as before)",
+        "Reader chat API route also appends user name context to the reader's system prompt",
+        "Focus group engine receives userName parameter and includes it in moderator context",
+        "Typecheck passes"
+      ],
       "priority": 6,
       "passes": true,
-      "notes": "Currently home-view.tsx shows a flat grid. Refactor to group by studio."
+      "notes": "Keep it subtle — append a short line to existing prompts, don't restructure them"
     },
     {
       "id": "US-007",
-      "title": "Studio status stat cards on Home Screen",
-      "description": "As a user, I want minimal stat cards showing project counts by evaluation status per studio.",
+      "title": "Remove Studio tab from project-level navigation",
+      "description": "As a developer, I need to remove the Studio tab from the project-level tab bar since studio config is now accessed via the overlay.",
       "acceptanceCriteria": [
-        "Each studio group displays a compact stat row below the studio header",
-        "Stats show counts for: 'Under Consideration' (amber text), 'Approved' (green text), 'Rejected' (muted red text)",
-        "Only show stats that have non-zero counts (don't show 'Approved: 0')",
-        "Stats use small text (text-xs) with color-coded numbers — subtle, not dominant",
-        "If a studio has zero projects, stat cards are hidden",
-        "Stats computed from the projects data already fetched (no additional API call)",
+        "Remove 'studio' entry from the project tabs array in app-shell.tsx",
+        "Remove StudioView import and rendering from the tab content switch in page.tsx",
+        "Studio tab no longer appears in desktop nav rail or mobile bottom tab bar",
+        "The studio-view.tsx component file is NOT deleted (it will be reused)",
+        "activeTab type updated if needed to remove 'studio' as a valid project tab value",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
@@ -126,193 +131,59 @@
     },
     {
       "id": "US-008",
-      "title": "Project evaluation status selector",
-      "description": "As a user, I want to set a project's evaluation status (Under Consideration, Approved, Rejected).",
+      "title": "Studio switcher overlay opens Studio Config view",
+      "description": "As a user, I want clicking a studio in the overlay to open its configuration page.",
       "acceptanceCriteria": [
-        "Each project card shows a subtle status badge (colored dot + text) for current evaluationStatus",
-        "Clicking the badge opens a dropdown with three options: Under Consideration, Approved, Rejected",
-        "Selecting a status sends PATCH /api/projects/[id] with { evaluationStatus: value }",
-        "PATCH /api/projects/[id] route updated to accept evaluationStatus field",
-        "React Query cache invalidates on success",
-        "Badge colors: amber dot for Under Consideration, green dot for Approved, red dot for Rejected",
+        "Add a new view mode 'studioConfig' to the app (either as a special activeTab value or a separate Zustand flag like isStudioConfigOpen: boolean)",
+        "Clicking a studio name in StudioSwitcherDropdown sets that studio as active AND switches to Studio Config view",
+        "Studio Config view renders the existing StudioView component (Readers, Executives, Calibration, Settings sub-tabs)",
+        "A back/close button (ArrowLeft or X icon) in the Studio Config header returns to the previous tab",
+        "The studio switcher button tooltip in the nav shows 'Studios'",
+        "Nav rail shows a building/warehouse icon with 'Studio Config' tooltip when this view is active",
+        "Studio names in the overlay update reactively when the name is edited in Studio Config → Settings (React Query invalidation)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
       "passes": true,
-      "notes": ""
+      "notes": "useStudio() hook data should invalidate when studio name is saved in settings sub-tab"
     },
     {
       "id": "US-009",
-      "title": "Rename projects inline",
-      "description": "As a user, I want to rename a project by double-clicking or using an edit action.",
+      "title": "Studio deletion — backend API",
+      "description": "As a developer, I need an API route to delete a studio with full cascade deletion.",
       "acceptanceCriteria": [
-        "Context menu (kebab/three-dot icon) on project card with 'Rename' option",
-        "Rename triggers inline edit mode: title becomes an input field with current value",
-        "Pressing Enter or clicking away saves the new name via PATCH /api/projects/[id]",
-        "Pressing Escape cancels the edit and reverts to original name",
-        "Empty names rejected with red border — does not submit",
-        "React Query cache invalidates on success",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "DELETE /api/studio/[id] route created",
+        "Validates auth and that user is the studio owner (check studio.ownerId === user.id)",
+        "Returns 400 if this is the user's only studio: { error: 'Cannot delete your only studio' }",
+        "Deletes all associated files from Supabase Storage: list and remove all files under scripts/{projectId}/ for each project in the studio",
+        "Deletes the studio record (Prisma cascade should handle: projects → drafts → deliverables, focus sessions, reader memories, executive evaluations, chat messages, plus reader personas, executive profiles, studio intelligence)",
+        "Returns { deletedProjects: number } with the count of projects that were in the studio",
+        "Typecheck passes"
       ],
       "priority": 9,
       "passes": true,
-      "notes": ""
+      "notes": "Check that Prisma schema has onDelete: Cascade on the Project → Studio relation. If not, delete projects manually first."
     },
     {
       "id": "US-010",
-      "title": "Delete projects with confirmation",
-      "description": "As a user, I want to delete a project I no longer need.",
+      "title": "Studio deletion — UI with cascade warning",
+      "description": "As a user, I want to delete a studio from its Settings page with a clear warning about permanent data loss.",
       "acceptanceCriteria": [
-        "Context menu on project card includes 'Delete' option (red text)",
-        "Clicking Delete shows confirmation dialog: 'This will permanently delete the project and all its drafts. This cannot be undone.'",
-        "Confirm button sends DELETE /api/projects/[id]",
-        "DELETE API route removes project with cascading delete (drafts, deliverables, chat messages, focus sessions, reader memories, executive evaluations)",
-        "Associated files removed from Supabase Storage scripts/ bucket",
-        "Project card animates out on deletion (Framer Motion exit animation)",
-        "React Query cache invalidates on success",
-        "Success toast: 'Project deleted'",
+        "Studio Config → Settings sub-tab shows a 'Danger Zone' section at the bottom with red/destructive border",
+        "'Delete Studio' button (destructive variant — red) in the danger zone",
+        "Clicking opens a confirmation dialog/overlay showing: studio name prominently, warning text 'This will permanently delete this studio and all N projects within it. This cannot be undone.'",
+        "Project count displayed in the warning (derived from useProjects or passed from studio data)",
+        "If studio has projects: text input requiring user to type the studio name to confirm, 'Delete Studio' button enabled only when typed text matches studio name exactly",
+        "If studio has zero projects: simpler confirmation with just a 'Delete Studio' button (no name-typing required)",
+        "On confirm: calls DELETE /api/studio/[id], shows success toast 'Studio deleted', switches to another available studio and navigates to Home",
+        "React Query cache invalidated for studio list",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 10,
-      "passes": true,
+      "passes": false,
       "notes": ""
-    },
-    {
-      "id": "US-011",
-      "title": "Reorder projects within a studio via drag-and-drop",
-      "description": "As a user, I want to drag-and-drop reorder projects within a studio group.",
-      "acceptanceCriteria": [
-        "Install framer-motion Reorder components (already a dependency — use Reorder.Group and Reorder.Item)",
-        "Drag handle (GripVertical icon from lucide-react) visible on left edge of project cards",
-        "Drag-and-drop reordering within a studio group using Framer Motion Reorder",
-        "On drop, sends PATCH /api/projects/reorder with { projectIds: string[] } (ordered array)",
-        "API route /api/projects/reorder updates sortOrder field for each project in the array",
-        "Smooth animation during drag (Reorder handles this automatically)",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Use Framer Motion Reorder (already installed) instead of @dnd-kit"
-    },
-    {
-      "id": "US-012",
-      "title": "Rename and delete drafts",
-      "description": "As a user, I want to rename or delete individual drafts.",
-      "acceptanceCriteria": [
-        "Draft list items (in revisions view or draft selector) show edit and delete icons on hover",
-        "Edit icon triggers inline edit for the draft notes/label field",
-        "Enter to save, Escape to cancel — PATCH /api/projects/[id]/drafts/[draftId] updates notes",
-        "PATCH route for drafts added to the existing drafts API route file",
-        "Delete icon shows confirmation dialog before deletion",
-        "DELETE /api/projects/[id]/drafts/[draftId] removes draft record and associated deliverable, focus sessions, reader memories",
-        "Associated PDF removed from Supabase Storage",
-        "Cannot delete the only remaining draft — delete button disabled with tooltip",
-        "React Query cache invalidates on success",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Scout tab independent panel scrolling",
-      "description": "As a user, I want the left and right panels of the Scout tab to scroll independently.",
-      "acceptanceCriteria": [
-        "Left panel (ScoutChat) has overflow-y-auto and fills viewport height minus header",
-        "Right panel (RightPanelContent) has overflow-y-auto and fills viewport height minus header",
-        "Each panel scrolls independently — scrolling one does not affect the other",
-        "Auto-scroll-to-bottom in chat panel is preserved for new messages",
-        "Auto-scroll in right panel for streaming content (focus group messages, reader progress) is preserved",
-        "Both panels use h-[calc(100vh-<header-height>)] or equivalent flex-1 with overflow",
-        "Mobile view (single panel toggle) scrolling is unaffected",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Check scout-layout.tsx for current panel structure. May need to adjust flex containers and overflow settings."
-    },
-    {
-      "id": "US-014",
-      "title": "Investigate and fix Focus Group mock data issue",
-      "description": "As a developer, I need to ensure Focus Group readers discuss the actual uploaded script, not stale or mock data.",
-      "acceptanceCriteria": [
-        "Audit FocusGroupEngine in src/lib/focus-group/index.ts — confirm it receives actual script text from the current draft",
-        "Audit reader prompts in focus group — ensure no hardcoded script references exist",
-        "Verify scriptText and harmonizedCoverage from DraftDeliverable are passed correctly to focus group prompts",
-        "Confirm spawn_readers tool passes the correct draft's scriptText (not a cached or default value)",
-        "Check scripts/seed.ts for any content that could be mistaken for script analysis",
-        "If issue found: fix the data flow so focus group always uses the current draft's analysis",
-        "Add console.warn if focus group is invoked without a completed deliverable for the current draft",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "No mock data files were found in the codebase. Issue is likely stale data being passed to focus group prompts."
-    },
-    {
-      "id": "US-015",
-      "title": "Focus Group engine — reader-to-reader reaction turns",
-      "description": "As a developer, I need to modify the FocusGroupEngine to support reader-to-reader responses after each SCOUT question round.",
-      "acceptanceCriteria": [
-        "After all 3 readers respond to SCOUT's question, add 1-2 reaction turns",
-        "In reaction turns, each reader receives all previous reader responses as context",
-        "Reader prompts include instruction: 'If you feel strongly about what another reader said, respond directly to them. You may agree, disagree, or build on their point. If you have nothing to add, say PASS.'",
-        "Readers who respond with PASS (or equivalent) are skipped — their reaction is not emitted",
-        "Reaction messages include a replyToReaderId field indicating which reader they're responding to",
-        "Reaction messages include a sentiment field: 'agrees' | 'disagrees' | 'builds_on'",
-        "SCOUT's synthesis after each round references reader-to-reader exchanges",
-        "All reaction messages stream via SSE focus_group_message events with correct attribution",
-        "Typecheck passes"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "Modify src/lib/focus-group/index.ts. Add replyToReaderId and sentiment to FocusGroupMessage type."
-    },
-    {
-      "id": "US-016",
-      "title": "Focus Group UI — threaded reader-to-reader replies",
-      "description": "As a user, I want reader-to-reader responses displayed as threaded/indented replies in the Focus Group panel.",
-      "acceptanceCriteria": [
-        "Reader-to-reader messages (those with replyToReaderId) render indented 24px from left with a subtle left border in the replying reader's color",
-        "Each threaded reply shows: reader avatar + name, 'replying to [Reader Name]' label in muted text, message content",
-        "Sentiment badge shown next to 'replying to' label: 'agrees' (green), 'disagrees' (red/coral), 'builds on' (blue/lavender)",
-        "Thread nesting is max 1 level deep (replies are never further indented)",
-        "Non-reply messages (direct responses to SCOUT) render at full width as before",
-        "Smooth streaming animation for threaded messages (Framer Motion slide-in from left)",
-        "FocusGroupMessage type in Zustand and SSE types updated with optional replyToReaderId and sentiment fields",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": "Modify focus-group-panel.tsx. Update FocusGroupMessage types in agent-sdk/types.ts and app-store.ts."
-    },
-    {
-      "id": "US-017",
-      "title": "Save system audit and gaps documentation",
-      "description": "As a developer, I need to verify all persistence flows work correctly and document any gaps.",
-      "acceptanceCriteria": [
-        "Verify draft upload flow: PDF → Supabase Storage + Prisma Draft record with extracted text — add error logging if storage upload fails silently",
-        "Verify analysis results persist: DraftDeliverable created with harmonized scores, coverage, perspectives — confirm no silent catch blocks",
-        "Verify focus group messages persist: FocusSession + FocusGroupMessage records — confirm sequenceNumber ordering",
-        "Verify executive evaluations persist: ExecutiveEvaluation records with correct draft/executive links",
-        "Verify reader memory accumulates across drafts: ReaderMemory records update (not just create)",
-        "Verify chat messages persist: ChatMessage records saved after each Scout interaction",
-        "Check all try/catch blocks in API routes and tools — ensure errors are surfaced to the user (not swallowed)",
-        "Confirm React Query cache invalidation happens after all mutations (check all useMutation onSuccess callbacks)",
-        "Add any missing persistence for new features: project evaluationStatus changes, project sortOrder changes",
-        "Typecheck passes"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": "This is an audit story — may result in small fixes rather than large new code."
     }
   ]
 }

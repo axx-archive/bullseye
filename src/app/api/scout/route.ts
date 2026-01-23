@@ -90,6 +90,12 @@ export async function POST(req: Request) {
     prompt += `\n\n[UPLOADED SCRIPT FILE: "${attachment.filename}"]\nThe script has been automatically ingested and is ready for analysis. Title: "${titleFromFilename}", estimated ${estimatedPages} pages. Do NOT call ingest_script — the script is already loaded. Proceed directly to spawn_readers (ask the user about genre/format first if unclear, but do not block on it).`;
   }
 
+  // Build system prompt with optional user name context
+  let systemPrompt = SCOUT_AGENT_SYSTEM_PROMPT;
+  if (user?.name) {
+    systemPrompt += `\n\nThe user you are working with is named ${user.name}. Address them by name occasionally in conversation — naturally, not forced.`;
+  }
+
   // Create the SSE stream
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -111,7 +117,7 @@ export async function POST(req: Request) {
         const q = query({
           prompt,
           options: {
-            systemPrompt: SCOUT_AGENT_SYSTEM_PROMPT,
+            systemPrompt,
             model: 'claude-sonnet-4-20250514',
             mcpServers: {
               'bullseye-tools': toolServer,

@@ -1,357 +1,1041 @@
 # Ralph Progress Log
-Started: Fri Jan 23 05:42:50 PST 2026
+Started: Thu Jan 22 16:30:42 PST 2026
 
 ## Codebase Patterns
-- Prisma generated client outputs to `src/generated/prisma` and is gitignored — regenerate with `npx prisma generate`
-- API routes use `include` (not `select`) so new model fields are automatically returned
-- TypeScript types are manually maintained in `src/types/index.ts` — keep in sync with Prisma schema
-- Optimistic updates in React Query hooks (e.g., `use-projects.ts`) must include all required fields from the interface
-- Commit message format: `feat: [Story ID] - [Story Title]`
-- Encryption utility at `src/lib/encryption.ts` uses AES-256-GCM with ENCRYPTION_KEY env var (32-byte hex)
-- UserSettings model stores encrypted API keys — use `encrypt()`/`decrypt()` from encryption.ts
-- New tabs: add to `TabId` union in app-store.ts, `renderContent` switch in page.tsx, nav rail + mobile nav in app-shell.tsx
-- Toast: `useToastStore((s) => s.addToast)` then `addToast('msg', 'success'|'error'|'warning'|'info')`
-- API key retrieval: use `getUserApiKey(userId)` from `src/lib/auth.ts` — returns decrypted key or null
-- Agent SDK `query()` accepts `env: { ...process.env, ANTHROPIC_API_KEY: key }` to pass user's API key
-- Anthropic SDK (`@anthropic-ai/sdk`): pass `{ apiKey }` to constructor for per-request key
-- SSE error handling in `event-router.ts`: parses JSON body for error messages on non-200 responses
-- Scout chat error UI: check `m.content.includes('API key in Settings')` to differentiate API key errors from generic errors
-- `ProjectWithCount` (exported from `use-projects.ts`) includes `studio: { id, name }` — use this for grouping/display
-- Projects API returns studio info and orders by `sortOrder asc, updatedAt desc`
-- PATCH `/api/projects/[id]` accepts `evaluationStatus` and `title` — use `useUpdateProject` hook from `use-projects.ts`
-- For nested interactive elements in cards, use `<div role="button">` + `e.stopPropagation()` on inner elements
-- Delete pattern: confirmation dialog state in parent (`deleteConfirmId`), pass `onDelete` to child, dialog at parent level
-- Supabase Storage cleanup: `createAdminClient()` → `.storage.from('scripts').list(prefix)` → `.remove(paths[])`
-- `useDeleteProject` hook in `use-projects.ts` — optimistic removal with rollback on error
-- Drag-and-drop reorder: `Reorder.Group` + `Reorder.Item` from `framer-motion` with `useDragControls` for handle-only dragging
-- `PATCH /api/projects/reorder` accepts `{ projectIds: string[] }` — updates `sortOrder` in a Prisma `$transaction`
-- Draft CRUD: `PATCH/DELETE /api/projects/[id]/drafts/[draftId]` — PATCH updates notes, DELETE removes record + Supabase file
-- Draft storage path: `{projectId}/{draftNumber}.pdf` in Supabase Storage `scripts` bucket
-- Tooltip for disabled buttons: wrap the disabled element in `<Tooltip>` + `<TooltipTrigger asChild>` with a `<span>` wrapper (not a button, since disabled buttons don't trigger hover events)
-- ESLint forbids `setState` inside `useEffect` — use click handlers or refs to manage state sync
-- Independent panel scrolling: add `overflow-hidden` to panel containers, let children manage their own `overflow-y-auto` or `ScrollArea`
-- Focus group engine uses its own Anthropic client — pass `apiKey` through `FocusGroupConfig` and `scriptContext` (CoverageReport) for grounded discussion
-- `createBullseyeToolServer(emitEvent, apiKey?)` threads the user's API key to the focus group tool
-- Focus group reaction turns: after reader round, `generateReactionTurn()` returns `{ content, replyToReaderId, replyToReaderName, sentiment }` or null (PASS). Uses structured prefix format for parsing.
-- FocusGroupMessage/FocusGroupUIMessage: `replyToReaderId`, `replyToReaderName`, `reactionSentiment` fields identify reader-to-reader replies
-- ReactionSentiment: TypeScript uses `'agrees' | 'disagrees' | 'builds_on'`, Prisma enum uses `AGREES | DISAGREES | BUILDS_ON`
-- SSE error events use `error` field (not `message`) — see `ScoutSSEEvent` type in `src/lib/agent-sdk/types.ts`
-- Tool persistence failures should emit `{ source, type: 'error', error: '...' }` via `emitEvent` to notify users
-- ChatMessage table exists but is unused — reader chat exchanges persist to `ReaderMemory.chatHighlights` instead
+- Prisma 7 uses `prisma.config.ts` for database URLs — NOT `url`/`directUrl` in schema.prisma datasource block
+- Prisma 7 CLI flags changed: use `--to-schema` instead of `--to-schema-datamodel`, use `-o` for output file
+- db.ts uses PrismaClient with PrismaPg adapter (pg Pool) — standard Prisma 7 adapter pattern
+- Studio and User have circular FK dependency — use pg pool with `SET CONSTRAINTS ALL DEFERRED` for seeding
+- Seed script uses `tsx` to run TypeScript directly — added as dev dependency
+- Pre-existing type errors exist in agent-sdk tools — `next.config.ts` has `ignoreBuildErrors: true`
+- db.ts exports `db` (named) and `default` — use `import { db } from '@/lib/db'` in routes
+- Default studio ID is `'default-studio-id'` — use this constant for user provisioning
+- User provisioning happens at 3 points: login page fetch, auth callback server-side, and getCurrentUser() fallback in auth.ts
+- `.env*` is gitignored — `.env.example` is exempted with `!.env.example`
+- Generated Prisma client outputs to `src/generated/prisma` — imported as `@/generated/prisma/client`
+- Toast store is a separate Zustand store at `src/stores/toast-store.ts` — use `useToastStore` with `addToast(message, variant)`
+- ToastContainer is rendered in `src/app/providers.tsx` — no need to add it per-page
+- Design system has semantic color vars: `--success`, `--warning`, `--danger`, `--info` — use as Tailwind classes `bg-success`, `text-danger`, etc.
+- React Query hooks go in `src/hooks/` — export query key factories (e.g., `projectKeys`) for external invalidation
+- React Query v5 useMutation needs 4th generic `TContext` for typed optimistic update rollback
+- API routes use `getCurrentUser()` from `@/lib/auth` — returns null if unauthed, user includes `studioId` for scoping
+- Next.js 15 dynamic route params are a Promise — use `const { id } = await params` (type: `{ params: Promise<{ id: string }> }`)
+- Access control: always check `project.studioId !== user.studioId` to prevent cross-studio access
+- Home view no longer uses Zustand `projects` array — uses `useProjects()` React Query hook, which returns `ProjectWithCount[]` with `_count.drafts`
+- Project creation uses `useCreateProject` mutation — onSuccess sets Zustand state and navigates, onError shows toast
+- Supabase admin client at `src/lib/supabase/admin.ts` — uses service role key for server-side storage/RLS bypass
+- Draft upload route auto-increments `draftNumber` by querying latest draft for the project
+- PDF extraction returns both `text` and `pageCount` — Draft model stores both
+- Draft hooks go in `src/hooks/use-drafts.ts` — useUploadDraft sends FormData, invalidates projectKeys on success
+- DraftStatus type: 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED' — use these exact values
+- Scout chat messages stored in Zustand `chatMessages` (not local state) — persists across tab switches but not page refreshes
+- `updateChatMessage(id, updates)` in app-store for targeted message updates during streaming
+- SSE connection via `createSSEConnection(url, body, callbacks)` from `@/lib/agent-sdk/event-router`
+- StoreChatMessage type exported from app-store — matches ChatMessage from chat-interface.tsx (timestamp optional)
+- Tool status pills are tracked via `toolCalls: ToolCallStatus[]` on the assistant message — updated via `updateChatMessage(id, { toolCalls })` during streaming
+- MCP tool names prefixed with `mcp__bullseye-tools__` — strip with `tool.split('__').pop()` to get the base name for TOOL_DISPLAY_NAMES lookup
+- Event router auto-switches rightPanelMode based on SSE source — reader sources → 'analysis', focus_group → 'focus_group', reader_chat/executive → their respective modes
+- Phase change guard in scout-chat's onPhaseChange callback prevents redundant mode switches and side effects (check `useAppStore.getState().rightPanelMode !== phase` before acting)
+- Reader chat messages stored in Zustand `readerChatMessages` (Record<string, ReaderChatMessage[]>) — keyed by readerId, persists across panel switches
+- `addReaderChatMessage(readerId, msg)` and `updateReaderChatMessage(readerId, msgId, updates)` for per-reader message management
+- Executive streaming states stored in Zustand `executiveStates` Map<string, ExecutiveStreamState> — accumulates results, persists across panel switches
+- When adding new EventRouterCallbacks, also update focus-group-panel.tsx (has its own inline callbacks for follow-up messages)
+- Draft access control: `include: { project: { select: { studioId: true } } }` then check `draft.project.studioId !== user.studioId`
+- DraftDeliverable has unique constraint on `draftId` — use `findUnique({ where: { draftId: id } })` not findFirst
+- Studio sub-entity (readers/executives) access control: check `entity.studioId !== user.studioId` directly — no join needed
+- StudioIntelligence has unique constraint on `studioId` — use `findUnique({ where: { studioId } })`
+- PUT routes for partial updates: use conditional spread `...(body.field !== undefined && { field: body.field })` for each updatable field
+- draftKeys exported from `src/hooks/use-drafts.ts` — use `draftKeys.deliverable(id)`, `draftKeys.evaluations(id)`, `draftKeys.focusSessions(id)` for cache invalidation
+- studioKeys exported from `src/hooks/use-studio.ts` — use `studioKeys.studio`, `studioKeys.readers`, `studioKeys.executives`, `studioKeys.intelligence` for cache invalidation
+- Hooks that fetch optional data (deliverable, intelligence) return `null` for 404 — check `data === null` for empty state, not just `!data` (which also matches loading)
+- Mobile responsive pattern: `hidden md:flex` hides desktop nav, bottom tab bar uses `fixed bottom-0` with `safe-area-bottom` utility
+- Modal bottom-sheet on mobile: `items-end md:items-center` + `rounded-t-2xl md:rounded-2xl` + `md:max-w-{size} md:mx-4`
+- Reader cards use `lg:grid-cols-3` (1024px+ breakpoint) for tablet single-column stacking, not `md:grid-cols-3`
+- Content padding pattern: `px-4 md:px-8` for all main content areas to ensure readability at 375px
+- ScoreIndicator hides rating text labels on mobile (hidden sm:inline) to prevent horizontal overflow
+- When a component must stay mounted on mobile (e.g., SSE connections, streaming refs), use `opacity-0 pointer-events-none` instead of `hidden` (display:none) — preserves React hooks and refs
+- Mobile panel toggles with fade: absolute positioning + `transition-opacity duration-150` is simpler than AnimatePresence when one panel must stay mounted
+- Interactive element transitions: use `duration-150 ease-out` consistently for CSS transitions; for Framer Motion use `ease: [0, 0, 0.58, 1]` (CSS ease-out equivalent)
+- Button press effect: `active:scale-[0.98]` on the base Button class and custom buttons; combined with `transition-all` or `transition-transform`
+- Tooltip delay: default is 200ms for navigation tooltips — set via TooltipProvider `delayDuration={200}` in app-shell
+- Tool implementations persist to DB — guard with `!draftId.startsWith('draft-')` to skip temp IDs
+- `updateStudioIntelligence()` exported from `src/lib/agent-sdk/tools/studio-intelligence.ts` — call after analysis to update studio score distributions
+- React Query cache invalidation after Scout analysis: invalidate in `onResult` callback using `queryClient.invalidateQueries({ queryKey: draftKeys.deliverable(id) })` etc.
+- Executive tool emits per-executive SSE events (executive_start/executive_complete) during DB persistence for live UI feedback
+- Prisma JSON fields in upsert: always serialize via `JSON.parse(JSON.stringify(...))` to strip class instances and convert Dates
+- Prisma JSON read fields (JsonValue): cast through `unknown` before narrowing to specific types (avoid TS2352)
+- ESLint `react-hooks/exhaustive-deps` suppress: place eslint-disable comment on the `}, [])` line, not above the useEffect
+- React `setState` in useEffect: derive state in render phase instead (useMemo or inline computation)
+- ESLint flat config: `argsIgnorePattern: "^_"` + `varsIgnorePattern: "^_"` for @typescript-eslint/no-unused-vars
+- User profile hooks at `src/hooks/use-user-profile.ts` — useUserProfile(), useUpdateDisplayName(), useUploadAvatar(); userProfileKeys for cache invalidation
+
+- Shared components go in src/components/shared/ with named exports
+- UI primitives (Radix-based) are in src/components/ui/
+- Use 'use client' directive for client components
+- Import cn() from @/lib/utils for conditional classNames
 
 ---
 
-## 2026-01-23 - US-001
-- Added `EvaluationStatus` enum (UNDER_CONSIDERATION, APPROVED, REJECTED) to Prisma schema
-- Added `evaluationStatus` (default: UNDER_CONSIDERATION) and `sortOrder` (default: 0) fields to Project model
-- Generated and applied migration `20260123134415_add_evaluation_status_and_sort_order`
-- Updated `src/types/index.ts` with `EvaluationStatus` type and new fields on `Project` interface
-- Fixed optimistic update in `src/hooks/use-projects.ts` to include new required fields
-- Files changed: prisma/schema.prisma, src/types/index.ts, src/hooks/use-projects.ts, prisma/migrations/
+## 2026-01-23 - US-001 (user-customization branch)
+- Implemented reusable UserAvatar component at src/components/shared/user-avatar.tsx
+- Props: src, name, email, size ('sm'=28px, 'md'=40px, 'lg'=64px)
+- Image mode: circular img with object-cover and rounded-full
+- Fallback mode: colored circle with white initials (first letter of name/email or '?')
+- Deterministic color from 10-color palette using string hash
+- Files changed: src/components/shared/user-avatar.tsx (new)
 - **Learnings for future iterations:**
-  - When adding new required fields to the Project interface, check `use-projects.ts` optimistic updates
-  - The migration_lock.toml file is created on first migration and should be committed
-  - Prisma `include` returns all scalar fields by default, so API routes don't need changes for new fields
+  - The project already has Radix Avatar primitives in src/components/ui/avatar.tsx but the UserAvatar is a higher-level abstraction
+  - Shared components use named exports, not default exports
+  - The reader-card.tsx shows the existing pattern for avatar-like initials rendering
 ---
 
-## 2026-01-23 - US-002
-- Added `UserSettings` model to Prisma schema with: id, userId (unique, relation to User), claudeApiKeyEncrypted, claudeApiKeyIv, createdAt, updatedAt
-- Added `settings` relation on User model pointing to UserSettings
-- Generated and applied migration `20260123134700_add_user_settings`
-- Created encryption utility at `src/lib/encryption.ts` using AES-256-GCM
-- Utility exports `encrypt(plaintext)` returning `{ ciphertext, iv }` and `decrypt(ciphertext, iv)` returning plaintext
-- Added ENCRYPTION_KEY to `.env.example` with comment explaining format
-- Files changed: prisma/schema.prisma, src/lib/encryption.ts (new), .env.example, prisma/migrations/
+## 2026-01-22 - US-001
+- What was implemented:
+  - Prisma migration (0001_init) generated from schema and marked as applied
+  - prisma.config.ts updated with DIRECT_URL fallback for migrations
+  - .env.example created with all required env vars
+  - Seed script at scripts/seed.ts with Studio, 3 Readers, 5 Executives, StudioIntelligence
+  - npm scripts: db:seed, db:migrate, db:generate
+  - .gitignore updated to allow .env.example
+  - tsx added as dev dependency
+- Files changed:
+  - .env.example (new)
+  - .gitignore (modified)
+  - prisma.config.ts (modified)
+  - prisma/schema.prisma (modified — pre-existing changes included)
+  - prisma/migrations/0001_init/migration.sql (new)
+  - scripts/seed.ts (new)
+  - package.json (modified)
+  - package-lock.json (modified)
 - **Learnings for future iterations:**
-  - AES-256-GCM auth tag is appended to ciphertext with `:` separator for storage in a single field
-  - IV (12 bytes for GCM) stored separately to allow decryption
-  - The encryption utility validates key length at runtime — will throw clear error if misconfigured
+  - Prisma 7 removed `url` and `directUrl` from schema datasource block — must use prisma.config.ts
+  - `prisma migrate diff` uses `--to-schema` flag (not `--to-schema-datamodel`)
+  - Circular FK between Studio/User means you can't use Prisma ORM for initial insert — use raw pg pool with deferred constraints
+  - The database already has tables from prior setup — use `prisma migrate resolve --applied` to baseline
+  - tsx is needed as a dev dep to run seed.ts; npx tsx works but installs each time
 ---
 
-## 2026-01-23 - US-003
-- Created GET/PUT/DELETE `/api/settings` route at `src/app/api/settings/route.ts`
-- GET returns `{ hasApiKey: boolean, maskedKey: string | null }` — decrypts key to show last 4 chars
-- PUT accepts `{ claudeApiKey: string }`, validates `sk-ant-` prefix, encrypts and stores via upsert
-- DELETE nulls out the encrypted key fields (keeps the UserSettings record)
-- All routes validate auth via `getCurrentUser()` — return 401 if unauthenticated
-- Files changed: src/app/api/settings/route.ts (new)
+## 2026-01-22 - US-002
+- What was implemented:
+  - User provisioning API route at src/app/api/auth/provision/route.ts
+  - Login page updated to call /api/auth/provision after successful signInWithPassword
+  - Auth callback updated to provision user server-side after exchangeCodeForSession
+  - Fixed auth.ts type error — changed from nested studio create to studioId reference
+  - auth.ts getCurrentUser() also provisions users as fallback
+- Files changed:
+  - src/app/api/auth/provision/route.ts (new)
+  - src/app/auth/callback/route.ts (modified)
+  - src/app/login/page.tsx (modified — added provision call)
+  - src/lib/auth.ts (modified — fixed type error, use DEFAULT_STUDIO_ID)
 - **Learnings for future iterations:**
-  - Use `db.userSettings.upsert()` for create-or-update semantics on 1:1 relations
-  - Prisma client must be regenerated (`npx prisma generate`) after schema changes before types are available
-  - For masked key display, decrypt to get the full key but only expose last 4 chars
-  - DELETE route nulls fields rather than deleting the record — avoids needing to recreate on next PUT
+  - db.ts exports as `{ db }` named export, not `{ prisma }`
+  - The circular FK between Studio/User means you can't use nested `studio: { create: {} }` from User create — use studioId directly
+  - auth.ts previously had a type error from trying to create Studio in nested User create — fixed by referencing default studio
+  - Login page UI was already redesigned with Framer Motion animations in the working tree (pre-existing changes on branch)
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-004
-- Created `src/components/settings/settings-view.tsx` with full API key management UI
-- Added `'settings'` to `TabId` type in `src/stores/app-store.ts`
-- Added Settings tab (Settings2 gear icon) to app-shell.tsx nav rail (after project tabs, always accessible)
-- Added Settings tab to mobile bottom nav bar
-- Added `case 'settings'` to `page.tsx` renderContent switch with SettingsView import
-- Excluded 'settings' tab from project context bar display
-- Features: password input with show/hide toggle, save button with PUT call, masked key display, trash icon delete with confirmation, validation error styling
-- Files changed: src/components/settings/settings-view.tsx (new), src/components/layout/app-shell.tsx, src/app/page.tsx, src/stores/app-store.ts
+## 2026-01-22 - US-003
+- What was implemented:
+  - Toast store at src/stores/toast-store.ts — Zustand store with addToast(message, variant) and removeToast(id)
+  - Toast component at src/components/shared/toast.tsx — renders fixed bottom-right, stacks vertically with 8px gap
+  - Supports 4 variants: success (green), error (red), warning (amber), info (blue) using design system color vars
+  - Auto-dismisses after 5 seconds, also dismissible on click
+  - Framer Motion AnimatePresence: enter (slide up + fade in + scale), exit (slide right + fade out)
+  - Each toast has icon (CheckCircle, XCircle, AlertTriangle, Info from lucide-react)
+  - ToastContainer added to providers.tsx so it renders on all pages
+- Files changed:
+  - src/stores/toast-store.ts (new)
+  - src/components/shared/toast.tsx (new)
+  - src/app/providers.tsx (modified — added ToastContainer import and render)
 - **Learnings for future iterations:**
-  - `Settings` icon from lucide is already used for the "Studio" tab — use `Settings2` for actual settings
-  - Settings tab is always accessible (not gated by `hasProject`) — excluded from context bar like 'home'
-  - Toast store uses `addToast(message, variant)` pattern — import from `@/stores/toast-store`
-  - The app-shell has both desktop (icon rail) and mobile (bottom bar) nav — must add to both
+  - Toast store is intentionally separate from app-store — it's ephemeral UI state that shouldn't persist
+  - Use `useToastStore.getState().addToast(msg, variant)` for non-component contexts (e.g., API error handlers)
+  - Framer Motion `mode="popLayout"` is needed for smooth layout animations when toasts are removed from middle of stack
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-005
-- Added `getUserApiKey(userId)` helper to `src/lib/auth.ts` — retrieves and decrypts user's API key from UserSettings
-- Updated Scout API route (`src/app/api/scout/route.ts`):
-  - Added auth check via `getCurrentUser()`
-  - Retrieves user's API key from settings, returns 400 with clear message if missing
-  - Passes key via `env: { ...process.env, ANTHROPIC_API_KEY: apiKey }` to Agent SDK `query()`
-- Updated Reader chat API route (`src/app/api/reader-chat/route.ts`):
-  - Added auth check and API key retrieval
-  - Passes user's key to `new AnthropicSDK({ apiKey })` constructor
-  - Returns 400 with same "add API key in Settings" message if missing
-- Improved SSE error handling in `src/lib/agent-sdk/event-router.ts`:
-  - `createSSEConnection` now parses JSON response body on non-200 to extract error message
-  - Previously only showed generic "HTTP 400: Bad Request"
-- Updated Scout chat UI (`src/components/scout/scout-chat.tsx`):
-  - Detects API key errors in error messages and shows tailored message
-  - Shows "Go to Settings" button (navigates to settings tab) instead of "Retry" for API key errors
-- Files changed: src/lib/auth.ts, src/app/api/scout/route.ts, src/app/api/reader-chat/route.ts, src/lib/agent-sdk/event-router.ts, src/components/scout/scout-chat.tsx
+## 2026-01-22 - US-004
+- What was implemented:
+  - React Query hooks file at src/hooks/use-projects.ts
+  - useProjects() hook: fetches GET /api/projects, returns ProjectWithCount[] (with _count.drafts), staleTime 30s
+  - useProject(id) hook: fetches GET /api/projects/[id], returns ProjectWithDrafts (with drafts array), staleTime 30s, enabled only when id is truthy
+  - useCreateProject() mutation: POST /api/projects, optimistic update (adds temp project to list immediately), rolls back on error, invalidates on settle
+  - projectKeys query key factory exported for external cache invalidation
+  - MutationContext type for proper onError context typing
+  - QueryClientProvider was already set up in providers.tsx (from prior work)
+- Files changed:
+  - src/hooks/use-projects.ts (new)
 - **Learnings for future iterations:**
-  - Agent SDK `query()` uses `env` option to override environment — this is how to inject API keys per-request
-  - Anthropic SDK constructor accepts `{ apiKey }` directly for per-request keys
-  - SSE connections return JSON (not SSE) on auth/validation errors — event-router must handle both
-  - `useAppStore.getState().setActiveTab('settings')` navigates to settings from any component without hook
-  - The scout-chat already had pending attachment auto-send logic (useEffect) added in a prior commit
+  - QueryClientProvider is already in src/app/providers.tsx — no need to add it again
+  - React Query v5 requires explicit 4th generic type param on useMutation for context typing (TData, TError, TVariables, TContext)
+  - Project type in types/index.ts has optional `drafts?: Draft[]` — use Omit<Project, 'drafts'> when API returns different shape
+  - Pre-existing type errors in agent-sdk tools are expected and not blockers (next.config.ts has ignoreBuildErrors: true)
+  - projectKeys pattern: `all: ['projects']`, `detail: (id) => ['projects', id]` — follow this for other entity hooks
 ---
 
-## 2026-01-23 - US-006
-- Refactored home-view.tsx from a flat project grid to studio-grouped layout with collapsible headers
-- Added `groupProjectsByStudio()` utility function that groups projects by their studio and sorts studios alphabetically
-- Added collapsible studio headers with ChevronDown icon that rotates on collapse (-rotate-90)
-- Used Framer Motion `AnimatePresence` for smooth collapse/expand animations
-- Updated projects API route to include `studio: { id, name }` in response and order by `sortOrder asc, updatedAt desc`
-- Exported `ProjectWithCount` type from `use-projects.ts` (now includes `studio` field)
-- Updated optimistic create in `useCreateProject` to include the new `studio` field
-- Collapse state managed in component state via `useState<Set<string>>`
-- Each studio header shows project count badge
-- Files changed: src/components/home/home-view.tsx, src/app/api/projects/route.ts, src/hooks/use-projects.ts
+## 2026-01-22 - US-005
+- What was implemented:
+  - GET /api/projects — returns projects for authenticated user's studio, ordered by updatedAt desc, with _count.drafts
+  - POST /api/projects — creates project with title, logline, genre, format; validates required fields (400 if missing)
+  - GET /api/projects/[id] — returns project with drafts array ordered by draftNumber desc
+  - All routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - GET by ID also validates studio membership — returns 404 if project belongs to different studio
+  - Returns 404 for non-existent project IDs
+- Files changed:
+  - src/app/api/projects/route.ts (new)
+  - src/app/api/projects/[id]/route.ts (new)
 - **Learnings for future iterations:**
-  - Projects API now returns studio name — no extra fetch needed for grouping
-  - `ProjectWithCount` is exported from `use-projects.ts` — import from there, not redeclare locally
-  - API route uses multi-field orderBy: `[{ sortOrder: 'asc' }, { updatedAt: 'desc' }]`
-  - Studio grouping uses `project.studio?.id || project.studioId` for fallback (optimistic creates may lack studio)
-  - AnimatePresence with `initial={false}` prevents animation on first render
+  - API route pattern: use `getCurrentUser()` from `@/lib/auth` for auth, return 401 if null
+  - Project access control: check `project.studioId !== user.studioId` to prevent cross-studio access
+  - Next.js 15 dynamic route params are now a Promise — use `const { id } = await params` in route handlers
+  - Include `_count: { select: { drafts: true } }` for list endpoints that need relation counts
+  - POST routes should return 201 status on successful creation
 ---
 
-## 2026-01-23 - US-007
-- Added `StudioStats` component to home-view.tsx that renders compact stat row below each studio header
-- Added `EVALUATION_STATUS_CONFIG` constant mapping evaluation statuses to labels and color classes
-- Stats show counts for Under Consideration (amber), Approved (green), Rejected (muted red)
-- Only non-zero counts are displayed; component returns null if all counts are zero
-- Stats are hidden when studio section is collapsed
-- All data computed from existing `projects` query data — no additional API calls
-- Files changed: src/components/home/home-view.tsx
+## 2026-01-22 - US-006
+- What was implemented:
+  - Home view (`home-view.tsx`) refactored to use `useProjects()` React Query hook instead of Zustand store
+  - Loading state shows 3 skeleton project cards with pulse animation
+  - Empty state with 48px Target icon, "Create your first project" heading, and "New Project" button
+  - Project cards display real data: title, logline, format badge, draft count from `_count.drafts`, last updated date
+  - Error state for failed fetches
+  - Project creation modal (`project-create-modal.tsx`) wired to `useCreateProject` mutation
+  - Success toast on project creation, error toast on failure
+  - Selecting a project calls `setCurrentProject` in Zustand and switches to Scout tab
+  - Create button disabled while mutation is pending
+- Files changed:
+  - src/components/home/home-view.tsx (rewritten — uses useProjects hook, added skeleton loading)
+  - src/components/home/project-create-modal.tsx (modified — uses useCreateProject mutation + toasts)
 - **Learnings for future iterations:**
-  - `evaluationStatus` field on `ProjectWithCount` may be undefined for optimistic creates — default to `'UNDER_CONSIDERATION'`
-  - Stats row is placed between studio header button and AnimatePresence block (outside collapse animation) but guarded by `!isCollapsed`
-  - Use Tailwind color utility classes with opacity modifiers (e.g., `text-red-400/70`) for subtle muted colors
+  - The `useProjects()` hook returns `ProjectWithCount[]` which has `_count: { drafts: number }` — use this instead of `project.drafts?.length`
+  - Pre-existing type errors in agent-sdk tools don't block the build (ignoreBuildErrors: true in next.config.ts)
+  - For optimistic updates with React Query, the modal's `onSuccess` callback is where you set Zustand state (setCurrentProject) and navigate
+  - The home view no longer uses currentStudio from Zustand — the API already scopes projects by studio via the auth session
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-008
-- Added PATCH handler to `/api/projects/[id]/route.ts` supporting `evaluationStatus` and `title` fields
-- Created `EvaluationStatusBadge` component in home-view.tsx with DropdownMenu for status selection
-- Added `useUpdateProject` mutation hook in `use-projects.ts` with optimistic updates
-- Badge shows colored dot + label text; clicking opens dropdown with three status options
-- Changed ProjectCard from `<button>` to `<div role="button">` to allow nested interactive elements (dropdown)
-- `e.stopPropagation()` prevents dropdown clicks from triggering card navigation
-- Files changed: src/app/api/projects/[id]/route.ts, src/hooks/use-projects.ts, src/components/home/home-view.tsx
+## 2026-01-22 - US-007
+- What was implemented:
+  - POST /api/projects/[id]/drafts — accepts multipart form data with PDF file and optional notes
+  - Validates auth, project ownership (studio scoping), file type (PDF only), file size (10MB max)
+  - Extracts text from PDF using pdfjs-dist (reuses same approach as /api/upload)
+  - Stores PDF in Supabase Storage bucket 'scripts' at path '{projectId}/{draftNumber}.pdf'
+  - Creates Draft record with auto-incremented draftNumber, scriptText, pageCount, notes, scriptUrl
+  - Returns created Draft with id, draftNumber, pageCount, status, scriptUrl (201)
+  - Supabase admin client created at src/lib/supabase/admin.ts for service-role storage operations
+- Files changed:
+  - src/app/api/projects/[id]/drafts/route.ts (new)
+  - src/lib/supabase/admin.ts (new)
 - **Learnings for future iterations:**
-  - Nested interactive elements (button inside button) are invalid HTML — use `<div role="button">` for the outer container
-  - DropdownMenu from Radix needs `e.stopPropagation()` on both trigger and content to prevent parent click handlers
-  - The PATCH route validates allowed fields explicitly and builds updateData dynamically — extendable for future fields
-  - `useUpdateProject` hook is generic (accepts any updatable field) — reusable for rename, status changes, etc.
+  - Supabase Storage upload needs service role key to bypass RLS — use createAdminClient() not the user-scoped client
+  - getPublicUrl() is synchronous (no await needed) and returns `{ data: { publicUrl: string } }`
+  - Draft draftNumber auto-increment: query `findFirst` with `orderBy: { draftNumber: 'desc' }` then add 1
+  - The /api/upload route already has PDF extraction logic — for the drafts route we duplicated it locally to also return pageCount
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-009
-- Added context menu (MoreVertical kebab icon) to ProjectCard with "Rename" option
-- Implemented inline edit mode: title becomes an input field with current value, auto-focused and selected
-- Enter saves, Escape cancels, blur (click away) saves
-- Empty names rejected with red border and error message — does not submit
-- Uses existing `useUpdateProject` hook to PATCH title — React Query cache invalidates on success
-- Card click navigation disabled during edit mode to prevent accidental navigation
-- Context menu kebab icon and ChevronRight grouped together in top-right corner
-- Files changed: src/components/home/home-view.tsx
+## 2026-01-22 - US-008
+- What was implemented:
+  - useUploadDraft mutation hook at src/hooks/use-drafts.ts — POST FormData to /api/projects/[id]/drafts
+  - DraftUploadModal refactored to use useUploadDraft mutation instead of local Zustand state
+  - Upload progress indicator: Loader2 spinning icon + "Extracting text..." message during API call
+  - Success toast: "Draft uploaded — {pageCount} pages extracted"
+  - Error toast: shows the API error message for corrupt/password-protected PDFs
+  - After success: invalidates project query (projects list + detail) so draft count updates
+  - Modal closes on success, stays open on error
+  - All interactive elements disabled during upload (backdrop click, close button, cancel, notes textarea)
+  - setCurrentDraft called on success with proper DraftStatus type cast
+- Files changed:
+  - src/hooks/use-drafts.ts (new — useUploadDraft mutation hook)
+  - src/components/home/draft-upload-modal.tsx (rewritten — wired to API with progress/toasts)
 - **Learnings for future iterations:**
-  - `MoreVertical` (kebab) and `Pencil` icons from lucide-react for context menu pattern
-  - For inline edit on blur, be careful with onBlur + button clicks — onBlur fires before onClick. Use `onBlur` for save-on-click-away behavior.
-  - When disabling parent `onClick` during edit mode, conditionally set `onClick={isEditing ? undefined : onOpen}`
-  - DropdownMenuTrigger with `opacity-0 group-hover:opacity-100` provides show-on-hover behavior for context menus
+  - DraftStatus type is 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED' — not 'COMPLETE' or 'ERROR'
+  - useMutation.isPending is the React Query v5 way to check loading state (replaces isLoading)
+  - uploadMutation.reset() should be called in resetAndClose to clear error state on re-open
+  - The draft upload API returns pageCount as `number | null` — use nullish coalescing for display
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-010
-- Added DELETE handler to `/api/projects/[id]/route.ts` with auth check, studio ownership validation
-- DELETE route removes all associated files from Supabase Storage (`scripts/{projectId}/` prefix) before deleting
-- Prisma cascading deletes handle: drafts, deliverables, chat messages, focus sessions, reader memories, executive evaluations
-- Added `useDeleteProject` hook in `use-projects.ts` with optimistic removal from cache
-- Added "Delete" option (red text with Trash2 icon) to the existing context menu on ProjectCard
-- Added confirmation Dialog: "This will permanently delete the project and all its drafts. This cannot be undone."
-- Dialog uses Cancel/Delete buttons with disabled state during deletion
-- Project card uses Framer Motion `exit` animation (opacity 0, scale 0.95) via `AnimatePresence` wrapper on the cards grid
-- Success toast "Project deleted" shown on completion
-- Files changed: src/app/api/projects/[id]/route.ts, src/hooks/use-projects.ts, src/components/home/home-view.tsx
+## 2026-01-22 - US-009
+- What was implemented:
+  - Refactored scout-chat.tsx to use Zustand store's `chatMessages` and `isStreaming` instead of local useState
+  - Messages now persist across tab switches within the session (stored in Zustand, not localStorage)
+  - Added `updateChatMessage(id, updates)` method to store for targeted message updates during streaming
+  - Added `StoreChatMessage` exported type to app-store matching ChatMessage fields (with optional timestamp)
+  - SSE streaming works via `createSSEConnection` from event-router.ts (already existed)
+  - text_delta events append content token-by-token to assistant message via `updateChatMessage`
+  - text_complete events finalize message by setting `isStreaming: false`
+  - Error handling: connection failures show system error message in chat with "Click Retry" text
+  - Retry button appears below chat when error messages exist — cleans up error messages and resends last request
+  - system type=error SSE events display as red error messages (system role messages in ChatInterface)
+  - Input disabled during streaming via Zustand `isStreaming` state
+- Files changed:
+  - src/stores/app-store.ts (modified — added StoreChatMessage type, updateChatMessage method, optional timestamp)
+  - src/components/scout/scout-chat.tsx (rewritten — uses Zustand chatMessages, added retry mechanism)
 - **Learnings for future iterations:**
-  - Supabase Storage `list(prefix)` returns files in a folder; then `remove(paths[])` for batch delete
-  - `createAdminClient()` from `src/lib/supabase/admin.ts` for server-side storage operations (bypasses RLS)
-  - Prisma `onDelete: Cascade` on Draft→Project means deleting a project automatically cascades to all child records
-  - For exit animations on list items, wrap items in `<AnimatePresence>` and add `exit` prop to `motion.div`
-  - Use `layout` prop on motion.div for smooth reflow when items are removed from the grid
-  - Dialog component from shadcn uses `open`/`onOpenChange` for controlled state — use `showCloseButton={false}` to hide the X button for confirmation dialogs
+  - ChatMessage from chat-interface.tsx has `timestamp?: Date` (optional) — StoreChatMessage must match
+  - `useAppStore.getState()` is used in handleRetry for direct state access outside React rendering
+  - `useAppStore.setState({ chatMessages: filtered })` can be used for bulk state updates not covered by actions
+  - chatMessages are NOT in the persist partialize — they persist in memory across tab switches but not page refreshes
+  - Error markers use `__error__:` prefix in system messages for internal tracking, stripped for display
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-011
-- Implemented drag-and-drop reordering of projects within each studio group using Framer Motion `Reorder`
-- Created `PATCH /api/projects/reorder` route at `src/app/api/projects/reorder/route.ts`
-  - Accepts `{ projectIds: string[] }` ordered array
-  - Validates all projects belong to user's studio
-  - Updates `sortOrder` for each project in a transaction
-- Added `useReorderProjects` hook in `use-projects.ts` with optimistic sortOrder updates
-- Created `StudioProjectList` component wrapping `Reorder.Group` with local order state
-- Created `DraggableProjectItem` component wrapping `Reorder.Item` with `useDragControls`
-- Added `GripVertical` drag handle on the left edge of each project card (visible on hover)
-- Drag handle uses `dragControls.start(e)` pattern to restrict dragging to the handle only
-- API only called when order actually changes (JSON comparison of old vs new ID arrays)
-- Files changed: src/components/home/home-view.tsx, src/hooks/use-projects.ts, src/app/api/projects/reorder/route.ts (new)
+## 2026-01-22 - US-010
+- What was implemented:
+  - Inline tool status pills rendered on the assistant message during Scout tool calls
+  - tool_start events add a ToolCallStatus entry (running) with gold spinner pill
+  - tool_end events update the matching pill to complete state (green checkmark)
+  - ToolCallStatus type added to both app-store (StoreChatMessage.toolCalls) and chat-interface (ChatMessage.toolCalls)
+  - Pills rendered via Framer Motion scale-in animation within the MessageBubble component
+  - TOOL_DISPLAY_NAMES mapping updated per AC: spawn_readers → 'Analyzing with readers...', focus_group → 'Running focus group...', executive_eval → 'Evaluating with executives...', reader_chat → 'Chatting with reader...'
+  - File attachment feature (Paperclip button, file picker, drag-and-drop, PDF upload via /api/upload, filename chip) was already present in ChatInterface from working tree — committed as part of US-010
+  - onResult handler marks any remaining running tools as complete
+  - currentAssistantIdRef and toolCallsRef track the active message's tool state across callbacks
+- Files changed:
+  - src/stores/app-store.ts (modified — added ToolCallStatus interface, toolCalls field on StoreChatMessage)
+  - src/components/chat/chat-interface.tsx (modified — added ToolCallStatus interface, toolCalls on ChatMessage, tool pill rendering in MessageBubble, full file attachment UI)
+  - src/components/scout/scout-chat.tsx (modified — added tool call tracking refs, updated onToolStart/onToolEnd/onResult handlers)
 - **Learnings for future iterations:**
-  - Framer Motion `Reorder.Group` + `Reorder.Item` handles smooth drag animations automatically
-  - For drag-handle-only dragging: `dragListener={false}` on `Reorder.Item` + `useDragControls()` + `dragControls.start(e)` on the handle's `onPointerDown`
-  - Each `Reorder.Item` needs its own `useDragControls` — extract a wrapper component (`DraggableProjectItem`)
-  - `Reorder.Group` requires a local state for the ordered array — sync with parent via `useEffect` on the source data
-  - Call reorder API on `onDragEnd` (not on every `onReorder` callback, which fires during drag)
-  - `touch-none` CSS class on drag handle prevents mobile scroll interference during drag
-  - Prisma `$transaction` with array of updates is ideal for batch sortOrder changes
+  - Tool pills are tracked as an array on the assistant message (toolCalls) rather than separate system messages — this keeps them visually grouped with the response
+  - Use refs (currentAssistantIdRef, toolCallsRef) for callback-scoped state that needs to persist across SSE events without causing re-renders
+  - MCP tool names come as 'mcp__bullseye-tools__ingest_script' — strip prefix with split('__').pop() to get base name for display mapping
+  - The ToolCallStatus type is defined in both app-store and chat-interface — they're structurally identical so TypeScript treats them as compatible
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-012
-- Created PATCH and DELETE handlers at `src/app/api/projects/[id]/drafts/[draftId]/route.ts`
-  - PATCH accepts `{ notes: string }` and validates draft ownership
-  - DELETE verifies draft is not the only one, removes PDF from Supabase Storage, then deletes record (cascades to deliverable, focus sessions, reader memories, executive evaluations)
-- Added `useUpdateDraft` and `useDeleteDraft` mutation hooks in `src/hooks/use-drafts.ts`
-- Added `notes` field to `UploadDraftResponse` type
-- Refactored draft timeline in `revisions-view.tsx`:
-  - Extracted `DraftTimelineItem` component with edit/delete icons visible on hover
-  - Pencil icon triggers inline edit for draft notes field (Enter saves, Escape cancels, blur saves)
-  - Trash icon opens a confirmation Dialog for deletion
-  - When only one draft exists, delete button is disabled with a tooltip: "Cannot delete the only remaining draft"
-- Delete dialog shows descriptive warning about permanent data loss
-- React Query cache invalidates on success for both operations
-- Success toasts shown on update and delete
-- Files changed: src/app/api/projects/[id]/drafts/[draftId]/route.ts (new), src/hooks/use-drafts.ts, src/components/revisions/revisions-view.tsx
+## 2026-01-22 - US-011
+- What was implemented:
+  - SSE event routing automatically switches right panel mode based on event source
+  - reader_maya/reader_colton/reader_devon source with analysis_start type → switches to 'analysis' mode
+  - focus_group source events → switches to 'focus_group' mode
+  - reader_chat source events → switches to 'reader_chat' mode
+  - executive source events → switches to 'executive' mode
+  - ScoutEventSource type extended with 'reader_chat' and 'executive' sources
+  - Phase change guard in scout-chat prevents redundant updates (checks current mode before switching)
+  - Prevents focus group messages from being cleared if already in focus_group mode
+  - Framer Motion transitions updated from 300ms to 200ms per AC
+  - Idle state shows 'Reader activity will appear here' (exact AC text)
+  - ScoutLayout renders 5 panel modes: idle, analysis, focus_group, reader_chat, executive
+  - All non-idle panels use fade+slide animation (opacity 0→1, x: 20→0 enter, x: 0→-20 exit)
+- Files changed:
+  - src/lib/agent-sdk/types.ts (modified — added reader_chat and executive to ScoutEventSource)
+  - src/lib/agent-sdk/event-router.ts (modified — auto-switch panel mode on source-based events, added reader_chat/executive cases)
+  - src/components/scout/scout-layout.tsx (modified — updated idle text, changed transition duration to 0.2s)
+  - src/components/scout/scout-chat.tsx (modified — added phase change guard to prevent redundant updates)
 - **Learnings for future iterations:**
-  - ESLint rule `react-hooks/set-state-in-effect` disallows `setState` calls inside `useEffect` — initialize values in click handlers instead
-  - Draft notes field is nullable in Prisma schema — use `notes || null` when saving empty strings
-  - Draft storage path follows pattern `{projectId}/{draftNumber}.pdf` — use draftNumber (not draftId) for Supabase Storage paths
-  - The `useDrafts` hook fetches drafts from the project detail endpoint (GET /api/projects/[id]) — invalidating `projectKeys.detail` refreshes the draft list
-  - For "cannot delete only draft" protection, validate both client-side (disabled button + tooltip) and server-side (count check returns 400)
+  - Radix ScrollArea doesn't forward refs — use native `div` with `overflow-y-auto` when you need scrollTop access
+- For follow-up inputs in sub-panels, wire full EventRouterCallbacks to createSSEConnection — use `useAppStore.getState()` in callbacks
+- Event router's `routeEvent` function switches on `event.source` — new source types need case statements here
+  - Phase change guard pattern: `const currentMode = useAppStore.getState().rightPanelMode; if (currentMode !== phase) { ... }` prevents redundant state updates and side effects like clearing messages
+  - ScoutLayout uses AnimatePresence with `mode="wait"` for sequential panel transitions (exit → enter, not overlap)
+  - focus_group source events fire for every message — calling onPhaseChange every time is fine since the guard in scout-chat prevents redundant updates
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-013
-- Added `overflow-hidden` to both left panel (ScoutChat) and right panel (RightPanelContent) containers in `scout-layout.tsx`
-- This constrains each panel's height boundary so internal `ScrollArea` (left panel's ChatInterface) and `overflow-y-auto` (right panel's FocusGroupPanel, ReaderChatPanel, ExecutiveEvalPanel) create independent scroll contexts
-- Left panel: ChatInterface uses `ScrollArea className="flex-1"` which scrolls independently within the overflow-hidden container
-- Right panel: Each sub-component (FocusGroupPanel, ReaderChatPanel, ExecutiveEvalPanel) has its own `overflow-y-auto` on its scrollable area
-- Auto-scroll behavior preserved: ChatInterface's scroll-to-bottom ref, FocusGroupPanel's scrollContainerRef, ReaderChatPanel's scrollRef all continue to work within their contained areas
-- Mobile view unaffected: on mobile, panels use `absolute inset-0` which already constrains height
-- Files changed: src/components/scout/scout-layout.tsx
+## 2026-01-22 - US-012
+- What was implemented:
+  - Reader analysis right panel with live streaming results, expandable/collapsible cards, and harmonized scores
+  - 3 reader cards (Maya, Colton, Devon) with colored left borders when complete
+  - reader_start events set card to 'Analyzing...' with pulse animation (or progress bar if progress events arrive)
+  - reader_progress events (via analysis_stream SSE type) update a progress bar on the reader card
+  - reader_complete events populate: recommendation badge, overall score bar, strengths, concerns, standout quote
+  - ScoreBars component: 10-bar visualization with staggered left-to-right fill animation (300ms duration, 50ms stagger per bar)
+  - Harmonized Scores section appears at top after all 3 readers complete — averages all reader scores
+  - Cards are expandable/collapsible using Zustand expandedReaders state with ChevronDown rotation
+  - Collapsed card shows overall score + recommendation; expanded shows all dimension scores + strengths/concerns/quote
+  - Added progress field to ReaderStreamState type
+  - Added onReaderProgress callback to EventRouterCallbacks
+  - Added analysis_stream routing in event-router for progress updates
+- Files changed:
+  - src/components/scout/reader-analysis-panel.tsx (rewritten — expandable cards, score bars, harmonized scores, progress indicator)
+  - src/lib/agent-sdk/types.ts (modified — added progress field to ReaderStreamState)
+  - src/lib/agent-sdk/event-router.ts (modified — added onReaderProgress callback, analysis_stream routing)
+  - src/components/scout/scout-chat.tsx (modified — added onReaderProgress handler, progress init on reader start)
 - **Learnings for future iterations:**
-  - For independent panel scrolling in a flex layout, the key is `overflow-hidden` on the panel container, NOT `overflow-y-auto` — the children handle their own scrolling
-  - `flex-1 min-h-0` on the parent content area ensures flex children can shrink below their content size
-  - `overflow-hidden` creates a new block formatting context that constrains `h-full` / `flex-1` children to the actual available height
-  - The panel structure is: outer `flex flex-col overflow-hidden` → child `h-full flex flex-col` → grandchild `flex-1 overflow-y-auto` (or ScrollArea)
-  - `absolute inset-0` on mobile already constrains height, so `overflow-hidden` is harmless there
+  - expandedReaders and toggleReaderExpanded are already in Zustand UI state — use these for any expand/collapse patterns
+  - ScoreBars uses Framer Motion scaleX with transformOrigin: 'left' for left-to-right fill animation
+  - numericToFilled(value) converts 0-100 scores to 0-10 filled bars (Math.round(value / 10))
+  - computeHarmonizedScores iterates all 3 readers and averages per dimension — graceful with missing data
+  - analysis_stream is the SSE event type for reader progress updates (not a separate reader_progress type)
+  - AnimatePresence with height: 0/auto for expand/collapse transitions needs overflow-hidden on the motion.div
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-014
-- Audited FocusGroupEngine data flow: no mock data or hardcoded script references exist
-- Root cause identified: focus group reader prompts never received actual script content — only perspective summaries (scores, strengths, concerns). Readers were asked to "reference specific evidence from the script" but had no script text to reference.
-- Fix 1: Added `scriptContext` (CoverageReport) to `FocusGroupConfig` — now passes harmonized coverage (synopsis, analyses, strengths/weaknesses) to both moderator context and reader system prompts
-- Fix 2: Updated `FocusGroupEngine` to accept and use an `apiKey` parameter, passing it to `getAnthropicClient()` — previously the engine used env var `ANTHROPIC_API_KEY` instead of the user's stored key
-- Fix 3: Added `console.warn` when focus group is invoked without a completed deliverable (no harmonizedCoverage available)
-- Fix 4: Updated `createBullseyeToolServer` and `createFocusGroupTool` to thread `apiKey` from the Scout route through to the engine
-- Confirmed: `spawn_readers` correctly passes `getCurrentScript().scriptText` to reader analysis (full script text)
-- Confirmed: `scripts/seed.ts` contains only setup data (personas, executives, studio intelligence) — no script content
-- Confirmed: No hardcoded script references in reader persona `systemPromptBase` definitions
-- Files changed: src/lib/focus-group/index.ts, src/lib/agent-sdk/tools/focus-group.ts, src/lib/agent-sdk/tools/index.ts, src/app/api/scout/route.ts
+## 2026-01-22 - US-013
+- What was implemented:
+  - Focus group panel with chat-style message list, reader avatars, and colors
+  - focus_group_message SSE events append messages with reader name, color, and avatar (was already wired via event-router)
+  - Moderator (Scout) messages styled with gold accent border (border-l-2, #D4A84B color)
+  - Typing indicator shows reader name + animated dots before message arrives
+  - Messages auto-scroll to bottom via native div with overflow-y-auto + useEffect scrollTop
+  - Follow-up question input at bottom — sends user message to Scout via /api/scout SSE
+  - Follow-up input wires full EventRouterCallbacks so focus group messages still route to Zustand
+  - Messages stored in Zustand focusGroupMessages array (persists across tab switches)
+- Files changed:
+  - src/components/scout/focus-group-panel.tsx (rewritten — added gold border, follow-up input, scroll fix, proper ES imports)
 - **Learnings for future iterations:**
-  - The focus group engine creates its own Anthropic client independently of the Agent SDK — must explicitly pass API key
-  - `FocusGroupConfig.scriptContext` provides the CoverageReport so readers can reference actual script details (characters, plot, dialogue)
-  - The moderator system prompt includes the full conversation context; reader system prompts need script context appended separately
-  - Module-level `getAnthropicClient()` usage (without apiKey) falls back to env var — always pass apiKey explicitly for user-scoped operations
-  - Focus group data flow: `harmonize_analyses` → `DraftDeliverable.harmonizedCoverage` → `run_focus_group` config → engine context/prompts
+  - Radix ScrollArea doesn't forward refs to the viewport — use native `div` with `overflow-y-auto` when you need `scrollRef.current.scrollTop` access
+  - For follow-up inputs in sub-panels (focus group, reader chat), wire a full EventRouterCallbacks object to createSSEConnection — use `useAppStore.getState()` in callbacks for fresh state
+  - Gold accent color for moderator/Scout is `#D4A84B` — use `border-l-2` with inline `borderLeftColor` style (Tailwind can't do arbitrary colors inline)
+  - The focus-group-panel.tsx file was previously untracked — it's a new file in this branch
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-015
-- Implemented reader-to-reader reaction turns in FocusGroupEngine (both `runFocusGroup` and `streamFocusGroup`)
-- After all readers respond to each SCOUT question, 1-2 reaction rounds run where each reader can agree/disagree/build_on another reader's point
-- Reader reaction prompt uses structured format (AGREES_WITH/DISAGREES_WITH/BUILDS_ON: [Name]) for reliable parsing
-- Readers respond with PASS if they have nothing compelling to add — skipped from output
-- Added `replyToReaderId`, `replyToReaderName`, `reactionSentiment` fields to:
-  - `FocusGroupMessage` type in `src/types/index.ts`
-  - `FocusGroupUIMessage` type in `src/lib/agent-sdk/types.ts`
-  - `FocusGroupStreamEvent` in `src/lib/focus-group/index.ts`
-  - `ScoutSSEEvent` in `src/lib/agent-sdk/types.ts`
-- Added `ReactionSentiment` enum to Prisma schema and `replyToReaderId`/`reactionSentiment` fields to FocusGroupMessage model
-- Generated and applied migration `20260123151148_add_reaction_fields_to_focus_group_message`
-- Updated event-router to pass reaction fields through to FocusGroupUIMessage
-- Updated focus-group tool SSE emission and persistence to include reaction fields
-- Updated moderator synthesis prompts to acknowledge reader-to-reader exchanges
-- Files changed: src/lib/focus-group/index.ts, src/lib/agent-sdk/types.ts, src/lib/agent-sdk/event-router.ts, src/lib/agent-sdk/tools/focus-group.ts, src/types/index.ts, prisma/schema.prisma, prisma/migrations/
+## 2026-01-22 - US-014
+- What was implemented:
+  - Reader chat right panel with per-reader conversation history in Zustand
+  - ReaderChatMessage type and readerChatMessages (Record<string, ReaderChatMessage[]>) added to Zustand store
+  - addReaderChatMessage(readerId, message) and updateReaderChatMessage(readerId, messageId, updates) actions added
+  - Conversations persist per reader — switching readers or navigating away doesn't lose history
+  - Back button (ChevronLeft) returns to reader selector without clearing messages
+  - Header shows "Chatting with {reader.name}" per AC
+  - Native div with overflow-y-auto replaces Radix ScrollArea for proper scrollTop ref access
+  - Reader selector shows 3 avatars with colored circles and initials
+  - SSE streaming via POST /api/reader-chat with readerId, message, projectId, draftId, conversationHistory
+  - text_delta events stream token-by-token into assistant message via updateReaderChatMessage
+  - text_complete events finalize the message
+  - Typing indicator with animated dots while waiting for first token
+  - Error handling updates assistant message with error text
+- Files changed:
+  - src/stores/app-store.ts (modified — added ReaderChatMessage type, readerChatMessages state, add/update actions)
+  - src/components/scout/reader-chat-panel.tsx (rewritten — uses Zustand for per-reader message persistence)
 - **Learnings for future iterations:**
-  - Reaction turn architecture: after reader responses in `roundMessages`, run separate loop for `reactionMessages`, then pass both to moderator synthesis
-  - The `generateReactionTurn` method uses structured output format (AGREES_WITH/DISAGREES_WITH/BUILDS_ON prefix) for reliable sentiment parsing
-  - `PASS` detection handles both exact "PASS" and "PASS" as first word — readers can be verbose about passing
-  - When reader doesn't follow the format (no prefix line), fallback assigns `builds_on` sentiment targeting the first other reader
-  - The `reactionSentiment` field uses lowercase in TypeScript types (`'agrees' | 'disagrees' | 'builds_on'`) but uppercase in Prisma enum (`AGREES | DISAGREES | BUILDS_ON`) — map between them in persistence code
-  - Max 300 tokens for reaction responses (shorter than normal 512) since reactions should be brief
-  - Both `runFocusGroup` (non-streaming) and `streamFocusGroup` (streaming) must be kept in sync for feature parity
+  - Per-reader chat messages are stored as Record<string, ReaderChatMessage[]> keyed by readerId — not a flat array
+  - Back button only clears activeReaderChatId (not messages) — this preserves history when returning to selector
+  - ReaderChatMessage is exported from app-store for use in the panel component's ChatBubble props
+  - The reader-chat-panel.tsx was previously untracked — it's a new file in this branch
+  - conversationHistory sent to /api/reader-chat is built from Zustand messages (excluding the streaming placeholder)
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-016
-- Implemented threaded reader-to-reader reply UI in focus-group-panel.tsx
-- Messages with `replyToReaderId` render indented (ml-6 pl-3) with a left border in the replying reader's color
-- Each threaded reply shows: smaller avatar (w-6 h-6), reader name, "replying to [Name]" muted label, and message content
-- Sentiment badge rendered as a pill next to the "replying to" label: agrees (green), disagrees (red/coral), builds on (blue)
-- Used `SENTIMENT_CONFIG` constant for clean label/color mapping
-- Non-reply messages (direct responses to SCOUT) continue to render at full width as before
-- Smooth animation: threaded messages use `initial={{ opacity: 0, x: -12 }}` (slide-in from left) with spring transition
-- All type fields (`replyToReaderId`, `replyToReaderName`, `reactionSentiment`) were already added to `FocusGroupUIMessage` in US-015
-- Files changed: src/components/scout/focus-group-panel.tsx
+## 2026-01-22 - US-015
+- What was implemented:
+  - Executive evaluation right panel component at src/components/scout/executive-eval-panel.tsx
+  - ExecutiveStreamState type added to src/lib/agent-sdk/types.ts (status, verdict, confidence, rationale, keyFactors, concerns)
+  - executive_start and executive_complete SSE event types added to ScoutEventType union
+  - executiveId and executiveName fields added to ScoutSSEEvent for executive routing
+  - onExecutiveStart and onExecutiveComplete callbacks added to EventRouterCallbacks
+  - Event router executive case updated to parse executive_start/executive_complete events
+  - executiveStates Map added to Zustand store (ScoutSessionState) with setExecutiveState/clearExecutiveStates actions
+  - scout-chat.tsx wired with executive callbacks (setExecutiveState on start/complete)
+  - focus-group-panel.tsx updated with no-op executive callbacks for type conformance
+  - ScoutLayout updated to render ExecutiveEvalPanel instead of placeholder text
+  - Panel shows: executives list with loading spinners (evaluating), verdict badge (PURSUE green / PASS red), confidence %, rationale, key factors, concerns
+  - Results accumulate as each executive completes, persisted in Zustand Map
+- Files changed:
+  - src/lib/agent-sdk/types.ts (modified — added ExecutiveStreamState, executive_start/complete event types, executiveId/executiveName on SSE event)
+  - src/lib/agent-sdk/event-router.ts (modified — added executive callbacks, updated executive case routing)
+  - src/stores/app-store.ts (modified — added executiveStates Map, setExecutiveState, clearExecutiveStates)
+  - src/components/scout/scout-chat.tsx (modified — added setExecutiveState destructure, executive callbacks, dependency array)
+  - src/components/scout/focus-group-panel.tsx (modified — added onExecutiveStart/onExecutiveComplete no-ops)
+  - src/components/scout/scout-layout.tsx (modified — import ExecutiveEvalPanel, replace placeholder)
+  - src/components/scout/executive-eval-panel.tsx (new — full executive eval panel component)
 - **Learnings for future iterations:**
-  - `FocusGroupUIMessage` type already includes reaction fields from US-015 — no type changes needed for UI rendering
-  - Thread nesting is guaranteed max 1 level deep by the engine (never generates reply-to-reply)
-  - Use `x: -12` initial animation (slide from left) for threaded replies to visually distinguish from normal `y: 8` (slide up) messages
-  - `READER_COLORS` and `READER_NAMES` maps at module level are the source of truth for reader display info in the focus group panel
-  - The `isReaction` check (presence of `replyToReaderId`) cleanly separates threaded vs non-threaded rendering paths
+  - When adding new callbacks to EventRouterCallbacks, also update focus-group-panel.tsx which has its own inline callbacks object for follow-up messages
+  - ExecutiveStreamState uses Map<string, ExecutiveStreamState> (like readerStates) — not a flat array, so entries accumulate and persist across panel switches
+  - Pre-existing type errors in agent-sdk/tools/ and api/reader-chat/ are NOT caused by new changes — they're pre-existing Prisma JSON type issues
+  - The event router 'executive' case previously only called onPhaseChange — now it also handles executive_start/executive_complete sub-events
+  - Browser verification not available — manual testing needed
 ---
 
-## 2026-01-23 - US-017
-- Comprehensive save system audit covering all persistence flows
-- **Draft upload flow:** Verified correct — PDF parsed, uploaded to Supabase Storage, Draft record created with extracted text. Added try/catch around `db.draft.create()` to clean up orphaned storage files on DB failure.
-- **Analysis results (DraftDeliverable):** Verified correct — upsert pattern with harmonized scores, coverage, perspectives, scout analysis, calibration. Added error event emission on persistence failure (previously swallowed).
-- **Focus group messages:** Verified correct — FocusSession + FocusGroupMessage records with proper sequenceNumber ordering and reaction fields. Added error event emission on persistence failure.
-- **Executive evaluations:** Verified correct — ExecutiveEvaluation records with unique constraint per draft+executive. Added error event emission on persistence failure.
-- **Reader memory:** Verified correct — upsert pattern accumulates across drafts, chat highlights and focus group items append via array spread. Memory persistence failure in analysis tool now emits error event.
-- **Chat messages:** ChatMessage model exists but is NOT used for direct persistence. Chat exchanges persist to ReaderMemory.chatHighlights as a design choice. This is intentional — reader memory provides better context for future interactions.
-- **React Query cache invalidation:** All mutations (create, delete, update, reorder, draft upload/update/delete) properly call `invalidateQueries` in onSuccess/onSettled callbacks.
-- **New feature persistence:** evaluationStatus persists via PATCH /api/projects/[id], sortOrder persists via PATCH /api/projects/reorder with $transaction. Both already working correctly.
-- **Error handling fixes applied:**
-  - `src/app/api/projects/[id]/drafts/route.ts`: Added try/catch around db.draft.create — cleans up orphaned Supabase file on DB failure
-  - `src/lib/agent-sdk/tools/analysis.ts`: Added emitEvent error for deliverable persistence failure and reader memory persistence failure
-  - `src/lib/agent-sdk/tools/focus-group.ts`: Added emitEvent error for focus group message persistence failure
-  - `src/lib/agent-sdk/tools/executive.ts`: Added emitEvent error for executive evaluation persistence failure
-- Files changed: src/app/api/projects/[id]/drafts/route.ts, src/lib/agent-sdk/tools/analysis.ts, src/lib/agent-sdk/tools/focus-group.ts, src/lib/agent-sdk/tools/executive.ts
+## 2026-01-22 - US-016
+- What was implemented:
+  - GET /api/drafts/[id]/deliverable — returns DraftDeliverable with all JSON fields (harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis, studioCalibration)
+  - Returns 404 if no deliverable exists for the draft
+  - GET /api/drafts/[id]/focus-sessions — returns FocusSessions with messages, ordered by createdAt desc
+  - Each focus session includes messages ordered by sequenceNumber asc
+  - Both routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - Both routes verify draft belongs to user's studio via project.studioId check — return 404 for access violations
+  - Both routes return 404 for non-existent draft IDs
+- Files changed:
+  - src/app/api/drafts/[id]/deliverable/route.ts (new)
+  - src/app/api/drafts/[id]/focus-sessions/route.ts (new)
 - **Learnings for future iterations:**
-  - `ScoutSSEEvent.error` (not `message`) is the field for error text in SSE events
-  - The ChatMessage table exists but is unused — reader chat goes to ReaderMemory.chatHighlights instead
-  - All tools receive `emitEvent` as a closure parameter — use it for user-facing warnings
-  - When storage upload succeeds but DB write fails, always clean up the orphaned file
-  - The `EventEmitter` type is exported from `src/lib/agent-sdk/tools/readers.ts` and used across all tool files
+  - Draft access control pattern: findUnique draft with `include: { project: { select: { studioId: true } } }`, then check `draft.project.studioId !== user.studioId`
+  - DraftDeliverable has a unique constraint on draftId — use `findUnique({ where: { draftId: id } })` not `findFirst`
+  - FocusSession messages should be ordered by sequenceNumber (not createdAt) for correct conversation ordering
+  - Pre-existing type errors in agent-sdk/tools/ are known and don't block new API routes (ignoreBuildErrors: true)
+---
+
+## 2026-01-22 - US-017
+- What was implemented:
+  - GET /api/drafts/[id]/evaluations — returns ExecutiveEvaluations with executive profile data included, ordered by createdAt desc
+  - GET /api/studio — returns current user's Studio with _count of readerPersonas and projects
+  - PUT /api/studio — accepts { name } and updates the studio record (validates name is non-empty string)
+  - GET /api/studio/readers — returns ReaderPersonas for the user's studio, ordered by createdAt asc
+  - PUT /api/studio/readers/[id] — accepts persona fields and updates the record (validates ownership)
+  - GET /api/studio/executives — returns ExecutiveProfiles for the user's studio, ordered by createdAt asc
+  - PUT /api/studio/executives/[id] — accepts profile fields and updates the record (validates ownership)
+  - GET /api/studio/intelligence — returns StudioIntelligence for the user's studio (404 if not found)
+  - All routes validate auth via getCurrentUser() — return 401 if unauthenticated
+  - PUT routes verify entity belongs to user's studio before allowing updates
+- Files changed:
+  - src/app/api/drafts/[id]/evaluations/route.ts (new)
+  - src/app/api/studio/route.ts (new)
+  - src/app/api/studio/readers/route.ts (new)
+  - src/app/api/studio/readers/[id]/route.ts (new)
+  - src/app/api/studio/executives/route.ts (new)
+  - src/app/api/studio/executives/[id]/route.ts (new)
+  - src/app/api/studio/intelligence/route.ts (new)
+- **Learnings for future iterations:**
+  - Studio entity access control: reader/executive entities have `studioId` field — check `entity.studioId !== user.studioId` directly (no need for project relation join)
+  - PUT routes use conditional spread for optional fields: `...(body.field !== undefined && { field: body.field })` — allows partial updates without overwriting unset fields
+  - Studio GET uses `_count: { select: { readerPersonas: true, projects: true } }` for relation counts
+  - ExecutiveEvaluation includes `executive: true` in the findMany to get profile data inline
+  - StudioIntelligence has unique constraint on studioId — use `findUnique({ where: { studioId } })`
+---
+
+## 2026-01-22 - US-018
+- What was implemented:
+  - useDrafts(projectId) hook fetches drafts from project detail endpoint, staleTime 30s
+  - draftKeys query key factory exported from use-drafts.ts for cache invalidation (list, deliverable, focusSessions, evaluations)
+  - useDeliverable(draftId) hook fetches GET /api/drafts/[id]/deliverable, staleTime 5min, returns null for 404
+  - useFocusSessions(draftId) hook fetches GET /api/drafts/[id]/focus-sessions, staleTime 30s
+  - useEvaluations(draftId) hook fetches GET /api/drafts/[id]/evaluations, staleTime 30s
+  - useStudio() hook fetches GET /api/studio, staleTime 10min
+  - useReaderPersonas() hook fetches GET /api/studio/readers, staleTime 30s
+  - useExecutiveProfiles() hook fetches GET /api/studio/executives, staleTime 30s
+  - useStudioIntelligence() hook fetches GET /api/studio/intelligence, staleTime 10min, returns null for 404
+  - All hooks return { data, isLoading, error } and handle undefined/null gracefully via `enabled` guard
+  - Response types defined for all API shapes (DeliverableResponse, FocusSessionResponse, EvaluationResponse, StudioResponse, ReaderPersonaResponse, ExecutiveProfileData, StudioIntelligenceResponse)
+- Files changed:
+  - src/hooks/use-drafts.ts (modified — added useDrafts hook and draftKeys factory)
+  - src/hooks/use-studio.ts (new — useDeliverable, useFocusSessions, useEvaluations, useStudio, useReaderPersonas, useExecutiveProfiles, useStudioIntelligence)
+- **Learnings for future iterations:**
+  - draftKeys pattern: `list: (projectId) => ['drafts', projectId]`, `deliverable: (draftId) => ['drafts', draftId, 'deliverable']` etc. — use these for cache invalidation in mutations
+  - useDeliverable and useStudioIntelligence return null (not throw) for 404 responses — components should check `data === null` for empty state
+  - useDrafts fetches from the project detail endpoint (GET /api/projects/[id]) and extracts `.drafts` array — reuses existing route rather than a separate drafts list endpoint
+  - studioKeys exported from use-studio.ts for external cache invalidation (e.g., after PUT updates in studio configuration views)
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-019
+- What was implemented:
+  - Coverage view wired to useDeliverable(currentDraft.id) React Query hook for real API data
+  - Prefers Zustand currentDeliverable (live/streaming data from SSE) over fetched API data — seamless handoff between live analysis and persisted results
+  - API response JSON fields (typed as `unknown` in DeliverableResponse) cast to proper typed interfaces (CoverageReport, HarmonizedScores, ReaderPerspective[], ScoutAnalysis, StudioCalibration, IntakeReport)
+  - Loading skeleton with 3 score bar skeletons (10-bar visualization placeholder) + 3 reader card skeletons (avatar, name, 6 mini-scores, evidence bar)
+  - Empty state uses BarChart3 icon (per AC), 'No Coverage Yet' heading, 'Run analysis from Scout to see coverage' text, and 'Go to Scout →' button that calls setActiveTab('scout')
+  - Removed unused imports (FileText, Target, motion from EmptyState already used)
+  - CoverageContent and IntakeContent typed with proper interfaces instead of DraftDeliverable['field'] accessor types
+- Files changed:
+  - src/components/coverage/coverage-view.tsx (rewritten — uses useDeliverable hook, added LoadingSkeleton, updated EmptyState with Scout link)
+- **Learnings for future iterations:**
+  - Coverage view priority: Zustand `currentDeliverable` > React Query `useDeliverable` data > null (empty state). This ensures live streaming results show immediately while persisted data loads from API for return visits
+  - DeliverableResponse from use-studio.ts types JSON fields as `unknown` — must cast in consumer components (this is intentional since Prisma JSON fields have no schema validation)
+  - EmptyState components should accept onAction callback (not import setActiveTab directly) for reusability and testability
+  - Loading skeletons should match real component dimensions closely — use same rounded corners, gaps, and grid layouts as the populated state
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-020
+- What was implemented:
+  - Focus view refactored to use `useFocusSessions(currentDraft.id)` React Query hook for real session data
+  - Session list shows each session with topic (or "Focus Group Session" fallback), formatted date, message count, and status badge (Completed green, Active amber)
+  - Selecting a session renders full message transcript with reader avatars and persona colors
+  - Moderator (Scout) messages styled with gold accent border (2px solid #D4A84B) and gold name color
+  - Reader messages styled with 3px left border in their persona color (from DEFAULT_READERS lookup)
+  - User messages styled right-aligned with primary color background
+  - Back button in transcript header returns to session list without losing context
+  - Loading skeleton shows 3 session card skeletons with title, badge, date, and message count placeholders
+  - Empty state uses Users icon (48px), "No Focus Groups Yet" heading, explanation text, and "Go to Scout" button that calls setActiveTab('scout')
+  - Removed all simulated/demo focus group logic — view is now purely data-driven from API
+- Files changed:
+  - src/components/focus/focus-view.tsx (rewritten — uses useFocusSessions hook, session list + transcript views, loading/empty states)
+- **Learnings for future iterations:**
+  - FocusSessionMessage speakerType from DB is uppercase ('MODERATOR', 'READER', 'USER') — different from the FocusGroupMessage type which uses lowercase ('moderator', 'reader', 'user')
+  - Reader info for transcript messages should use DEFAULT_READERS lookup by readerId — not the readerPerspectives from Zustand (which may not be populated if user navigates directly to Focus tab)
+  - Session list uses motion.button (not motion.div with onClick) for proper keyboard accessibility
+  - Native div with overflow-y-auto for scroll containers (pattern from US-013/US-014)
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-021
+- What was implemented:
+  - Revisions view refactored to use `useDrafts(currentProject.id)` React Query hook for real draft data
+  - Left sidebar timeline shows drafts sorted by draftNumber desc with: draft number, date, page count, "Analyzed" badge for COMPLETED status
+  - Selecting a draft fetches its deliverable via `useDeliverable(draftId)` and shows harmonized scores in main panel
+  - Compare mode: selecting a second draft fetches its deliverable and shows score deltas with directional arrows (green ArrowUp, red ArrowDown, gray Minus)
+  - DeltaSummary component shows grid of score changes with colored indicators
+  - Reader perspectives from deliverable rendered as ReaderMemoryCards with strengths, concerns, and standout quote
+  - DEFAULT_READERS lookup matches reader names to colors/voiceTags for consistent presentation
+  - "Upload New Draft" button in timeline sidebar opens DraftUploadModal
+  - Loading skeleton shows timeline skeleton (3 items) + score table skeleton (6 bars) + reader card skeletons (3 cards)
+  - Empty state shows GitBranch icon (48px), "No Drafts Yet" heading, description, and "Upload First Draft" button that opens DraftUploadModal
+  - Removed all mock data and simulated drafts — view is now purely data-driven from API
+  - Score bars animate with Framer Motion (width 0 → value%, 400ms ease-out)
+  - Removed unused types (DraftData, DeliverableData) after initial implementation
+- Files changed:
+  - src/components/revisions/revisions-view.tsx (rewritten — uses useDrafts + useDeliverable hooks, added compare mode, loading/empty states)
+- **Learnings for future iterations:**
+  - useDrafts returns UploadDraftResponse[] from the project detail endpoint — createdAt is a string (ISO), needs `new Date()` for display
+  - useDeliverable returns DeliverableResponse with JSON fields typed as `unknown` — must cast to HarmonizedScores/ReaderPerspective[] in consumer
+  - Compare mode needs two separate useDeliverable calls — one for selected draft, one for comparison draft (both enabled conditionally)
+  - DraftUploadModal requires currentProject in Zustand to be set — the revisions view already has currentProject from useAppStore
+  - The drafts array from useDrafts comes sorted by draftNumber desc (from project detail endpoint) — no need to re-sort for "latest first" display
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-022
+- What was implemented:
+  - Pitch view rewritten to use real data from `useExecutiveProfiles()` and `useEvaluations(currentDraft.id)` React Query hooks
+  - Executive cards show real DB profiles (name, title, company) with avatar initials
+  - `useDeliverable(currentDraft.id)` used to check if coverage analysis has been run (prerequisite for exec eval)
+  - Prefers Zustand `currentDeliverable` (live) over API data for hasDeliverable check
+  - "Run Simulation" button sends message to `/api/scout` via `createSSEConnection` with executive SSE callbacks
+  - Per-executive loading spinner overlay during evaluation (from Zustand executiveStates Map)
+  - Live streaming results rendered as `LiveResults` component — shows completed executive eval cards as they stream in
+  - Persisted results rendered as `PersistedResults` component — shows saved evaluations from API on return visits
+  - Results include: PURSUE/PASS badge, confidence %, rationale, key factors as bullets, concerns as bullets, cited coverage elements
+  - Summary card shows Pursue/Pass counts and success rate Progress bar
+  - Loading skeleton: header + 3 executive card skeletons + 2 result card skeletons (all with pulse animation)
+  - Two empty states: no draft selected → "Select a Project" + Home link, no deliverable → "No Evaluations Yet" + "Complete coverage analysis first" + Scout link
+  - Removed all mock/simulated evaluation logic (delay, random verdict generation)
+  - Removed dependency on `DEFAULT_EXECUTIVES` from `@/lib/executive` — now uses API data
+  - Removed unused Zustand actions (startEvaluation, addEvaluation, endEvaluation, etc.) from component destructure
+- Files changed:
+  - src/components/pitch/pitch-view.tsx (rewritten — uses useExecutiveProfiles + useEvaluations hooks, SSE for Run Simulation, loading/empty states)
+- **Learnings for future iterations:**
+  - EvaluationResponse from API has uppercase verdict ('PURSUE'/'PASS') while live SSE may send lowercase — handle both with `=== 'pursue' || === 'PURSUE'`
+  - Live executive results (from Zustand executiveStates Map) take priority over persisted results (from API) when hasLiveResults is true — prevents showing stale data during active evaluation
+  - createSSEConnection can be called from any component (not just scout-chat) — provide full EventRouterCallbacks with no-op handlers for unneeded events
+  - Pitch view has two entry points for evaluation data: live streaming (Zustand executiveStates) and persisted (useEvaluations API hook)
+  - The `connectionRef` is important to prevent garbage collection of the SSE connection
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-023
+- What was implemented:
+  - Studio configuration view rewritten to use real API data via React Query hooks
+  - Readers tab: uses `useReaderPersonas()` hook, displays editable fields (name, displayName, background, voiceDescription, weights)
+  - Readers save: PUT /api/studio/readers/[id] via useMutation, invalidates studioKeys.readers, shows success toast
+  - Executives tab: uses `useExecutiveProfiles()` hook, displays editable fields (name, title, company, priorityFactors, dealBreakers)
+  - Executives save: PUT /api/studio/executives/[id] via useMutation, invalidates studioKeys.executives, shows success toast
+  - Calibration tab: uses `useStudioIntelligence()` hook, shows totalProjectsAnalyzed, recommendationBreakdown (recommend/consider/pass), scoreDistributions percentiles
+  - Calibration empty state: when intelligence is null, shows BarChart3 icon with "No calibration data yet" message
+  - Settings tab: uses `useStudio()` hook, editable studio name field, save calls PUT /api/studio
+  - Inline validation: required fields show red border (border-danger class) and red error text when empty on save attempt
+  - Loading skeletons for all tabs via SectionSkeleton component (pulse animated cards matching real component dimensions)
+  - All save buttons show Loader2 spinner during mutation, disabled while pending
+  - Edit mode: toggle with Edit2/X buttons, Cancel resets fields to original values
+  - Removed all imports of DEFAULT_READERS and DEFAULT_EXECUTIVES (no more static data)
+- Files changed:
+  - src/components/studio/studio-view.tsx (rewritten — uses useReaderPersonas, useExecutiveProfiles, useStudioIntelligence, useStudio hooks + useMutation for saves)
+- **Learnings for future iterations:**
+  - StudioIntelligence JSON fields (scoreDistributions, recommendationBreakdown) typed as `unknown` from React Query — must cast to typed interfaces in component
+  - Reader persona weights are stored as individual columns (premiseWeight, characterWeight, etc.) not as a JSON weights object — map individually in edit forms
+  - Executive priorityFactors and dealBreakers are string arrays in the DB — for edit UI, use comma-separated text input and split on save
+  - Settings section initializes state from API data using a one-time flag pattern (`initialized` state) to avoid overwriting user edits on re-render
+  - useMutation's onSuccess callback is the right place to invalidate queries + close edit mode — ensures fresh data replaces stale form values
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-024
+- What was implemented:
+  - Skeleton base component at src/components/shared/skeleton.tsx with bg-elevated and animate-pulse
+  - ProjectCardSkeleton: matches project card (rounded-2xl, p-5, status dot, title bar, logline lines, footer badges)
+  - ReaderCardSkeleton: matches reader card (avatar w-9 h-9 rounded-xl, name, 6 mini scores grid-cols-2, evidence bar, expand trigger)
+  - ScoreBarSkeleton: matches 10-bar ScoreIndicator (label w-[72px], 10 bars with gap-[2px] and rounded-[2px], rating label)
+  - ChatMessageSkeleton: matches chat bubble (avatar w-7 h-7 rounded-lg, agent name, 2-3 text lines varying widths)
+  - TimelineItemSkeleton: matches revisions timeline (dot w-3 h-3 rounded-full at left-2.5 top-4, draft number + badge, date, page count)
+  - All skeletons use rounded corners matching real component radii
+- Files changed:
+  - src/components/shared/skeleton.tsx (new)
+- **Learnings for future iterations:**
+  - Existing inline skeletons in home-view, coverage-view, revisions-view etc. already follow these exact patterns — the shared components are consistent with them
+  - Pre-existing ui/skeleton.tsx uses bg-accent — the shared/skeleton.tsx uses bg-elevated to match the app's actual skeleton usage pattern
+  - ChatMessageSkeleton accepts `lines` prop (2-3) for varying message lengths
+  - All skeleton components are named exports, no default export — import as `{ ProjectCardSkeleton }` etc.
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-025
+- What was implemented:
+  - ErrorBoundary class component at src/components/shared/error-boundary.tsx
+  - Uses getDerivedStateFromError for React error catching
+  - Fallback UI: AlertCircle icon (48px/w-12), error message, 'Try Again' button that resets state
+  - Accepts optional `fallback` prop for custom fallback UI
+  - Each tab view in page.tsx wrapped with `<ErrorBoundary key={tab}>` — key ensures boundary resets on tab switch
+  - Coverage view: added `error` destructuring from useDeliverable, inline error state with AlertTriangle icon
+  - Focus view: added `error` from useFocusSessions, inline error state
+  - Revisions view: added `error` from useDrafts, inline error state
+  - Pitch view: added `error` from useExecutiveProfiles + useEvaluations, inline error state
+  - Studio view: added `error` to all 4 sub-sections (ReadersSection, ExecutivesSection, CalibrationSection, SettingsSection)
+  - SSE stream errors already handled by scout-chat (US-009) with retry button — no changes needed
+- Files changed:
+  - src/components/shared/error-boundary.tsx (new)
+  - src/app/page.tsx (modified — imported ErrorBoundary, wrapped each view)
+  - src/components/coverage/coverage-view.tsx (modified — added error destructuring + inline error state)
+  - src/components/focus/focus-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/revisions/revisions-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/pitch/pitch-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/studio/studio-view.tsx (modified — added error handling to 4 sub-sections + AlertTriangle import)
+- **Learnings for future iterations:**
+  - ErrorBoundary uses `key` prop to reset when tab changes — without this, switching tabs after an error would still show the error fallback
+  - React Query hooks return `{ error }` typed as `Error | null` — destructure and display `error.message` for user-facing text
+  - Inline error states (AlertTriangle + red text) are better UX than throwing to the ErrorBoundary for data fetch failures — the boundary catches unexpected render errors
+  - Pre-existing type errors in agent-sdk/tools/ are known (Prisma JSON type issues) and don't affect the build (ignoreBuildErrors: true)
+  - The pattern for inline error states: `if (error) { return <div><AlertTriangle /><p>{error.message}</p></div>; }` — goes after loading check, before data rendering
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-026
+- What was implemented:
+  - Shared EmptyState component at src/components/shared/empty-state.tsx
+  - Accepts props: icon (LucideIcon), title (string), description (string), actionLabel? (string), onAction? (callback)
+  - Uses Framer Motion fade-in animation (opacity 0→1, y 8→0, 500ms duration)
+  - Styled with bg-surface icon container (48px, rounded-2xl), bullseye-gold action text link
+  - ScoutView updated with two empty states:
+    - No project: FileText icon, "Select a project first", "Choose a project from Home to start analyzing", "Go to Home" link
+    - No draft: Upload icon, "Upload a script to get started", "Upload a screenplay PDF..." description, "Upload Script" button opening DraftUploadModal
+  - All other views verified to already have proper empty states matching AC:
+    - Home: Target icon, "Create your first project", New Project button
+    - Coverage: BarChart3 icon, "No Coverage Yet", "Run analysis from Scout", Scout link
+    - Focus: Users icon, "No Focus Groups Yet", "Start a focus group from Scout", Scout link
+    - Revisions: GitBranch icon, "No Drafts Yet", "Upload First Draft" button
+    - Pitch: Briefcase icon, two states (no project → Home link, no deliverable → "Complete coverage analysis first")
+- Files changed:
+  - src/components/shared/empty-state.tsx (new — shared reusable component)
+  - src/components/scout/scout-view.tsx (modified — replaced simulated chat with empty state checks before ScoutLayout)
+- **Learnings for future iterations:**
+  - The shared EmptyState component uses `type LucideIcon` from lucide-react — import as `import { type LucideIcon } from 'lucide-react'`
+  - ScoutView previously had a full simulated chat (mock responses, progress banner) — this was all dead code replaced by ScoutChat in scout-layout.tsx
+  - The old scout-view.tsx imported uuid, Card, Progress, Badge, Button — all unused after rewrite since real chat is in scout-chat.tsx
+  - EmptyState actionLabel/onAction are optional — render nothing if not provided (for display-only states)
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-027
+- What was implemented:
+  - Left icon rail hidden on mobile (< 768px) with `hidden md:flex`
+  - Mobile bottom tab bar: fixed to bottom, same icons as sidebar (Home + 6 project tabs), gold active indicator via layoutId animation
+  - Bottom tab bar shows icon + small label text (9px) for each tab, with disabled state for no-project
+  - Safe-area-bottom CSS utility added for iOS notch/home indicator spacing
+  - Main content area padded for bottom bar (pb-16 md:pb-0)
+  - Project grid already used `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` (single column on mobile)
+  - Modals (DraftUploadModal, ProjectCreateModal) render as bottom sheets on mobile: items-end + rounded-t-2xl + max-h-[90vh]
+  - Chat input naturally stays at bottom of viewport within flex layout
+  - Reader cards grid changed from `md:grid-cols-3` to `lg:grid-cols-3` (< 1024px = single column)
+  - ScoreIndicator: responsive label widths (w-16 sm:w-24), hidden rating text on mobile, flex-shrink-0 on bars
+  - Coverage view: strengths/weaknesses, intake fields, and what-works/needs-work grids now `grid-cols-1 sm:grid-cols-2`
+  - Pitch view: key-factors/concerns grids now `grid-cols-1 sm:grid-cols-2`
+  - Studio view: executive name/title/company grid now `grid-cols-1 sm:grid-cols-3`, weights grid `grid-cols-3 sm:grid-cols-5`, calibration stats `grid-cols-2 sm:grid-cols-4`
+  - Context bar: responsive text sizes (text-lg md:text-2xl), truncating project title, tighter gaps on mobile
+  - Content area padding: `px-4 md:px-8` throughout
+  - All text readable without horizontal scrolling at 375px viewport width
+- Files changed:
+  - src/components/layout/app-shell.tsx (modified — hidden md:flex on nav, pb-16 md:pb-0, mobile bottom tab bar, responsive context bar)
+  - src/app/globals.css (modified — added safe-area-bottom utility)
+  - src/components/home/draft-upload-modal.tsx (modified — bottom sheet on mobile)
+  - src/components/home/project-create-modal.tsx (modified — bottom sheet on mobile)
+  - src/components/shared/reader-card.tsx (modified — lg:grid-cols-3 on ReaderComparison)
+  - src/components/shared/score-indicator.tsx (modified — responsive label widths, hidden rating text on mobile)
+  - src/components/coverage/coverage-view.tsx (modified — responsive grid-cols on 3 grids)
+  - src/components/pitch/pitch-view.tsx (modified — responsive grid-cols on 2 grids + reader cards)
+  - src/components/studio/studio-view.tsx (modified — responsive grid-cols on 3 grids)
+- **Learnings for future iterations:**
+  - Mobile bottom bar needs `z-40` (not z-50) so modals render on top of it
+  - Tailwind v4 doesn't require explicit breakpoint config — default sm(640), md(768), lg(1024) breakpoints work
+  - `pb-16 md:pb-0` on main content compensates for the 64px bottom bar height on mobile
+  - For bottom-sheet modals: use `items-end md:items-center` on the fixed container, `rounded-t-2xl md:rounded-2xl` on the modal panel, `max-h-[90vh] overflow-y-auto` for scrollable content
+  - ScoreIndicator rating label hidden on mobile with `hidden sm:inline` — the bars alone provide the visual score information
+  - layoutId animations on mobile bottom bar (`mobile-nav-indicator`) are separate from desktop nav (`nav-indicator`) to prevent cross-render conflicts
+  - `safe-area-bottom` utility uses `env(safe-area-inset-bottom, 0px)` — needs viewport meta tag with `viewport-fit=cover` in layout.tsx for iOS Safari
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-028
+- What was implemented:
+  - Scout split-screen layout refactored for mobile with Chat/Activity toggle buttons
+  - Mobile toggle bar (< md): two buttons with MessageSquare and Activity icons, gold underline indicator via Framer Motion layoutId animation
+  - On mobile, panels use absolute positioning with opacity/pointer-events for fade transition (150ms CSS transition)
+  - ScoutChat always stays mounted (never unmounted) to maintain SSE connection and streaming refs — uses opacity-0 + pointer-events-none when hidden
+  - RightPanelContent safely reads from Zustand store — SSE events update store regardless of panel visibility
+  - Desktop layout (>= md): side-by-side flex-row with 50% max-width per panel, right border on chat panel
+  - RightPanelContent extracted as a separate component for code clarity
+  - Gold underline uses spring animation (stiffness: 500, damping: 30) matching mobile bottom tab bar pattern
+- Files changed:
+  - src/components/scout/scout-layout.tsx (rewritten — added mobile toggle, extracted RightPanelContent, absolute positioning with opacity transitions)
+- **Learnings for future iterations:**
+  - ScoutChat must never be unmounted on mobile — it maintains SSE connectionRef and streaming state refs (streamingTextRef, currentAssistantIdRef, toolCallsRef) that would be lost on unmount
+  - Use `opacity-0 pointer-events-none` instead of `hidden` (display:none) when you need to keep a component mounted but invisible — preserves React hooks and refs
+  - For mobile panel toggles with fade: absolute positioning + opacity transition is simpler than AnimatePresence conditional rendering when one panel must stay mounted
+  - Desktop responsive reset: use `md:relative md:inset-auto md:opacity-100 md:pointer-events-auto md:z-auto` to override mobile absolute + opacity styles
+  - The layoutId `mobile-scout-toggle` must be unique from `mobile-nav-indicator` (bottom tab bar) and `nav-indicator` (desktop rail) to prevent cross-component animation conflicts
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-029
+- What was implemented:
+  - Button base class (ui/button.tsx): added `active:scale-[0.98]` press effect, explicit `duration-150 ease-out` timing
+  - Card base class (ui/card.tsx): added `hover:border-white/10` subtle border brighten with `transition-[border-color] duration-150 ease-out`
+  - Tooltip default delay: changed from 0 to 200ms in both tooltip.tsx default and app-shell TooltipProvider
+  - Tab switch animation: updated AnimatePresence transition from 200ms custom ease to 150ms ease-out `[0, 0, 0.58, 1]`
+  - Right panel mode transitions: all 5 panel modes (idle, analysis, focus_group, reader_chat, executive) now use explicit ease-out `[0, 0, 0.58, 1]` at 200ms
+  - ScoreIndicator bar animation: replaced static `transition-colors` with Framer Motion `scaleX` animation (initial: 0, animate: 1, duration: 400ms, delay: i * 50ms, transformOrigin: left, ease-out)
+  - App-shell nav buttons: all `transition-colors` instances updated with explicit `duration-150 ease-out`
+  - Scout-layout mobile toggle buttons: added `duration-150 ease-out` to transition-colors
+  - Scout-layout panel opacity transitions: added `ease-out` to existing `duration-150`
+  - Project cards: added `active:scale-[0.98]` and `ease-out` to transition-all
+  - Modal close buttons: added `active:scale-[0.98] duration-150 ease-out`
+  - ChevronRight reveal on project cards: added `duration-150 ease-out`
+- Files changed:
+  - src/components/ui/button.tsx (modified — added active:scale-[0.98] + duration-150 ease-out to base class)
+  - src/components/ui/card.tsx (modified — added hover:border-white/10 transition)
+  - src/components/ui/tooltip.tsx (modified — default delayDuration changed from 0 to 200)
+  - src/components/layout/app-shell.tsx (modified — tooltip delay, tab transition 150ms, nav buttons ease-out)
+  - src/components/scout/scout-layout.tsx (modified — right panel ease-out, mobile toggle durations, panel opacity ease-out)
+  - src/components/shared/score-indicator.tsx (modified — Framer Motion scaleX bar animation)
+  - src/components/home/home-view.tsx (modified — project card active:scale, ease-out, ChevronRight reveal)
+  - src/components/home/project-create-modal.tsx (modified — close button active:scale, duration)
+  - src/components/home/draft-upload-modal.tsx (modified — close button active:scale, duration)
+- **Learnings for future iterations:**
+  - CSS ease-out in Tailwind is the built-in `ease-out` class; for Framer Motion use cubic bezier `[0, 0, 0.58, 1]` which is the CSS ease-out equivalent
+  - `active:scale-[0.98]` is subtle enough for button press but visible — don't go below 0.96 or it feels laggy
+  - Tooltip delayDuration is set both in the component default (tooltip.tsx) AND in app-shell's TooltipProvider — both must match for consistent behavior
+  - ScoreIndicator is used extensively (coverage, revisions, reader cards) — mount animation triggers each time the component enters the DOM, which is desired for tab switches but can be excessive for in-page updates. If needed, add a `skipAnimation` prop later.
+  - `transition-[border-color]` is more performant than `transition-all` for the card hover border effect — only animates border-color, not shadow/transform
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-030
+- What was implemented:
+  - Executive evaluations persisted to ExecutiveEvaluation table after `run_executive_eval` completes
+  - Executive tool emits SSE events (executive_start/executive_complete) during persistence for live UI feedback
+  - Focus group sessions persisted to FocusSession + FocusGroupMessage tables after `run_focus_group` completes
+  - FocusSession stores topic, questions, status, summary; FocusGroupMessage stores content, speakerType, readerId, sequenceNumber
+  - StudioIntelligence updated in analysis.ts after harmonization — updates totalProjectsAnalyzed, score distributions (percentile arrays), recommendation breakdown, genre averages, top performers
+  - studio-intelligence.ts tools now read from DB first (with in-memory cache) instead of initializing fresh each session
+  - `updateStudioIntelligence()` exported from studio-intelligence.ts and called by analysis.ts after deliverable persistence
+  - React Query cache invalidation in scout-chat.tsx onResult callback: invalidates deliverable, evaluations, focus-sessions for current draft, and studio intelligence
+- Files changed:
+  - src/lib/agent-sdk/tools/executive.ts (modified — added db import, persistence to ExecutiveEvaluation table, SSE events per executive)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — added FocusSession/FocusGroupMessage persistence after focus group completes, fixed JsonValue cast)
+  - src/lib/agent-sdk/tools/analysis.ts (modified — added updateStudioIntelligence import and call after deliverable persistence)
+  - src/lib/agent-sdk/tools/studio-intelligence.ts (rewritten — DB-backed with cache, getOrLoadIntelligence reads from DB, updateStudioIntelligence persists after analysis)
+  - src/components/scout/scout-chat.tsx (modified — added useQueryClient + cache invalidation in onResult for deliverable, evaluations, focus-sessions, intelligence)
+- **Learnings for future iterations:**
+  - Executive tool's deliverable has `draftId` and `projectId` — use these for persistence (no need to pass separately)
+  - Guard `!draftId.startsWith('draft-')` prevents persistence when using temp IDs (e.g., when no real draft context is set)
+  - ExecutiveVerdict enum is 'PURSUE' | 'PASS' (uppercase) — the evaluationEngine returns lowercase, so normalize with `.toUpperCase()`
+  - FocusGroupMessage.speakerType enum is 'MODERATOR' | 'READER' | 'USER' — must map from lowercase engine output
+  - Sentiment enum is 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' — map or use null for unknown sentiment
+  - ScoreDistributions uses `premisePercentiles`, `overallPercentiles` etc. — NOT `premise`, `overall` as field names
+  - StudioIntelligenceData has required `projectSummaries: ProjectSummary[]` and `genreNarratives: Record<string, string>` — initialize as empty
+  - Prisma JSON fields must be serialized via `JSON.parse(JSON.stringify(...))` before passing to upsert (strips class instances, Dates → strings)
+  - Cache invalidation happens in onResult (not per-event) because all persistence happens server-side during the SSE connection
+  - Use `useAppStore.getState().currentDraft?.id` in callbacks (not hook-level state) for fresh draft ID at invalidation time
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-031
+- What was implemented:
+  - Fixed 9 TypeScript errors across 3 files (Prisma JSON type casts)
+  - reader-chat/route.ts and reader-chat.ts: cast Prisma JSON through `unknown` first for chatHighlights
+  - memory.ts: cast priorMemory through unknown for items access; serialize FocusGroupItem[]/ChatHighlight[] via JSON.parse(JSON.stringify()) for Prisma InputJsonValue compatibility
+  - Removed all unused imports across 15+ files (harmonizeAnalyses, detectDivergence, detectConsensus, DEFAULT_EXECUTIVES, ScoutSSEEvent, memoryReadEngine, RATING_VALUES, getReaderById, StudioCalibration, HarmonizedScores type, ExecutiveEvaluationResult, Rating, READER_NAMES)
+  - Removed all unused variables (divergencePoints, numeric, size in PercentilePill, existingTopIds → _existingTopIds)
+  - Removed stale eslint-disable directives (no-require-imports on dynamic imports)
+  - Fixed ESLint errors: focus-view setState-in-effect → derived state; scout-chat missing queryClient dep
+  - Fixed ESLint warnings: app-shell useEffect deps suppressed with justification; reader-chat-panel messages wrapped in useMemo
+  - Removed `ignoreBuildErrors: true` from next.config.ts — TypeScript now checked during build
+  - Configured ESLint argsIgnorePattern/varsIgnorePattern for `_` prefix convention
+  - No console.log statements exist — only console.error for server-side error logging (appropriate)
+- Files changed:
+  - next.config.ts (modified — removed typescript.ignoreBuildErrors)
+  - eslint.config.mjs (modified — added @typescript-eslint/no-unused-vars ignore pattern)
+  - src/app/api/reader-chat/route.ts (modified — cast through unknown)
+  - src/app/api/analyze/route.ts (modified — removed unused imports)
+  - src/app/api/executive/route.ts (modified — removed unused import)
+  - src/app/api/projects/[id]/drafts/route.ts (modified — removed stale eslint-disable)
+  - src/app/api/upload/route.ts (modified — removed stale eslint-disable)
+  - src/app/page.tsx (modified — added eslint-disable with justification)
+  - src/components/layout/app-shell.tsx (modified — moved eslint-disable to correct position)
+  - src/components/focus/focus-view.tsx (modified — replaced setState-in-effect with derived state)
+  - src/components/scout/scout-chat.tsx (modified — added queryClient to deps)
+  - src/components/scout/reader-chat-panel.tsx (modified — useMemo for messages)
+  - src/components/shared/score-indicator.tsx (modified — removed unused destructured vars)
+  - src/lib/agent-sdk/event-router.ts (modified — removed unused READER_NAMES)
+  - src/lib/agent-sdk/tools/analysis.ts (modified — removed unused import + variable)
+  - src/lib/agent-sdk/tools/executive.ts (modified — removed unused imports)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — removed unused imports)
+  - src/lib/agent-sdk/tools/reader-chat.ts (modified — removed unused import, cast fix)
+  - src/lib/agent-sdk/tools/memory.ts (modified — fixed all JSON type errors)
+  - src/lib/agents/index.ts (modified — removed unused RATING_VALUES)
+  - src/lib/executive/index.ts (modified — prefixed unused param)
+  - src/lib/harmonization/index.ts (modified — removed unused imports, prefixed unused params)
+  - src/lib/studio-intelligence/index.ts (modified — removed unused imports, prefixed unused param)
+  - src/stores/app-store.ts (modified — prefixed unused get)
+- **Learnings for future iterations:**
+  - Prisma JSON fields (JsonValue type) require cast through `unknown` before narrowing to specific types — direct cast triggers TS2352
+  - For Prisma InputJsonValue fields in upsert, use `JSON.parse(JSON.stringify(value))` to strip class instances and convert Dates to ISO strings
+  - ESLint flat config in eslint.config.mjs: add `@typescript-eslint/no-unused-vars` with argsIgnorePattern/varsIgnorePattern for `_` prefix convention
+  - React hooks `react-hooks/exhaustive-deps` suppress pattern: place comment on the line with `}, [])` not above the useEffect
+  - React Compiler's `preserve-manual-memoization` isn't an ESLint rule — it only surfaces during build. Fixing deps (adding queryClient) resolves both the compiler error and the hooks/exhaustive-deps warning
+  - `setState` in useEffect triggers `react-hooks/set-state-in-effect` — fix by deriving state in render phase (compute the value inline or via useMemo)
+  - Next.js `ignoreBuildErrors: true` should only be temporary during rapid development — remove it once types are clean for production safety
+---
+
+## 2026-01-23 - US-002 (user-customization branch)
+- Implemented GET and PUT /api/user/profile routes at src/app/api/user/profile/route.ts
+- GET returns { displayName, email, avatarUrl } from the authenticated User record
+- PUT accepts { displayName?, avatarUrl? } — validates displayName is 1-50 chars trimmed, returns 400 if invalid
+- Both routes use getCurrentUser() for auth, return 401 if unauthenticated
+- PUT uses conditional spread pattern for partial updates (only updates provided fields)
+- PUT returns the updated profile object matching GET shape
+- Files changed: src/app/api/user/profile/route.ts (new)
+- **Learnings for future iterations:**
+  - User model's `name` field maps to `displayName` in the API response — the API uses displayName for clarity
+  - .next/types/validator.ts may contain stale type references to removed routes — these are pre-existing build artifacts, not source errors
+  - Single route file handles both GET and PUT — Next.js App Router exports named functions per HTTP method
+---
+
+## 2026-01-23 - US-003 (user-customization branch)
+- Implemented POST /api/user/avatar route at src/app/api/user/avatar/route.ts
+- Accepts multipart form data with image file field
+- Validates file type: only jpg, jpeg, png, webp, gif accepted (checks file.type against MIME types)
+- File size limit: 2MB — returns 400 if exceeded
+- Stores image in Supabase Storage bucket 'avatars' at path '{userId}.{ext}' (upsert overwrites previous avatar)
+- Uses createAdminClient() (service role) for storage upload
+- Updates User record's avatarUrl field with the public URL from Supabase Storage
+- Returns { avatarUrl: string } with the new public URL
+- Route validates auth via getCurrentUser() — returns 401 if unauthenticated
+- Files changed: src/app/api/user/avatar/route.ts (new)
+- **Learnings for future iterations:**
+  - File type validation uses file.type (MIME) rather than extension — more reliable for uploads
+  - TYPE_TO_EXT mapping converts MIME types to file extensions for storage path naming
+  - Supabase Storage upsert: true flag overwrites existing file at same path — ideal for avatar replacement
+  - The avatars bucket must exist in Supabase Storage (create via dashboard if not present)
+---
+
+## 2026-01-23 - US-004 (user-customization branch)
+- Implemented Profile section in Settings tab of StudioView, positioned above the Studio Profile card
+- Created useUserProfile React Query hook at src/hooks/use-user-profile.ts with:
+  - useUserProfile() — fetches GET /api/user/profile, 5min staleTime
+  - useUpdateDisplayName() — PUT /api/user/profile mutation, invalidates profile cache
+  - useUploadAvatar() — POST /api/user/avatar FormData mutation, invalidates profile cache
+- ProfileSection component shows:
+  - UserAvatar (size='lg', 64px) with click-to-upload file picker
+  - Loader2 spinner overlay during avatar upload
+  - Upload icon overlay on hover (opacity transition) when no avatar or hovering
+  - Display name input pre-filled from API, saves on blur or Enter key
+  - Email as read-only muted text with "Username (cannot be changed)" label
+  - Success toasts on display name save and avatar upload
+- Files changed:
+  - src/hooks/use-user-profile.ts (new)
+  - src/components/studio/studio-view.tsx (modified — added ProfileSection, Upload icon import, UserAvatar import, hooks imports)
+- **Learnings for future iterations:**
+  - Profile section is in the Settings sub-tab of StudioView (not a separate top-level tab)
+  - useUserProfile hook uses 5-min staleTime since profile data changes infrequently
+  - File picker is created dynamically via document.createElement('input') — no hidden ref needed
+  - Display name saves on blur — handleKeyDown for Enter just calls blur() to trigger the onBlur handler
+  - The initialization pattern (nameInitialized flag) prevents re-setting displayName state on re-renders after API refetch
+  - .next/types/validator.ts may contain stale type references — delete .next/types/ to clear false positives
+---
+
+## 2026-01-23 - US-005 (user-customization branch)
+- Removed 'studio' (Settings/gear icon) entry from PROJECT_TABS in app-shell.tsx
+- User avatar in bottom-left nav now opens Settings tab via setActiveTab('studio')
+- Avatar renders using UserAvatar component with size='sm', fed by useUserProfile() React Query hook
+- Tooltip shows displayName if set, otherwise email, fallback 'Settings'
+- Active state: ring-2 ring-bullseye-gold around avatar when Settings tab is active
+- Mobile bottom tab bar: Settings gear replaced with UserAvatar (size='sm' with w-5 h-5 override)
+- Removed sign-out button from nav rail — moved to Settings page as SignOutSection component
+- Added TAB_LABELS map for context bar heading (supports 'studio' → 'Settings' label)
+- Removed unused imports: Settings icon, LogOut, useRouter, createClient, useEffect from app-shell
+- Added LogOut icon, useRouter, createClient to studio-view.tsx for SignOutSection
+- Files changed:
+  - src/components/layout/app-shell.tsx (modified — removed Settings tab from nav, replaced with UserAvatar, removed sign-out)
+  - src/components/studio/studio-view.tsx (modified — added SignOutSection at bottom of SettingsSection)
+- **Learnings for future iterations:**
+  - TabId 'studio' is kept in the type — only the nav entry point changed from gear to avatar
+  - TAB_LABELS record is needed because the context bar heading previously used PROJECT_TABS.find() which no longer includes 'studio'
+  - Mobile UserAvatar in bottom tab bar needs className override (w-5 h-5 text-[8px]) to match 20px icon sizes
+  - SignOutSection is a separate component to encapsulate router/supabase client dependencies away from SettingsSection
+  - useUserProfile hook's 5-min staleTime means the avatar data is fetched once on mount and reused
+---
+
+## 2026-01-23 - US-006 (user-customization branch)
+- Injected user display name into agent prompts for personalized interactions
+- Scout API route: retrieves user via getCurrentUser(), appends name context to system prompt if user.name is set
+- Reader chat API route: same pattern — appends user name context after the CONVERSATION MODE section
+- Focus group engine: added `userName` optional field to FocusGroupConfig, included in moderator's conversationContext
+- Focus group tool: retrieves user via getCurrentUser() and passes userName to the engine config
+- If no display name is set, no injection occurs (agents behave as before)
+- Files changed:
+  - src/app/api/scout/route.ts (modified — import getCurrentUser, build dynamic systemPrompt with user name context)
+  - src/app/api/reader-chat/route.ts (modified — import getCurrentUser, append user name context to reader system prompt)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — import getCurrentUser, pass userName to engine config)
+  - src/lib/focus-group/index.ts (modified — added userName to FocusGroupConfig, included in buildConversationContext)
+- **Learnings for future iterations:**
+  - The user name injection is a one-liner appended after existing prompts — no prompt restructuring needed
+  - getCurrentUser() works in both API routes and MCP tool handlers (both run server-side in the same request context)
+  - user.name maps to the Prisma User model's `name` field (set via PUT /api/user/profile as displayName)
+  - The injection text is identical across all three contexts for consistency: "The user you are working with is named {name}. Address them by name occasionally in conversation — naturally, not forced."
+---
+
+## 2026-01-23 - US-007 (user-customization branch)
+- Removed 'studio' from TabId type in both app-store.ts and types/index.ts
+- Removed StudioView import and case from page.tsx tab content switch
+- Removed desktop UserAvatar Settings button from nav rail bottom actions
+- Removed mobile Settings avatar button from bottom tab bar
+- Removed TAB_LABELS 'studio' entry and unused UserAvatar/useUserProfile imports from app-shell.tsx
+- studio-view.tsx file preserved (not deleted) for reuse in US-008
+- Files changed:
+  - src/stores/app-store.ts (modified — removed 'studio' from TabId union)
+  - src/types/index.ts (modified — removed 'studio' from TabState.activeTab)
+  - src/app/page.tsx (modified — removed StudioView import and switch case)
+  - src/components/layout/app-shell.tsx (modified — removed Settings nav entries, unused imports, TAB_LABELS entry)
+- **Learnings for future iterations:**
+  - 'studio' as a TabId was dual-purpose (Settings page + studio config) — removing it cleanly requires US-008 to introduce a new access pattern for studio config
+  - The StudioSwitcherDropdown and studio state (currentStudio, studios) remain in app-shell — only the Settings entry point was removed
+  - TAB_LABELS is used by the context bar heading — removing entries won't cause errors since it falls back to the raw activeTab value
+---
+
+## 2026-01-23 - US-008 (user-customization branch)
+- Implemented Studio Config view accessible via studio switcher dropdown
+- Added `isStudioConfigOpen` (boolean) and `previousTab` (TabId | null) to Zustand UIState
+- `openStudioConfig()` saves current tab and sets isStudioConfigOpen to true
+- `closeStudioConfig()` restores previousTab and sets isStudioConfigOpen to false
+- StudioSwitcherDropdown onSelect now calls openStudioConfig() instead of navigating to Home
+- page.tsx renders StudioView when isStudioConfigOpen is true (overrides normal tab content)
+- Context bar shows "Studio Config" heading with ArrowLeft back button and studio name badge
+- Nav rail shows Building2 icon with "Studio Config" tooltip and gold indicator when active
+- Home and project tab nav indicators suppressed when studio config is open
+- Clicking any nav tab while in studio config closes it and navigates to that tab
+- Studio name updates reactively: SettingsSection's saveMutation.onSuccess calls updateStudio() to update Zustand store
+- Studio switcher tooltip changed to "Studios" per AC
+- AnimatePresence key uses 'studioConfig' when open for proper transition
+- isStudioConfigOpen is NOT persisted (resets on page refresh) — transient UI state
+- Files changed:
+  - src/stores/app-store.ts (modified — added isStudioConfigOpen, previousTab, openStudioConfig, closeStudioConfig)
+  - src/components/layout/app-shell.tsx (modified — added Building2/ArrowLeft imports, studio config context bar, nav indicator, close behavior)
+  - src/app/page.tsx (modified — added StudioView import, renders when isStudioConfigOpen is true)
+  - src/components/studio/studio-view.tsx (modified — SettingsSection updates Zustand on studio name save)
+- **Learnings for future iterations:**
+  - Using a Zustand flag (isStudioConfigOpen) is simpler than adding 'studioConfig' to the TabId union — avoids changing route types and persistent state shape
+  - previousTab pattern: save the current tab before opening overlay view, restore on close — cleaner than always going to 'home'
+  - Studio name reactivity requires updating BOTH React Query cache (studioKeys.studio) and Zustand store (updateStudio) since the switcher reads from Zustand
+  - layoutId="nav-indicator" must be unique within a render — conditionally rendering the Building2 indicator prevents conflicts with Home/project tab indicators
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-23 - US-009 (user-customization branch)
+- Implemented DELETE /api/studio/[id] route at src/app/api/studio/[id]/route.ts
+- Validates auth via getCurrentUser() — returns 401 if unauthenticated
+- Verifies user is the studio owner (studio.ownerId === user.id) — returns 403 if not
+- Returns 404 for non-existent studio IDs
+- Checks studio count for the owner — returns 400 if trying to delete their only studio
+- Cleans up Supabase Storage: lists and removes all files under scripts/{projectId}/ for each project in the studio
+- Deletes the studio record — Prisma onDelete: Cascade handles all child records (projects, drafts, deliverables, focus sessions, reader memories, executive evaluations, chat messages, reader personas, executive profiles, studio intelligence)
+- Returns { deletedProjects: number } with the count of projects that were deleted
+- Files changed: src/app/api/studio/[id]/route.ts (new)
+- **Learnings for future iterations:**
+  - All Studio child relations have onDelete: Cascade in the Prisma schema — no manual deletion needed for child records
+  - Storage cleanup must happen BEFORE the Prisma delete since we need projectIds to construct file paths
+  - Supabase storage.list(prefix) returns files in a directory — map to full paths for storage.remove()
+  - Next.js 15 dynamic route params are a Promise — use `const { id } = await params`
+  - Studio ownership check uses studio.ownerId (not user.studioId) — a user can own multiple studios but only have one active
 ---

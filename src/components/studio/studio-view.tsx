@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +24,9 @@ import {
   X,
   Loader2,
   AlertTriangle,
+  Upload,
+  LogOut,
+  Trash2,
 } from 'lucide-react';
 import {
   useStudio,
@@ -30,7 +35,11 @@ import {
   useStudioIntelligence,
   studioKeys,
 } from '@/hooks/use-studio';
+import { useUserProfile, useUpdateDisplayName, useUploadAvatar } from '@/hooks/use-user-profile';
+import { UserAvatar } from '@/components/shared/user-avatar';
+import { useProjects, projectKeys } from '@/hooks/use-projects';
 import { useToastStore } from '@/stores/toast-store';
+import { useAppStore } from '@/stores/app-store';
 
 // ============================================
 // TYPES
@@ -130,8 +139,10 @@ export function StudioView() {
             </TabsContent>
 
             {/* Settings tab */}
-            <TabsContent value="settings" className="space-y-4 mt-6">
+            <TabsContent value="settings" className="space-y-8 mt-6">
+              <ProfileSection />
               <SettingsSection />
+              <DangerZoneSection />
             </TabsContent>
           </Tabs>
         </div>
@@ -752,6 +763,167 @@ function CalibrationSection() {
 }
 
 // ============================================
+// PROFILE SECTION
+// ============================================
+
+function ProfileSection() {
+  const { data: profile, isLoading, error } = useUserProfile();
+  const updateDisplayName = useUpdateDisplayName();
+  const uploadAvatar = useUploadAvatar();
+  const { addToast } = useToastStore();
+
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
+  const [nameInitialized, setNameInitialized] = useState(false);
+
+  // Initialize display name from fetched data
+  if (profile && !nameInitialized) {
+    setDisplayName(profile.displayName ?? '');
+    setNameInitialized(true);
+  }
+
+  const handleNameSave = () => {
+    const trimmed = displayName.trim();
+    // Only save if changed from current value
+    if (trimmed === (profile?.displayName ?? '')) return;
+    if (!trimmed) return;
+    updateDisplayName.mutate(trimmed, {
+      onSuccess: () => {
+        addToast('Display name saved', 'success');
+      },
+      onError: (err: Error) => {
+        addToast(err.message, 'error');
+      },
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  const handleAvatarClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        uploadAvatar.mutate(file, {
+          onSuccess: () => {
+            addToast('Avatar updated', 'success');
+          },
+          onError: (err: Error) => {
+            addToast(err.message, 'error');
+          },
+        });
+      }
+    };
+    input.click();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Profile</h2>
+          <p className="text-sm text-muted-foreground">Your personal profile settings</p>
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-6">
+              <div className="w-16 h-16 rounded-full bg-elevated animate-pulse" />
+              <div className="flex-1 space-y-3">
+                <div className="w-48 h-4 bg-elevated rounded animate-pulse" />
+                <div className="w-64 h-9 bg-elevated rounded animate-pulse" />
+                <div className="w-36 h-3 bg-elevated rounded animate-pulse" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load profile</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Profile</h2>
+        <p className="text-sm text-muted-foreground">Your personal profile settings</p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-6">
+            {/* Avatar */}
+            <button
+              type="button"
+              onClick={handleAvatarClick}
+              disabled={uploadAvatar.isPending}
+              className="relative group flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+            >
+              {uploadAvatar.isPending ? (
+                <div className="w-16 h-16 rounded-full bg-elevated flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <UserAvatar
+                    src={profile?.avatarUrl}
+                    name={profile?.displayName}
+                    email={profile?.email}
+                    size="lg"
+                  />
+                  {/* Upload overlay on hover */}
+                  <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <Upload className="w-4 h-4 text-white" />
+                  </div>
+                </>
+              )}
+            </button>
+
+            {/* Name & Email */}
+            <div className="flex-1 space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Display Name</label>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  onBlur={handleNameSave}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Enter your display name"
+                  className="max-w-xs"
+                  disabled={updateDisplayName.isPending}
+                />
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {profile?.email}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Username (cannot be changed)
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS SECTION
 // ============================================
 
@@ -763,6 +935,7 @@ function SettingsSection() {
 
   const queryClient = useQueryClient();
   const { addToast } = useToastStore();
+  const { currentStudio, updateStudio } = useAppStore();
 
   // Initialize name from fetched data
   if (studio && !initialized) {
@@ -785,6 +958,10 @@ function SettingsSection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: studioKeys.studio });
+      // Update Zustand store so studio switcher dropdown reflects new name
+      if (currentStudio) {
+        updateStudio(currentStudio.id, { name: studioName.trim() });
+      }
       addToast('Studio settings saved', 'success');
       setNameError('');
     },
@@ -851,7 +1028,188 @@ function SettingsSection() {
           Save Settings
         </Button>
       </div>
+
+      {/* Sign out */}
+      <SignOutSection />
     </div>
+  );
+}
+
+// ============================================
+// DANGER ZONE SECTION
+// ============================================
+
+function DangerZoneSection() {
+  const { data: studio } = useStudio();
+  const { data: projects } = useProjects();
+  const { currentStudio, studios, setCurrentStudio, removeStudio, closeStudioConfig, setActiveTab } = useAppStore();
+  const { addToast } = useToastStore();
+  const queryClient = useQueryClient();
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const projectCount = projects?.length ?? 0;
+  const studioName = studio?.name ?? currentStudio?.name ?? '';
+  const studioId = currentStudio?.id;
+
+  // Cannot delete if this is the only studio
+  const isOnlyStudio = studios.length <= 1;
+
+  const canConfirm = projectCount === 0 || confirmText === studioName;
+
+  const handleDelete = async () => {
+    if (!studioId || !canConfirm) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/studio/${studioId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to delete studio' }));
+        throw new Error(data.error || 'Failed to delete studio');
+      }
+
+      // Remove from Zustand
+      removeStudio(studioId);
+
+      // Switch to another available studio
+      const remaining = studios.filter((s) => s.id !== studioId);
+      if (remaining.length > 0) {
+        setCurrentStudio(remaining[0]);
+      }
+
+      // Close studio config and navigate to Home
+      closeStudioConfig();
+      setActiveTab('home');
+
+      // Invalidate caches
+      queryClient.invalidateQueries({ queryKey: studioKeys.studio });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+
+      addToast('Studio deleted', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete studio', 'error');
+    } finally {
+      setIsDeleting(false);
+      setShowConfirm(false);
+      setConfirmText('');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-danger">Danger Zone</h2>
+        <p className="text-sm text-muted-foreground">
+          Irreversible and destructive actions
+        </p>
+      </div>
+
+      <Card className="border-danger/30">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Delete Studio</p>
+              <p className="text-xs text-muted-foreground">
+                Permanently delete this studio and all its data
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              className="gap-2"
+              onClick={() => setShowConfirm(true)}
+              disabled={isOnlyStudio}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Studio
+            </Button>
+          </div>
+          {isOnlyStudio && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Cannot delete your only studio
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Confirmation overlay */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full mx-4 space-y-4 border border-border shadow-xl">
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-danger">Delete Studio</h3>
+              <p className="text-sm font-medium">{studioName}</p>
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete this studio and all{' '}
+                <span className="font-semibold text-foreground">{projectCount} {projectCount === 1 ? 'project' : 'projects'}</span>{' '}
+                within it. This cannot be undone.
+              </p>
+            </div>
+
+            {projectCount > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Type <span className="font-mono text-danger">{studioName}</span> to confirm
+                </label>
+                <Input
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder={studioName}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => { setShowConfirm(false); setConfirmText(''); }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={!canConfirm || isDeleting}
+                className="gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete Studio
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SignOutSection() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
+
+  return (
+    <Card className="border-border/50">
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Sign Out</p>
+            <p className="text-xs text-muted-foreground">Sign out of your account</p>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={handleSignOut}>
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

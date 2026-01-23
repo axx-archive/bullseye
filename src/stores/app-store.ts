@@ -18,7 +18,7 @@ import type {
 // TAB STATE
 // ============================================
 
-export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'studio' | 'settings';
+export type TabId = 'home' | 'scout' | 'coverage' | 'focus' | 'revisions' | 'pitch' | 'settings';
 
 interface TabState {
   activeTab: TabId;
@@ -197,12 +197,16 @@ interface UIState {
   sidebarOpen: boolean;
   expandedReaders: string[];
   showCalibration: boolean;
+  isStudioConfigOpen: boolean;
+  previousTab: TabId | null;
 
   toggleSidebar: () => void;
   toggleReaderExpanded: (readerId: string) => void;
   toggleCalibration: () => void;
   expandAllReaders: () => void;
   collapseAllReaders: () => void;
+  openStudioConfig: () => void;
+  closeStudioConfig: () => void;
 }
 
 // ============================================
@@ -414,9 +418,22 @@ export const useAppStore = create<AppStore>()(
         sidebarOpen: true,
         expandedReaders: [],
         showCalibration: true,
+        isStudioConfigOpen: false,
+        previousTab: null,
 
         toggleSidebar: () =>
           set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+        openStudioConfig: () =>
+          set((state) => ({
+            isStudioConfigOpen: true,
+            previousTab: state.activeTab,
+          })),
+        closeStudioConfig: () =>
+          set((state) => ({
+            isStudioConfigOpen: false,
+            activeTab: state.previousTab || 'home',
+            previousTab: null,
+          })),
         toggleReaderExpanded: (readerId) =>
           set((state) => ({
             expandedReaders: state.expandedReaders.includes(readerId)

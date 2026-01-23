@@ -26,6 +26,7 @@ export interface FocusGroupConfig {
   divergencePoints: Divergence[];
   scriptContext?: CoverageReport;
   apiKey?: string;
+  userName?: string;
 }
 
 export interface FocusGroupStreamEvent {
@@ -468,6 +469,10 @@ Character Analysis: ${config.scriptContext.characterAnalysis}
 Dialogue Analysis: ${config.scriptContext.dialogueAnalysis}
 Structure Analysis: ${config.scriptContext.structureAnalysis}
 `;
+    }
+
+    if (config.userName) {
+      context += `\nThe user you are working with is named ${config.userName}. Address them by name occasionally in conversation — naturally, not forced.\n`;
     }
 
     context += `

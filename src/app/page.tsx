@@ -14,7 +14,7 @@ import { StudioView } from '@/components/studio/studio-view';
 import { SettingsView } from '@/components/settings/settings-view';
 
 export default function Home() {
-  const { activeTab, currentStudio, studios, setCurrentStudio, addStudio } = useAppStore();
+  const { activeTab, isStudioConfigOpen, currentStudio, studios, setCurrentStudio, addStudio } = useAppStore();
 
   // Initialize default studio if none exists
   useEffect(() => {
@@ -36,6 +36,10 @@ export default function Home() {
   }, [studios.length]);
 
   const renderContent = () => {
+    if (isStudioConfigOpen) {
+      return <ErrorBoundary key="studioConfig"><StudioView /></ErrorBoundary>;
+    }
+
     switch (activeTab) {
       case 'home':
         return <ErrorBoundary key="home"><HomeView /></ErrorBoundary>;
@@ -49,8 +53,6 @@ export default function Home() {
         return <ErrorBoundary key="revisions"><RevisionsView /></ErrorBoundary>;
       case 'pitch':
         return <ErrorBoundary key="pitch"><PitchView /></ErrorBoundary>;
-      case 'studio':
-        return <ErrorBoundary key="studio"><StudioView /></ErrorBoundary>;
       case 'settings':
         return <ErrorBoundary key="settings"><SettingsView /></ErrorBoundary>;
       default:
