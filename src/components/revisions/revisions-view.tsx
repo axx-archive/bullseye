@@ -1,12 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
-import { useDrafts } from '@/hooks/use-drafts';
+import { useDrafts, useUpdateDraft, useDeleteDraft } from '@/hooks/use-drafts';
 import { useDeliverable } from '@/hooks/use-studio';
+import { useToastStore } from '@/stores/toast-store';
 import { DraftUploadModal } from '@/components/home/draft-upload-modal';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   GitBranch,
   ArrowUp,
@@ -15,6 +25,8 @@ import {
   Clock,
   Upload,
   AlertTriangle,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 
 // Default readers for memory display
@@ -52,8 +64,13 @@ export function RevisionsView() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareDraftId, setCompareDraftId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [deleteConfirmDraftId, setDeleteConfirmDraftId] = useState<string | null>(null);
 
   const { data: drafts, isLoading, error } = useDrafts(currentProject?.id ?? null);
+  const updateDraft = useUpdateDraft();
+  const deleteDraft = useDeleteDraft();
+  const addToast = useToastStore((s) => s.addToast);
 
   // Select the latest draft by default
   const effectiveDraftId = selectedDraftId ?? (drafts && drafts.length > 0 ? drafts[0]?.id : null);
@@ -135,14 +152,19 @@ export function RevisionsView() {
                   .map((draft, index) => {
                     const isSelected = effectiveDraftId === draft.id;
                     const isComparison = compareDraftId === draft.id;
+                    const isEditing = editingDraftId === draft.id;
+                    const isOnlyDraft = drafts.length <= 1;
 
                     return (
-                      <motion.button
+                      <DraftTimelineItem
                         key={draft.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        onClick={() => {
+                        draft={draft}
+                        index={index}
+                        isSelected={isSelected}
+                        isComparison={isComparison}
+                        isEditing={isEditing}
+                        isOnlyDraft={isOnlyDraft}
+                        onSelect={() => {
                           if (compareMode && effectiveDraftId !== draft.id) {
                             setCompareDraftId(draft.id);
                           } else {
@@ -150,45 +172,27 @@ export function RevisionsView() {
                             setCompareDraftId(null);
                           }
                         }}
-                        className={cn(
-                          'relative w-full flex items-start gap-3 p-3 pl-8 rounded-lg text-left transition-colors',
-                          'hover:bg-elevated',
-                          isSelected && 'bg-elevated ring-1 ring-primary',
-                          isComparison && 'bg-elevated ring-1 ring-info'
-                        )}
-                      >
-                        {/* Timeline dot */}
-                        <div
-                          className={cn(
-                            'absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 bg-background',
-                            isSelected
-                              ? 'border-primary'
-                              : isComparison
-                                ? 'border-info'
-                                : 'border-muted-foreground'
-                          )}
-                        />
-
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">Draft {draft.draftNumber}</span>
-                            {draft.status === 'COMPLETED' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success font-medium">
-                                Analyzed
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Clock className="w-3 h-3" />
-                            {new Date(draft.createdAt).toLocaleDateString()}
-                          </div>
-                          {draft.pageCount && (
-                            <div className="text-xs text-muted-foreground">
-                              {draft.pageCount} pages
-                            </div>
-                          )}
-                        </div>
-                      </motion.button>
+                        onStartEdit={() => {
+                          setEditingDraftId(draft.id);
+                        }}
+                        onCancelEdit={() => setEditingDraftId(null)}
+                        onSaveEdit={(notes: string) => {
+                          if (!currentProject) return;
+                          updateDraft.mutate(
+                            { projectId: currentProject.id, draftId: draft.id, notes },
+                            {
+                              onSuccess: () => {
+                                setEditingDraftId(null);
+                                addToast('Draft notes updated', 'success');
+                              },
+                              onError: (err) => {
+                                addToast(err.message, 'error');
+                              },
+                            }
+                          );
+                        }}
+                        onDelete={() => setDeleteConfirmDraftId(draft.id)}
+                      />
                     );
                   })}
               </div>
@@ -340,7 +344,220 @@ export function RevisionsView() {
       </div>
 
       <DraftUploadModal open={showUploadModal} onClose={() => setShowUploadModal(false)} />
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={!!deleteConfirmDraftId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmDraftId(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Draft</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this draft and all its analysis data, focus sessions, and reader memories. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              onClick={() => setDeleteConfirmDraftId(null)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-border/50 text-muted-foreground hover:text-foreground hover:bg-elevated transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (!currentProject || !deleteConfirmDraftId) return;
+                deleteDraft.mutate(
+                  { projectId: currentProject.id, draftId: deleteConfirmDraftId },
+                  {
+                    onSuccess: () => {
+                      // If we deleted the selected draft, reset selection
+                      if (selectedDraftId === deleteConfirmDraftId) {
+                        setSelectedDraftId(null);
+                      }
+                      if (compareDraftId === deleteConfirmDraftId) {
+                        setCompareDraftId(null);
+                      }
+                      setDeleteConfirmDraftId(null);
+                      addToast('Draft deleted', 'success');
+                    },
+                    onError: (err) => {
+                      addToast(err.message, 'error');
+                      setDeleteConfirmDraftId(null);
+                    },
+                  }
+                );
+              }}
+              disabled={deleteDraft.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-danger text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {deleteDraft.isPending ? 'Deleting...' : 'Delete'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+// Draft timeline item with edit/delete functionality
+function DraftTimelineItem({
+  draft,
+  index,
+  isSelected,
+  isComparison,
+  isEditing,
+  isOnlyDraft,
+  onSelect,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: {
+  draft: { id: string; draftNumber: number; status: string; createdAt: string; pageCount: number | null; notes?: string | null };
+  index: number;
+  isSelected: boolean;
+  isComparison: boolean;
+  isEditing: boolean;
+  isOnlyDraft: boolean;
+  onSelect: () => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (notes: string) => void;
+  onDelete: () => void;
+}) {
+  const [editValue, setEditValue] = useState(draft.notes || '');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasEditing = useRef(false);
+
+  useEffect(() => {
+    if (isEditing && !wasEditing.current && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+    wasEditing.current = isEditing;
+  }, [isEditing]);
+
+  const handleSave = () => {
+    onSaveEdit(editValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancelEdit();
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05 }}
+      className={cn(
+        'group relative w-full flex items-start gap-3 p-3 pl-8 rounded-lg text-left transition-colors cursor-pointer',
+        'hover:bg-elevated',
+        isSelected && 'bg-elevated ring-1 ring-primary',
+        isComparison && 'bg-elevated ring-1 ring-info'
+      )}
+      onClick={isEditing ? undefined : onSelect}
+      role="button"
+      tabIndex={0}
+    >
+      {/* Timeline dot */}
+      <div
+        className={cn(
+          'absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 bg-background',
+          isSelected
+            ? 'border-primary'
+            : isComparison
+              ? 'border-info'
+              : 'border-muted-foreground'
+        )}
+      />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
+          <span className="font-medium">Draft {draft.draftNumber}</span>
+          <div className="flex items-center gap-1">
+            {draft.status === 'COMPLETED' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success font-medium">
+                Analyzed
+              </span>
+            )}
+            {/* Edit/Delete icons - visible on hover */}
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditValue(draft.notes || '');
+                  onStartEdit();
+                }}
+                className="p-1 rounded hover:bg-background/50 text-muted-foreground hover:text-foreground transition-colors"
+                title="Edit notes"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+              {isOnlyDraft ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="p-1 rounded text-muted-foreground/40 cursor-not-allowed">
+                      <Trash2 className="w-3 h-3" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Cannot delete the only remaining draft</TooltipContent>
+                </Tooltip>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="p-1 rounded hover:bg-background/50 text-muted-foreground hover:text-danger transition-colors"
+                  title="Delete draft"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Inline edit for notes */}
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSave}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Add notes..."
+            className="w-full mt-1 px-2 py-1 text-xs rounded border border-primary/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        ) : (
+          <>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+              <Clock className="w-3 h-3" />
+              {new Date(draft.createdAt).toLocaleDateString()}
+            </div>
+            {draft.pageCount && (
+              <div className="text-xs text-muted-foreground">
+                {draft.pageCount} pages
+              </div>
+            )}
+            {draft.notes && (
+              <div className="text-xs text-muted-foreground/80 mt-0.5 truncate">
+                {draft.notes}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </motion.div>
   );
 }
 

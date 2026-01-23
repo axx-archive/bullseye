@@ -20,6 +20,15 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Projects API returns studio info and orders by `sortOrder asc, updatedAt desc`
 - PATCH `/api/projects/[id]` accepts `evaluationStatus` and `title` — use `useUpdateProject` hook from `use-projects.ts`
 - For nested interactive elements in cards, use `<div role="button">` + `e.stopPropagation()` on inner elements
+- Delete pattern: confirmation dialog state in parent (`deleteConfirmId`), pass `onDelete` to child, dialog at parent level
+- Supabase Storage cleanup: `createAdminClient()` → `.storage.from('scripts').list(prefix)` → `.remove(paths[])`
+- `useDeleteProject` hook in `use-projects.ts` — optimistic removal with rollback on error
+- Drag-and-drop reorder: `Reorder.Group` + `Reorder.Item` from `framer-motion` with `useDragControls` for handle-only dragging
+- `PATCH /api/projects/reorder` accepts `{ projectIds: string[] }` — updates `sortOrder` in a Prisma `$transaction`
+- Draft CRUD: `PATCH/DELETE /api/projects/[id]/drafts/[draftId]` — PATCH updates notes, DELETE removes record + Supabase file
+- Draft storage path: `{projectId}/{draftNumber}.pdf` in Supabase Storage `scripts` bucket
+- Tooltip for disabled buttons: wrap the disabled element in `<Tooltip>` + `<TooltipTrigger asChild>` with a `<span>` wrapper (not a button, since disabled buttons don't trigger hover events)
+- ESLint forbids `setState` inside `useEffect` — use click handlers or refs to manage state sync
 
 ---
 
@@ -167,4 +176,70 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - For inline edit on blur, be careful with onBlur + button clicks — onBlur fires before onClick. Use `onBlur` for save-on-click-away behavior.
   - When disabling parent `onClick` during edit mode, conditionally set `onClick={isEditing ? undefined : onOpen}`
   - DropdownMenuTrigger with `opacity-0 group-hover:opacity-100` provides show-on-hover behavior for context menus
+---
+
+## 2026-01-23 - US-010
+- Added DELETE handler to `/api/projects/[id]/route.ts` with auth check, studio ownership validation
+- DELETE route removes all associated files from Supabase Storage (`scripts/{projectId}/` prefix) before deleting
+- Prisma cascading deletes handle: drafts, deliverables, chat messages, focus sessions, reader memories, executive evaluations
+- Added `useDeleteProject` hook in `use-projects.ts` with optimistic removal from cache
+- Added "Delete" option (red text with Trash2 icon) to the existing context menu on ProjectCard
+- Added confirmation Dialog: "This will permanently delete the project and all its drafts. This cannot be undone."
+- Dialog uses Cancel/Delete buttons with disabled state during deletion
+- Project card uses Framer Motion `exit` animation (opacity 0, scale 0.95) via `AnimatePresence` wrapper on the cards grid
+- Success toast "Project deleted" shown on completion
+- Files changed: src/app/api/projects/[id]/route.ts, src/hooks/use-projects.ts, src/components/home/home-view.tsx
+- **Learnings for future iterations:**
+  - Supabase Storage `list(prefix)` returns files in a folder; then `remove(paths[])` for batch delete
+  - `createAdminClient()` from `src/lib/supabase/admin.ts` for server-side storage operations (bypasses RLS)
+  - Prisma `onDelete: Cascade` on Draft→Project means deleting a project automatically cascades to all child records
+  - For exit animations on list items, wrap items in `<AnimatePresence>` and add `exit` prop to `motion.div`
+  - Use `layout` prop on motion.div for smooth reflow when items are removed from the grid
+  - Dialog component from shadcn uses `open`/`onOpenChange` for controlled state — use `showCloseButton={false}` to hide the X button for confirmation dialogs
+---
+
+## 2026-01-23 - US-011
+- Implemented drag-and-drop reordering of projects within each studio group using Framer Motion `Reorder`
+- Created `PATCH /api/projects/reorder` route at `src/app/api/projects/reorder/route.ts`
+  - Accepts `{ projectIds: string[] }` ordered array
+  - Validates all projects belong to user's studio
+  - Updates `sortOrder` for each project in a transaction
+- Added `useReorderProjects` hook in `use-projects.ts` with optimistic sortOrder updates
+- Created `StudioProjectList` component wrapping `Reorder.Group` with local order state
+- Created `DraggableProjectItem` component wrapping `Reorder.Item` with `useDragControls`
+- Added `GripVertical` drag handle on the left edge of each project card (visible on hover)
+- Drag handle uses `dragControls.start(e)` pattern to restrict dragging to the handle only
+- API only called when order actually changes (JSON comparison of old vs new ID arrays)
+- Files changed: src/components/home/home-view.tsx, src/hooks/use-projects.ts, src/app/api/projects/reorder/route.ts (new)
+- **Learnings for future iterations:**
+  - Framer Motion `Reorder.Group` + `Reorder.Item` handles smooth drag animations automatically
+  - For drag-handle-only dragging: `dragListener={false}` on `Reorder.Item` + `useDragControls()` + `dragControls.start(e)` on the handle's `onPointerDown`
+  - Each `Reorder.Item` needs its own `useDragControls` — extract a wrapper component (`DraggableProjectItem`)
+  - `Reorder.Group` requires a local state for the ordered array — sync with parent via `useEffect` on the source data
+  - Call reorder API on `onDragEnd` (not on every `onReorder` callback, which fires during drag)
+  - `touch-none` CSS class on drag handle prevents mobile scroll interference during drag
+  - Prisma `$transaction` with array of updates is ideal for batch sortOrder changes
+---
+
+## 2026-01-23 - US-012
+- Created PATCH and DELETE handlers at `src/app/api/projects/[id]/drafts/[draftId]/route.ts`
+  - PATCH accepts `{ notes: string }` and validates draft ownership
+  - DELETE verifies draft is not the only one, removes PDF from Supabase Storage, then deletes record (cascades to deliverable, focus sessions, reader memories, executive evaluations)
+- Added `useUpdateDraft` and `useDeleteDraft` mutation hooks in `src/hooks/use-drafts.ts`
+- Added `notes` field to `UploadDraftResponse` type
+- Refactored draft timeline in `revisions-view.tsx`:
+  - Extracted `DraftTimelineItem` component with edit/delete icons visible on hover
+  - Pencil icon triggers inline edit for draft notes field (Enter saves, Escape cancels, blur saves)
+  - Trash icon opens a confirmation Dialog for deletion
+  - When only one draft exists, delete button is disabled with a tooltip: "Cannot delete the only remaining draft"
+- Delete dialog shows descriptive warning about permanent data loss
+- React Query cache invalidates on success for both operations
+- Success toasts shown on update and delete
+- Files changed: src/app/api/projects/[id]/drafts/[draftId]/route.ts (new), src/hooks/use-drafts.ts, src/components/revisions/revisions-view.tsx
+- **Learnings for future iterations:**
+  - ESLint rule `react-hooks/set-state-in-effect` disallows `setState` calls inside `useEffect` — initialize values in click handlers instead
+  - Draft notes field is nullable in Prisma schema — use `notes || null` when saving empty strings
+  - Draft storage path follows pattern `{projectId}/{draftNumber}.pdf` — use draftNumber (not draftId) for Supabase Storage paths
+  - The `useDrafts` hook fetches drafts from the project detail endpoint (GET /api/projects/[id]) — invalidating `projectKeys.detail` refreshes the draft list
+  - For "cannot delete only draft" protection, validate both client-side (disabled button + tooltip) and server-side (count check returns 400)
 ---

@@ -19,6 +19,8 @@ interface UploadDraftResponse {
   pageCount: number | null;
   status: string;
   scriptUrl: string;
+  scriptText?: string;
+  notes?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +83,66 @@ export function useUploadDraft() {
       // Invalidate the project detail query so draft count updates
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(variables.projectId) });
       // Also invalidate the projects list for _count.drafts
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
+interface UpdateDraftInput {
+  projectId: string;
+  draftId: string;
+  notes: string;
+}
+
+export function useUpdateDraft() {
+  const queryClient = useQueryClient();
+
+  return useMutation<UploadDraftResponse, Error, UpdateDraftInput>({
+    mutationFn: async ({ projectId, draftId, notes }) => {
+      const res = await fetch(`/api/projects/${projectId}/drafts/${draftId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to update draft' }));
+        throw new Error(error.error || 'Failed to update draft');
+      }
+
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: draftKeys.list(variables.projectId) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(variables.projectId) });
+    },
+  });
+}
+
+interface DeleteDraftInput {
+  projectId: string;
+  draftId: string;
+}
+
+export function useDeleteDraft() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ success: boolean }, Error, DeleteDraftInput>({
+    mutationFn: async ({ projectId, draftId }) => {
+      const res = await fetch(`/api/projects/${projectId}/drafts/${draftId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to delete draft' }));
+        throw new Error(error.error || 'Failed to delete draft');
+      }
+
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: draftKeys.list(variables.projectId) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(variables.projectId) });
       queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
