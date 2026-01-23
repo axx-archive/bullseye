@@ -22,6 +22,7 @@ import {
   X,
   Loader2,
   AlertTriangle,
+  Upload,
 } from 'lucide-react';
 import {
   useStudio,
@@ -30,6 +31,8 @@ import {
   useStudioIntelligence,
   studioKeys,
 } from '@/hooks/use-studio';
+import { useUserProfile, useUpdateDisplayName, useUploadAvatar } from '@/hooks/use-user-profile';
+import { UserAvatar } from '@/components/shared/user-avatar';
 import { useToastStore } from '@/stores/toast-store';
 
 // ============================================
@@ -130,7 +133,8 @@ export function StudioView() {
             </TabsContent>
 
             {/* Settings tab */}
-            <TabsContent value="settings" className="space-y-4 mt-6">
+            <TabsContent value="settings" className="space-y-8 mt-6">
+              <ProfileSection />
               <SettingsSection />
             </TabsContent>
           </Tabs>
@@ -747,6 +751,167 @@ function CalibrationSection() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// PROFILE SECTION
+// ============================================
+
+function ProfileSection() {
+  const { data: profile, isLoading, error } = useUserProfile();
+  const updateDisplayName = useUpdateDisplayName();
+  const uploadAvatar = useUploadAvatar();
+  const { addToast } = useToastStore();
+
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
+  const [nameInitialized, setNameInitialized] = useState(false);
+
+  // Initialize display name from fetched data
+  if (profile && !nameInitialized) {
+    setDisplayName(profile.displayName ?? '');
+    setNameInitialized(true);
+  }
+
+  const handleNameSave = () => {
+    const trimmed = displayName.trim();
+    // Only save if changed from current value
+    if (trimmed === (profile?.displayName ?? '')) return;
+    if (!trimmed) return;
+    updateDisplayName.mutate(trimmed, {
+      onSuccess: () => {
+        addToast('Display name saved', 'success');
+      },
+      onError: (err: Error) => {
+        addToast(err.message, 'error');
+      },
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  const handleAvatarClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        uploadAvatar.mutate(file, {
+          onSuccess: () => {
+            addToast('Avatar updated', 'success');
+          },
+          onError: (err: Error) => {
+            addToast(err.message, 'error');
+          },
+        });
+      }
+    };
+    input.click();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Profile</h2>
+          <p className="text-sm text-muted-foreground">Your personal profile settings</p>
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-6">
+              <div className="w-16 h-16 rounded-full bg-elevated animate-pulse" />
+              <div className="flex-1 space-y-3">
+                <div className="w-48 h-4 bg-elevated rounded animate-pulse" />
+                <div className="w-64 h-9 bg-elevated rounded animate-pulse" />
+                <div className="w-36 h-3 bg-elevated rounded animate-pulse" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load profile</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Profile</h2>
+        <p className="text-sm text-muted-foreground">Your personal profile settings</p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-6">
+            {/* Avatar */}
+            <button
+              type="button"
+              onClick={handleAvatarClick}
+              disabled={uploadAvatar.isPending}
+              className="relative group flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+            >
+              {uploadAvatar.isPending ? (
+                <div className="w-16 h-16 rounded-full bg-elevated flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <UserAvatar
+                    src={profile?.avatarUrl}
+                    name={profile?.displayName}
+                    email={profile?.email}
+                    size="lg"
+                  />
+                  {/* Upload overlay on hover */}
+                  <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <Upload className="w-4 h-4 text-white" />
+                  </div>
+                </>
+              )}
+            </button>
+
+            {/* Name & Email */}
+            <div className="flex-1 space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Display Name</label>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  onBlur={handleNameSave}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Enter your display name"
+                  className="max-w-xs"
+                  disabled={updateDisplayName.isPending}
+                />
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {profile?.email}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Username (cannot be changed)
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

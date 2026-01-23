@@ -67,6 +67,7 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - ESLint `react-hooks/exhaustive-deps` suppress: place eslint-disable comment on the `}, [])` line, not above the useEffect
 - React `setState` in useEffect: derive state in render phase instead (useMemo or inline computation)
 - ESLint flat config: `argsIgnorePattern: "^_"` + `varsIgnorePattern: "^_"` for @typescript-eslint/no-unused-vars
+- User profile hooks at `src/hooks/use-user-profile.ts` — useUserProfile(), useUpdateDisplayName(), useUploadAvatar(); userProfileKeys for cache invalidation
 
 - Shared components go in src/components/shared/ with named exports
 - UI primitives (Radix-based) are in src/components/ui/
@@ -875,4 +876,61 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - React Compiler's `preserve-manual-memoization` isn't an ESLint rule — it only surfaces during build. Fixing deps (adding queryClient) resolves both the compiler error and the hooks/exhaustive-deps warning
   - `setState` in useEffect triggers `react-hooks/set-state-in-effect` — fix by deriving state in render phase (compute the value inline or via useMemo)
   - Next.js `ignoreBuildErrors: true` should only be temporary during rapid development — remove it once types are clean for production safety
+---
+
+## 2026-01-23 - US-002 (user-customization branch)
+- Implemented GET and PUT /api/user/profile routes at src/app/api/user/profile/route.ts
+- GET returns { displayName, email, avatarUrl } from the authenticated User record
+- PUT accepts { displayName?, avatarUrl? } — validates displayName is 1-50 chars trimmed, returns 400 if invalid
+- Both routes use getCurrentUser() for auth, return 401 if unauthenticated
+- PUT uses conditional spread pattern for partial updates (only updates provided fields)
+- PUT returns the updated profile object matching GET shape
+- Files changed: src/app/api/user/profile/route.ts (new)
+- **Learnings for future iterations:**
+  - User model's `name` field maps to `displayName` in the API response — the API uses displayName for clarity
+  - .next/types/validator.ts may contain stale type references to removed routes — these are pre-existing build artifacts, not source errors
+  - Single route file handles both GET and PUT — Next.js App Router exports named functions per HTTP method
+---
+
+## 2026-01-23 - US-003 (user-customization branch)
+- Implemented POST /api/user/avatar route at src/app/api/user/avatar/route.ts
+- Accepts multipart form data with image file field
+- Validates file type: only jpg, jpeg, png, webp, gif accepted (checks file.type against MIME types)
+- File size limit: 2MB — returns 400 if exceeded
+- Stores image in Supabase Storage bucket 'avatars' at path '{userId}.{ext}' (upsert overwrites previous avatar)
+- Uses createAdminClient() (service role) for storage upload
+- Updates User record's avatarUrl field with the public URL from Supabase Storage
+- Returns { avatarUrl: string } with the new public URL
+- Route validates auth via getCurrentUser() — returns 401 if unauthenticated
+- Files changed: src/app/api/user/avatar/route.ts (new)
+- **Learnings for future iterations:**
+  - File type validation uses file.type (MIME) rather than extension — more reliable for uploads
+  - TYPE_TO_EXT mapping converts MIME types to file extensions for storage path naming
+  - Supabase Storage upsert: true flag overwrites existing file at same path — ideal for avatar replacement
+  - The avatars bucket must exist in Supabase Storage (create via dashboard if not present)
+---
+
+## 2026-01-23 - US-004 (user-customization branch)
+- Implemented Profile section in Settings tab of StudioView, positioned above the Studio Profile card
+- Created useUserProfile React Query hook at src/hooks/use-user-profile.ts with:
+  - useUserProfile() — fetches GET /api/user/profile, 5min staleTime
+  - useUpdateDisplayName() — PUT /api/user/profile mutation, invalidates profile cache
+  - useUploadAvatar() — POST /api/user/avatar FormData mutation, invalidates profile cache
+- ProfileSection component shows:
+  - UserAvatar (size='lg', 64px) with click-to-upload file picker
+  - Loader2 spinner overlay during avatar upload
+  - Upload icon overlay on hover (opacity transition) when no avatar or hovering
+  - Display name input pre-filled from API, saves on blur or Enter key
+  - Email as read-only muted text with "Username (cannot be changed)" label
+  - Success toasts on display name save and avatar upload
+- Files changed:
+  - src/hooks/use-user-profile.ts (new)
+  - src/components/studio/studio-view.tsx (modified — added ProfileSection, Upload icon import, UserAvatar import, hooks imports)
+- **Learnings for future iterations:**
+  - Profile section is in the Settings sub-tab of StudioView (not a separate top-level tab)
+  - useUserProfile hook uses 5-min staleTime since profile data changes infrequently
+  - File picker is created dynamically via document.createElement('input') — no hidden ref needed
+  - Display name saves on blur — handleKeyDown for Enter just calls blur() to trigger the onBlur handler
+  - The initialization pattern (nameInitialized flag) prevents re-setting displayName state on re-renders after API refetch
+  - .next/types/validator.ts may contain stale type references — delete .next/types/ to clear false positives
 ---
