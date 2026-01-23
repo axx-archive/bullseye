@@ -566,8 +566,8 @@
         "Typecheck passes"
       ],
       "priority": 30,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Executive evaluations persisted to ExecutiveEvaluation table in executive.ts. Focus group messages persisted to FocusSession + FocusGroupMessage tables in focus-group.ts. StudioIntelligence updated after harmonization in analysis.ts via updateStudioIntelligence() from studio-intelligence.ts. Studio intelligence tools now read from DB with in-memory cache. React Query caches (deliverable, evaluations, focus-sessions, intelligence) invalidated in scout-chat.tsx onResult callback."
     },
     {
       "id": "US-031",

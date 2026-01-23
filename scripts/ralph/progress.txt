@@ -58,6 +58,11 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - Interactive element transitions: use `duration-150 ease-out` consistently for CSS transitions; for Framer Motion use `ease: [0, 0, 0.58, 1]` (CSS ease-out equivalent)
 - Button press effect: `active:scale-[0.98]` on the base Button class and custom buttons; combined with `transition-all` or `transition-transform`
 - Tooltip delay: default is 200ms for navigation tooltips — set via TooltipProvider `delayDuration={200}` in app-shell
+- Tool implementations persist to DB — guard with `!draftId.startsWith('draft-')` to skip temp IDs
+- `updateStudioIntelligence()` exported from `src/lib/agent-sdk/tools/studio-intelligence.ts` — call after analysis to update studio score distributions
+- React Query cache invalidation after Scout analysis: invalidate in `onResult` callback using `queryClient.invalidateQueries({ queryKey: draftKeys.deliverable(id) })` etc.
+- Executive tool emits per-executive SSE events (executive_start/executive_complete) during DB persistence for live UI feedback
+- Prisma JSON fields in upsert: always serialize via `JSON.parse(JSON.stringify(...))` to strip class instances and convert Dates
 
 ---
 
@@ -769,5 +774,35 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Tooltip delayDuration is set both in the component default (tooltip.tsx) AND in app-shell's TooltipProvider — both must match for consistent behavior
   - ScoreIndicator is used extensively (coverage, revisions, reader cards) — mount animation triggers each time the component enters the DOM, which is desired for tab switches but can be excessive for in-page updates. If needed, add a `skipAnimation` prop later.
   - `transition-[border-color]` is more performant than `transition-all` for the card hover border effect — only animates border-color, not shadow/transform
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-030
+- What was implemented:
+  - Executive evaluations persisted to ExecutiveEvaluation table after `run_executive_eval` completes
+  - Executive tool emits SSE events (executive_start/executive_complete) during persistence for live UI feedback
+  - Focus group sessions persisted to FocusSession + FocusGroupMessage tables after `run_focus_group` completes
+  - FocusSession stores topic, questions, status, summary; FocusGroupMessage stores content, speakerType, readerId, sequenceNumber
+  - StudioIntelligence updated in analysis.ts after harmonization — updates totalProjectsAnalyzed, score distributions (percentile arrays), recommendation breakdown, genre averages, top performers
+  - studio-intelligence.ts tools now read from DB first (with in-memory cache) instead of initializing fresh each session
+  - `updateStudioIntelligence()` exported from studio-intelligence.ts and called by analysis.ts after deliverable persistence
+  - React Query cache invalidation in scout-chat.tsx onResult callback: invalidates deliverable, evaluations, focus-sessions for current draft, and studio intelligence
+- Files changed:
+  - src/lib/agent-sdk/tools/executive.ts (modified — added db import, persistence to ExecutiveEvaluation table, SSE events per executive)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — added FocusSession/FocusGroupMessage persistence after focus group completes, fixed JsonValue cast)
+  - src/lib/agent-sdk/tools/analysis.ts (modified — added updateStudioIntelligence import and call after deliverable persistence)
+  - src/lib/agent-sdk/tools/studio-intelligence.ts (rewritten — DB-backed with cache, getOrLoadIntelligence reads from DB, updateStudioIntelligence persists after analysis)
+  - src/components/scout/scout-chat.tsx (modified — added useQueryClient + cache invalidation in onResult for deliverable, evaluations, focus-sessions, intelligence)
+- **Learnings for future iterations:**
+  - Executive tool's deliverable has `draftId` and `projectId` — use these for persistence (no need to pass separately)
+  - Guard `!draftId.startsWith('draft-')` prevents persistence when using temp IDs (e.g., when no real draft context is set)
+  - ExecutiveVerdict enum is 'PURSUE' | 'PASS' (uppercase) — the evaluationEngine returns lowercase, so normalize with `.toUpperCase()`
+  - FocusGroupMessage.speakerType enum is 'MODERATOR' | 'READER' | 'USER' — must map from lowercase engine output
+  - Sentiment enum is 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' — map or use null for unknown sentiment
+  - ScoreDistributions uses `premisePercentiles`, `overallPercentiles` etc. — NOT `premise`, `overall` as field names
+  - StudioIntelligenceData has required `projectSummaries: ProjectSummary[]` and `genreNarratives: Record<string, string>` — initialize as empty
+  - Prisma JSON fields must be serialized via `JSON.parse(JSON.stringify(...))` before passing to upsert (strips class instances, Dates → strings)
+  - Cache invalidation happens in onResult (not per-event) because all persistence happens server-side during the SSE connection
+  - Use `useAppStore.getState().currentDraft?.id` in callbacks (not hook-level state) for fresh draft ID at invalidation time
   - Browser verification not available — manual testing needed
 ---
