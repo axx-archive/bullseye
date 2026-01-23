@@ -184,8 +184,15 @@ export function FocusGroupPanel() {
   );
 }
 
+const SENTIMENT_CONFIG: Record<string, { label: string; colorClass: string }> = {
+  agrees: { label: 'agrees', colorClass: 'text-green-400 bg-green-400/10' },
+  disagrees: { label: 'disagrees', colorClass: 'text-red-400/80 bg-red-400/10' },
+  builds_on: { label: 'builds on', colorClass: 'text-blue-400 bg-blue-400/10' },
+};
+
 function FocusGroupBubble({ message }: { message: FocusGroupUIMessage }) {
   const isModerator = message.speakerType === 'moderator';
+  const isReaction = !!message.replyToReaderId;
   const color = isModerator
     ? '#D4A84B'
     : message.readerId
@@ -197,6 +204,61 @@ function FocusGroupBubble({ message }: { message: FocusGroupUIMessage }) {
     : message.readerId
       ? READER_NAMES[message.readerId] || message.speaker
       : message.speaker;
+
+  const sentimentConfig = message.reactionSentiment
+    ? SENTIMENT_CONFIG[message.reactionSentiment]
+    : null;
+
+  // Threaded reply: indented with left border in the replying reader's color
+  if (isReaction) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -12 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="ml-6 pl-3 border-l-2"
+        style={{ borderLeftColor: color }}
+      >
+        <div className="flex gap-2.5">
+          {/* Avatar */}
+          <div
+            className="w-6 h-6 rounded-md flex-shrink-0 flex items-center justify-center mt-0.5"
+            style={{ backgroundColor: `${color}15` }}
+          >
+            <span className="text-[8px] font-bold" style={{ color }}>
+              {name.split(' ').map((n) => n[0]).join('')}
+            </span>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+              <span className="text-[11px] font-semibold" style={{ color }}>
+                {name}
+              </span>
+              <span className="text-[9px] text-muted-foreground/50">
+                replying to {message.replyToReaderName || 'reader'}
+              </span>
+              {sentimentConfig && (
+                <span className={cn(
+                  'text-[9px] font-medium px-1.5 py-0.5 rounded-full',
+                  sentimentConfig.colorClass
+                )}>
+                  {sentimentConfig.label}
+                </span>
+              )}
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/90">
+              {message.content}
+              {message.isStreaming && (
+                <span className="inline-block w-0.5 h-3.5 ml-0.5 bg-current animate-pulse" />
+              )}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
