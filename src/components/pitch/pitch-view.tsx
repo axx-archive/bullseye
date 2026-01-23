@@ -20,6 +20,7 @@ import {
   Building2,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export function PitchView() {
@@ -36,10 +37,10 @@ export function PitchView() {
   const connectionRef = useRef<{ abort: () => void } | null>(null);
 
   // Fetch real executive profiles from DB
-  const { data: executives, isLoading: executivesLoading } = useExecutiveProfiles();
+  const { data: executives, isLoading: executivesLoading, error: executivesError } = useExecutiveProfiles();
 
   // Fetch persisted evaluations for current draft
-  const { data: evaluations, isLoading: evaluationsLoading } = useEvaluations(currentDraft?.id ?? null);
+  const { data: evaluations, isLoading: evaluationsLoading, error: evaluationsError } = useEvaluations(currentDraft?.id ?? null);
 
   // Fetch deliverable to know if coverage analysis has been run
   const { data: apiDeliverable, isLoading: deliverableLoading } = useDeliverable(currentDraft?.id ?? null);
@@ -109,6 +110,18 @@ export function PitchView() {
   // Loading state
   if (executivesLoading || evaluationsLoading || deliverableLoading) {
     return <LoadingSkeleton />;
+  }
+
+  // Error state
+  if (executivesError || evaluationsError) {
+    const errorMsg = executivesError?.message || evaluationsError?.message || 'Unknown error';
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load evaluation data</p>
+        <p className="text-xs text-muted-foreground">{errorMsg}</p>
+      </div>
+    );
   }
 
   // Empty state: no draft selected

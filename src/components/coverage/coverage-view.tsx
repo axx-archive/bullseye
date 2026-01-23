@@ -33,7 +33,7 @@ export function CoverageView() {
     setActiveTab,
   } = useAppStore();
 
-  const { data: fetchedDeliverable, isLoading } = useDeliverable(currentDraft?.id ?? null);
+  const { data: fetchedDeliverable, isLoading, error } = useDeliverable(currentDraft?.id ?? null);
 
   const [activeSection, setActiveSection] = useState<'coverage' | 'intake'>('coverage');
 
@@ -57,6 +57,16 @@ export function CoverageView() {
 
   if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load coverage data</p>
+        <p className="text-xs text-muted-foreground">{error.message}</p>
+      </div>
+    );
   }
 
   if (!deliverable) {

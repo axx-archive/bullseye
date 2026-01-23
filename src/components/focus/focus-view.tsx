@@ -14,6 +14,7 @@ import {
   Target,
   Calendar,
   ChevronLeft,
+  AlertTriangle,
 } from 'lucide-react';
 import { DEFAULT_READERS } from '@/lib/agents/reader-personas';
 
@@ -96,7 +97,7 @@ function getStatusBadge(status: string) {
 export function FocusView() {
   const currentDraft = useAppStore((s) => s.currentDraft);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
-  const { data: sessions, isLoading } = useFocusSessions(currentDraft?.id ?? null);
+  const { data: sessions, isLoading, error } = useFocusSessions(currentDraft?.id ?? null);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
@@ -111,6 +112,16 @@ export function FocusView() {
 
   if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load focus sessions</p>
+        <p className="text-xs text-muted-foreground">{error.message}</p>
+      </div>
+    );
   }
 
   if (!sessions || sessions.length === 0) {

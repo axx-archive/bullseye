@@ -21,6 +21,7 @@ import {
   Edit2,
   X,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   useStudio,
@@ -144,10 +145,20 @@ export function StudioView() {
 // ============================================
 
 function ReadersSection() {
-  const { data: readers, isLoading } = useReaderPersonas();
+  const { data: readers, isLoading, error } = useReaderPersonas();
 
   if (isLoading) {
     return <SectionSkeleton count={3} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load reader personas</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
   }
 
   return (
@@ -404,10 +415,20 @@ function ReaderConfigCard({ reader }: { reader: ReaderPersona }) {
 // ============================================
 
 function ExecutivesSection() {
-  const { data: executives, isLoading } = useExecutiveProfiles();
+  const { data: executives, isLoading, error } = useExecutiveProfiles();
 
   if (isLoading) {
     return <SectionSkeleton count={3} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load executive profiles</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
   }
 
   return (
@@ -622,10 +643,20 @@ function ExecutiveConfigCard({ executive }: { executive: ExecutiveProfile }) {
 // ============================================
 
 function CalibrationSection() {
-  const { data: intelligence, isLoading } = useStudioIntelligence();
+  const { data: intelligence, isLoading, error } = useStudioIntelligence();
 
   if (isLoading) {
     return <SectionSkeleton count={2} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load calibration data</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
   }
 
   if (intelligence === null || intelligence === undefined) {
@@ -725,7 +756,7 @@ function CalibrationSection() {
 // ============================================
 
 function SettingsSection() {
-  const { data: studio, isLoading } = useStudio();
+  const { data: studio, isLoading, error } = useStudio();
   const [studioName, setStudioName] = useState('');
   const [nameError, setNameError] = useState('');
   const [initialized, setInitialized] = useState(false);
@@ -773,6 +804,16 @@ function SettingsSection() {
 
   if (isLoading) {
     return <SectionSkeleton count={1} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="w-8 h-8 text-danger mb-2" />
+        <p className="text-sm text-danger font-medium">Failed to load studio settings</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
   }
 
   return (

@@ -14,6 +14,7 @@ import {
   Minus,
   Clock,
   Upload,
+  AlertTriangle,
 } from 'lucide-react';
 
 // Default readers for memory display
@@ -52,7 +53,7 @@ export function RevisionsView() {
   const [compareDraftId, setCompareDraftId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
 
-  const { data: drafts, isLoading } = useDrafts(currentProject?.id ?? null);
+  const { data: drafts, isLoading, error } = useDrafts(currentProject?.id ?? null);
 
   // Select the latest draft by default
   const effectiveDraftId = selectedDraftId ?? (drafts && drafts.length > 0 ? drafts[0]?.id : null);
@@ -63,6 +64,16 @@ export function RevisionsView() {
 
   if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
+        <p className="text-sm text-danger font-medium mb-1">Failed to load drafts</p>
+        <p className="text-xs text-muted-foreground">{error.message}</p>
+      </div>
+    );
   }
 
   if (!drafts || drafts.length === 0) {
