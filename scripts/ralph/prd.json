@@ -357,8 +357,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Coverage view uses useDeliverable(currentDraft.id) from use-studio.ts. Prefers Zustand currentDeliverable (live streaming data) over fetched API data. API response JSON fields cast to typed interfaces (CoverageReport, HarmonizedScores, etc.). LoadingSkeleton has 3 score bar skeletons + 3 reader card skeletons matching real component dimensions. EmptyState uses BarChart3 icon with 'Run analysis from Scout to see coverage' text and Scout tab link button."
     },
     {
       "id": "US-020",

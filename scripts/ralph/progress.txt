@@ -472,3 +472,22 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - studioKeys exported from use-studio.ts for external cache invalidation (e.g., after PUT updates in studio configuration views)
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-019
+- What was implemented:
+  - Coverage view wired to useDeliverable(currentDraft.id) React Query hook for real API data
+  - Prefers Zustand currentDeliverable (live/streaming data from SSE) over fetched API data — seamless handoff between live analysis and persisted results
+  - API response JSON fields (typed as `unknown` in DeliverableResponse) cast to proper typed interfaces (CoverageReport, HarmonizedScores, ReaderPerspective[], ScoutAnalysis, StudioCalibration, IntakeReport)
+  - Loading skeleton with 3 score bar skeletons (10-bar visualization placeholder) + 3 reader card skeletons (avatar, name, 6 mini-scores, evidence bar)
+  - Empty state uses BarChart3 icon (per AC), 'No Coverage Yet' heading, 'Run analysis from Scout to see coverage' text, and 'Go to Scout →' button that calls setActiveTab('scout')
+  - Removed unused imports (FileText, Target, motion from EmptyState already used)
+  - CoverageContent and IntakeContent typed with proper interfaces instead of DraftDeliverable['field'] accessor types
+- Files changed:
+  - src/components/coverage/coverage-view.tsx (rewritten — uses useDeliverable hook, added LoadingSkeleton, updated EmptyState with Scout link)
+- **Learnings for future iterations:**
+  - Coverage view priority: Zustand `currentDeliverable` > React Query `useDeliverable` data > null (empty state). This ensures live streaming results show immediately while persisted data loads from API for return visits
+  - DeliverableResponse from use-studio.ts types JSON fields as `unknown` — must cast in consumer components (this is intentional since Prisma JSON fields have no schema validation)
+  - EmptyState components should accept onAction callback (not import setActiveTab directly) for reusability and testability
+  - Loading skeletons should match real component dimensions closely — use same rounded corners, gaps, and grid layouts as the populated state
+  - Browser verification not available — manual testing needed
+---
