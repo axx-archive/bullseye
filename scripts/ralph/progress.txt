@@ -53,6 +53,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - Reader cards use `lg:grid-cols-3` (1024px+ breakpoint) for tablet single-column stacking, not `md:grid-cols-3`
 - Content padding pattern: `px-4 md:px-8` for all main content areas to ensure readability at 375px
 - ScoreIndicator hides rating text labels on mobile (hidden sm:inline) to prevent horizontal overflow
+- When a component must stay mounted on mobile (e.g., SSE connections, streaming refs), use `opacity-0 pointer-events-none` instead of `hidden` (display:none) — preserves React hooks and refs
+- Mobile panel toggles with fade: absolute positioning + `transition-opacity duration-150` is simpler than AnimatePresence when one panel must stay mounted
 
 ---
 
@@ -712,4 +714,24 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - `safe-area-bottom` utility uses `env(safe-area-inset-bottom, 0px)` — needs viewport meta tag with `viewport-fit=cover` in layout.tsx for iOS Safari
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-028
+- What was implemented:
+  - Scout split-screen layout refactored for mobile with Chat/Activity toggle buttons
+  - Mobile toggle bar (< md): two buttons with MessageSquare and Activity icons, gold underline indicator via Framer Motion layoutId animation
+  - On mobile, panels use absolute positioning with opacity/pointer-events for fade transition (150ms CSS transition)
+  - ScoutChat always stays mounted (never unmounted) to maintain SSE connection and streaming refs — uses opacity-0 + pointer-events-none when hidden
+  - RightPanelContent safely reads from Zustand store — SSE events update store regardless of panel visibility
+  - Desktop layout (>= md): side-by-side flex-row with 50% max-width per panel, right border on chat panel
+  - RightPanelContent extracted as a separate component for code clarity
+  - Gold underline uses spring animation (stiffness: 500, damping: 30) matching mobile bottom tab bar pattern
+- Files changed:
+  - src/components/scout/scout-layout.tsx (rewritten — added mobile toggle, extracted RightPanelContent, absolute positioning with opacity transitions)
+- **Learnings for future iterations:**
+  - ScoutChat must never be unmounted on mobile — it maintains SSE connectionRef and streaming state refs (streamingTextRef, currentAssistantIdRef, toolCallsRef) that would be lost on unmount
+  - Use `opacity-0 pointer-events-none` instead of `hidden` (display:none) when you need to keep a component mounted but invisible — preserves React hooks and refs
+  - For mobile panel toggles with fade: absolute positioning + opacity transition is simpler than AnimatePresence conditional rendering when one panel must stay mounted
+  - Desktop responsive reset: use `md:relative md:inset-auto md:opacity-100 md:pointer-events-auto md:z-auto` to override mobile absolute + opacity styles
+  - The layoutId `mobile-scout-toggle` must be unique from `mobile-nav-indicator` (bottom tab bar) and `nav-indicator` (desktop rail) to prevent cross-component animation conflicts
+  - Browser verification not available — manual testing needed
 ---

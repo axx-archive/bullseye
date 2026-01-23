@@ -528,8 +528,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 28,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Mobile toggle uses Chat/Activity buttons with layoutId gold underline animation. ScoutChat always mounted (opacity/pointer-events toggle, not display:none) to maintain SSE connection and streaming refs. RightPanelContent reads from Zustand so SSE data persists regardless of visibility. Both panels use absolute positioning on mobile with opacity transition (150ms) for fade effect. Desktop uses md:relative + md:flex-row for side-by-side layout at >= 768px."
     },
     {
       "id": "US-029",
