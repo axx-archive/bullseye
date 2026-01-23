@@ -1,591 +1,189 @@
 {
   "project": "Bullseye",
-  "branchName": "ralph/end-to-end-polish",
-  "description": "End-to-End Polish — Take Bullseye from prototype to production-ready with real backend persistence, Scout agent integration, live data flows, loading/error/empty states, mobile responsiveness, and interactive polish.",
+  "branchName": "ralph/user-customization",
+  "description": "User customization (avatar, display name), agent personalization, and studio deletion with cascade warnings",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Database migration, Prisma client, and seed script",
-      "description": "As a developer, I need the Prisma schema migrated, the db client working, and seed data created so all features can persist data.",
+      "title": "Reusable UserAvatar component",
+      "description": "As a developer, I need a reusable avatar component that shows an uploaded image or falls back to styled initials.",
       "acceptanceCriteria": [
-        "Prisma migration generated from existing schema.prisma",
-        "db client properly instantiated and exported from src/lib/db.ts using PrismaClient",
-        ".env.example created with DATABASE_URL, DIRECT_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY",
-        "Seed script at scripts/seed.ts creates a default Studio named 'My Studio'",
-        "Seed script creates 3 default ReaderPersonas (Maya Chen/Optimist, Colton Rivers/Skeptic, Devon Park/Craftsman) with systemPromptBase and weights",
-        "Seed script creates 3-5 default ExecutiveProfiles with name, title, company, evaluationStyle, priorityFactors, dealBreakers",
-        "Seed script creates a default StudioIntelligence record with empty distributions",
+        "Shared component at src/components/shared/user-avatar.tsx",
+        "Props: src (string | null | undefined), name (string | null | undefined), email (string | undefined), size ('sm' | 'md' | 'lg') where sm=28px, md=40px, lg=64px",
+        "If src provided: renders circular img with object-cover and rounded-full",
+        "If no src: renders initials (first letter of name, or first letter of email, or '?') in a colored circle",
+        "Initials background color derived deterministically from name/email string (hash to a small palette of muted colors)",
+        "Text color is white for all background colors",
+        "Component exported as named export",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Prisma 7 uses prisma.config.ts for db URLs (not schema datasource block). Circular FK between Studio/User handled with deferred constraints via pg pool."
+      "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Supabase Auth integration — login, signup, middleware, session",
-      "description": "As a user, I want to sign up, log in, and have my session persist so my projects are saved.",
+      "title": "User profile API routes",
+      "description": "As a developer, I need API routes for reading and updating the user's display name and avatar URL.",
       "acceptanceCriteria": [
-        "Login page calls Supabase Auth signInWithPassword for login and signUp for registration",
-        "Auth middleware at src/middleware.ts redirects unauthenticated users to /login (except /login itself)",
-        "On first login, a User record is created in Prisma linked to supabaseAuthId and email",
-        "New users are associated with the default seed Studio",
-        "Session persists across page refreshes using @supabase/ssr cookie handling",
-        "Sign-out button in app-shell calls supabase.auth.signOut() and redirects to /login",
-        "Login page shows inline error message for invalid credentials or network errors",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "GET /api/user/profile returns { displayName: string | null, email: string, avatarUrl: string | null }",
+        "PUT /api/user/profile accepts { displayName?: string, avatarUrl?: string } and updates the User record in Prisma",
+        "displayName validated: trimmed, 1-50 characters if provided, returns 400 if empty string or over 50 chars",
+        "Both routes validate auth via getCurrentUser() — return 401 if unauthenticated",
+        "PUT returns the updated user profile object",
+        "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "User provisioning uses DEFAULT_STUDIO_ID constant. Three provision points: login page, auth callback, and getCurrentUser() in auth.ts as fallback."
+      "passes": false,
+      "notes": "User model already has name and avatarUrl fields in Prisma schema"
     },
     {
       "id": "US-003",
-      "title": "Toast notification component",
-      "description": "As a user, I want clear feedback when actions succeed or fail so I know the system responded.",
+      "title": "Avatar upload API route",
+      "description": "As a developer, I need an API route to upload avatar images to Supabase Storage.",
       "acceptanceCriteria": [
-        "Toast component at src/components/shared/toast.tsx renders in fixed bottom-right corner",
-        "Supports variants: success (green), error (red), warning (amber), info (blue)",
-        "Auto-dismisses after 5 seconds, also dismissible on click",
-        "Multiple toasts stack vertically with 8px gap",
-        "Framer Motion enter (slide up + fade in) and exit (slide right + fade out) animations",
-        "Toast store (Zustand or context) exposes addToast(message, variant) function",
-        "ToastProvider added to root layout so toasts render on all pages",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "POST /api/user/avatar accepts multipart form data with an image file field",
+        "Validates file type: only jpg, jpeg, png, webp, gif accepted — returns 400 for others",
+        "File size limit: 2MB — returns 400 if exceeded",
+        "Stores image in Supabase Storage bucket 'avatars' at path '{userId}.{ext}' (overwrites previous avatar)",
+        "Uses Supabase admin client (service role) for storage upload",
+        "Updates User record's avatarUrl field with the public URL from Supabase Storage",
+        "Returns { avatarUrl: string } with the new public URL",
+        "Route validates auth — returns 401 if unauthenticated",
+        "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "Toast store is separate Zustand store at src/stores/toast-store.ts. ToastContainer added to providers.tsx. Uses design system color vars (success, danger, warning, info)."
+      "passes": false,
+      "notes": "Use createAdminClient() from src/lib/supabase/admin.ts for storage operations"
     },
     {
       "id": "US-004",
-      "title": "React Query provider and project hooks",
-      "description": "As a developer, I need a React Query data fetching layer for projects so views can load and cache data.",
+      "title": "Settings — user profile section UI",
+      "description": "As a user, I want to edit my display name and avatar in Settings so I can personalize my experience.",
       "acceptanceCriteria": [
-        "QueryClientProvider wraps the app in root layout.tsx",
-        "useProjects hook: fetches GET /api/projects, returns { data, isLoading, error }",
-        "useProject(id) hook: fetches GET /api/projects/[id] with drafts included",
-        "useCreateProject mutation: POST /api/projects, invalidates projects query on success",
-        "Stale time for projects set to 30 seconds",
-        "Optimistic update for createProject: project appears immediately in list, rolls back on error",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": true,
-      "notes": "QueryClientProvider already in providers.tsx. Hooks at src/hooks/use-projects.ts. projectKeys exported for cache invalidation. ProjectWithCount type for list, ProjectWithDrafts (Omit<Project,'drafts'>) for detail."
-    },
-    {
-      "id": "US-005",
-      "title": "Projects API routes — list, create, get by ID",
-      "description": "As a developer, I need API routes for project CRUD so the frontend hooks have endpoints to call.",
-      "acceptanceCriteria": [
-        "GET /api/projects returns projects for the authenticated user's studio, ordered by updatedAt desc",
-        "Each project includes _count of drafts in the response",
-        "POST /api/projects accepts { title, logline?, genre, format } and creates a Project in the database",
-        "POST validates required fields (title, genre, format) and returns 400 with error message if missing",
-        "GET /api/projects/[id] returns project with its drafts array (ordered by draftNumber desc)",
-        "All routes validate auth via Supabase session — return 401 if unauthenticated",
-        "Returns 404 for non-existent project IDs",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": true,
-      "notes": "Routes at src/app/api/projects/route.ts (GET list + POST create) and src/app/api/projects/[id]/route.ts (GET by ID). Uses getCurrentUser() for auth, studio scoping for access control."
-    },
-    {
-      "id": "US-006",
-      "title": "Home view wired to real data with loading and empty states",
-      "description": "As a user, I want to see my real projects on the home page with proper loading and empty states.",
-      "acceptanceCriteria": [
-        "Home view calls useProjects hook to fetch real projects from database",
-        "Project cards display real data: title, logline, format badge, draft count, last updated date",
-        "Loading state shows 3 skeleton project cards with pulse animation while fetching",
-        "Empty state shows Target icon (48px), 'Create your first project' message, and New Project button",
-        "New Project modal calls useCreateProject mutation and shows success toast on creation",
-        "Error toast shown if project creation fails",
-        "Selecting a project calls setCurrentProject in Zustand and switches to Scout tab",
+        "Settings view shows a 'Profile' section above the existing 'Claude API Key' section",
+        "Profile section displays: circular avatar preview (64px using UserAvatar component with size='lg'), display name input, email as read-only muted text",
+        "Avatar area: clicking opens file picker (accept='image/jpeg,image/png,image/webp,image/gif')",
+        "After file selected: uploads to POST /api/user/avatar, shows Loader2 spinner during upload, updates preview on success",
+        "If no avatar uploaded: UserAvatar shows initials with subtle 'Upload' text overlay on hover (opacity transition)",
+        "Display name input: pre-filled from GET /api/user/profile, saves on blur or Enter via PUT /api/user/profile",
+        "Success toast shown on display name save and avatar upload",
+        "Email shown as read-only label below display name with text: 'Username (cannot be changed)'",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Nav avatar replaces gear icon for Settings access",
+      "description": "As a user, I want my avatar in the bottom-left nav to be the way to access Settings.",
+      "acceptanceCriteria": [
+        "Remove the existing Settings tab entry (gear icon) from the nav rail tab list",
+        "The user avatar circle in the bottom-left nav now calls setActiveTab('settings') on click",
+        "Avatar renders using UserAvatar component with size='sm', passing avatarUrl and displayName from user state",
+        "User profile data fetched via GET /api/user/profile on app mount (React Query hook useUserProfile with long staleTime)",
+        "Tooltip on avatar shows display name if set, otherwise email",
+        "Active state: ring-2 ring-bullseye-gold around avatar when Settings tab is active",
+        "Mobile bottom tab bar: replace Settings gear icon with UserAvatar size='sm'",
+        "Remove the old sign-out button from nav — move sign-out to Settings page instead",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Keep Settings as a valid tab in the activeTab type. Just change the nav entry point from gear icon to avatar."
+    },
+    {
+      "id": "US-006",
+      "title": "Inject user display name into agent prompts",
+      "description": "As a user, I want Scout and readers to know my name so interactions feel personalized.",
+      "acceptanceCriteria": [
+        "Scout API route retrieves user's name field from the User record (already have user from getCurrentUser())",
+        "If user.name is set, append to Scout system prompt: 'The user you are working with is named {name}. Address them by name occasionally in conversation — naturally, not forced.'",
+        "If no display name set, do not inject any user name context (agents behave as before)",
+        "Reader chat API route also appends user name context to the reader's system prompt",
+        "Focus group engine receives userName parameter and includes it in moderator context",
+        "Typecheck passes"
+      ],
       "priority": 6,
-      "passes": true,
-      "notes": "Home view uses useProjects() hook. ProjectCard uses _count.drafts from API. ProjectCreateModal uses useCreateProject mutation with toast notifications. Loading shows 3 skeleton cards. Empty state has 48px Target icon."
+      "passes": false,
+      "notes": "Keep it subtle — append a short line to existing prompts, don't restructure them"
     },
     {
       "id": "US-007",
-      "title": "Draft upload API route with PDF storage",
-      "description": "As a developer, I need an API route that creates a Draft record and stores the PDF file.",
+      "title": "Remove Studio tab from project-level navigation",
+      "description": "As a developer, I need to remove the Studio tab from the project-level tab bar since studio config is now accessed via the overlay.",
       "acceptanceCriteria": [
-        "POST /api/projects/[id]/drafts accepts multipart form data with 'file' (PDF) and optional 'notes' field",
-        "Calls /api/upload internally (or reuses extraction logic) to get text from PDF",
-        "Creates Draft record with auto-incremented draftNumber, extracted scriptText, pageCount, and notes",
-        "Stores PDF in Supabase Storage bucket 'scripts' at path '{projectId}/{draftNumber}.pdf'",
-        "Sets scriptUrl to the Supabase Storage public URL",
-        "Returns the created Draft object with id, draftNumber, pageCount, status",
-        "Returns 400 if no file provided or file is not PDF",
-        "Validates auth — returns 401 if unauthenticated",
-        "Typecheck passes"
+        "Remove 'studio' entry from the project tabs array in app-shell.tsx",
+        "Remove StudioView import and rendering from the tab content switch in page.tsx",
+        "Studio tab no longer appears in desktop nav rail or mobile bottom tab bar",
+        "The studio-view.tsx component file is NOT deleted (it will be reused)",
+        "activeTab type updated if needed to remove 'studio' as a valid project tab value",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "Route at src/app/api/projects/[id]/drafts/route.ts. Uses Supabase admin client (service role) for storage uploads to 'scripts' bucket. Reuses extractTextFromPDF logic from /api/upload. Auto-increments draftNumber by querying latest draft."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-008",
-      "title": "Draft upload modal wired to API with progress and feedback",
-      "description": "As a user, I want to upload a screenplay PDF and see progress feedback.",
+      "title": "Studio switcher overlay opens Studio Config view",
+      "description": "As a user, I want clicking a studio in the overlay to open its configuration page.",
       "acceptanceCriteria": [
-        "Draft upload modal sends FormData to POST /api/projects/[id]/drafts",
-        "Shows upload progress indicator (spinning icon + 'Extracting text...') during API call",
-        "Success toast shows 'Draft uploaded — {pageCount} pages extracted'",
-        "Error toast shown for corrupt/password-protected PDFs with the API error message",
-        "After successful upload, invalidates project query so draft count updates",
-        "Modal closes on successful upload",
-        "useUploadDraft mutation hook created in hooks file",
+        "Add a new view mode 'studioConfig' to the app (either as a special activeTab value or a separate Zustand flag like isStudioConfigOpen: boolean)",
+        "Clicking a studio name in StudioSwitcherDropdown sets that studio as active AND switches to Studio Config view",
+        "Studio Config view renders the existing StudioView component (Readers, Executives, Calibration, Settings sub-tabs)",
+        "A back/close button (ArrowLeft or X icon) in the Studio Config header returns to the previous tab",
+        "The studio switcher button tooltip in the nav shows 'Studios'",
+        "Nav rail shows a building/warehouse icon with 'Studio Config' tooltip when this view is active",
+        "Studio names in the overlay update reactively when the name is edited in Studio Config → Settings (React Query invalidation)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "useUploadDraft hook at src/hooks/use-drafts.ts. DraftUploadModal uses isPending for Loader2 spinner + 'Extracting text...' progress state. Success toast shows page count. Error toast shows API error message. Invalidates project queries on success. Modal closes on success."
+      "passes": false,
+      "notes": "useStudio() hook data should invalidate when studio name is saved in settings sub-tab"
     },
     {
       "id": "US-009",
-      "title": "Scout chat — SSE connection and text streaming",
-      "description": "As a user, I want to send messages to Scout and see streaming text responses in the chat panel.",
+      "title": "Studio deletion — backend API",
+      "description": "As a developer, I need an API route to delete a studio with full cascade deletion.",
       "acceptanceCriteria": [
-        "Scout chat input in scout-chat.tsx sends messages to POST /api/scout as SSE",
-        "SSE response parsed using fetch + ReadableStream reader (not EventSource, since it's POST)",
-        "Scout text_delta events append text token-by-token to the current assistant message bubble",
-        "Scout text_complete events finalize the message",
-        "Chat messages stored in Zustand (chatMessages array) so they persist across tab switches",
-        "Input disabled while Scout is streaming (isStreaming state)",
-        "If SSE connection fails or errors, show error message in chat with 'Retry' button",
-        "system type=error events display as red error message in chat",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "DELETE /api/studio/[id] route created",
+        "Validates auth and that user is the studio owner (check studio.ownerId === user.id)",
+        "Returns 400 if this is the user's only studio: { error: 'Cannot delete your only studio' }",
+        "Deletes all associated files from Supabase Storage: list and remove all files under scripts/{projectId}/ for each project in the studio",
+        "Deletes the studio record (Prisma cascade should handle: projects → drafts → deliverables, focus sessions, reader memories, executive evaluations, chat messages, plus reader personas, executive profiles, studio intelligence)",
+        "Returns { deletedProjects: number } with the count of projects that were in the studio",
+        "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "Scout chat uses Zustand chatMessages (not local state) so messages persist across tab switches. SSE via createSSEConnection in event-router.ts. Error handling adds system message with __error__ prefix and shows Retry button. isStreaming from Zustand controls input disabled state."
+      "passes": false,
+      "notes": "Check that Prisma schema has onDelete: Cascade on the Project → Studio relation. If not, delete projects manually first."
     },
     {
       "id": "US-010",
-      "title": "Scout chat — tool status indicators and file attachment",
-      "description": "As a user, I want to see what Scout is doing (tool calls) and attach script files from the chat.",
+      "title": "Studio deletion — UI with cascade warning",
+      "description": "As a user, I want to delete a studio from its Settings page with a clear warning about permanent data loss.",
       "acceptanceCriteria": [
-        "tool_start SSE events render an inline status pill in chat ('Spawning readers...', 'Running focus group...', etc.)",
-        "tool_end SSE events update the pill to show completion (checkmark icon)",
-        "Status pills use a mapping: spawn_readers → 'Analyzing with readers...', focus_group → 'Running focus group...', executive_eval → 'Evaluating with executives...', reader_chat → 'Chatting with reader...'",
-        "File attachment button (Paperclip icon) next to chat input opens file picker (accept='.pdf,.txt,.fountain')",
-        "Selected PDF is uploaded via /api/upload first to extract text, then sent as attachment in the Scout message",
-        "File attachment shows filename chip above the input before sending",
+        "Studio Config → Settings sub-tab shows a 'Danger Zone' section at the bottom with red/destructive border",
+        "'Delete Studio' button (destructive variant — red) in the danger zone",
+        "Clicking opens a confirmation dialog/overlay showing: studio name prominently, warning text 'This will permanently delete this studio and all N projects within it. This cannot be undone.'",
+        "Project count displayed in the warning (derived from useProjects or passed from studio data)",
+        "If studio has projects: text input requiring user to type the studio name to confirm, 'Delete Studio' button enabled only when typed text matches studio name exactly",
+        "If studio has zero projects: simpler confirmation with just a 'Delete Studio' button (no name-typing required)",
+        "On confirm: calls DELETE /api/studio/[id], shows success toast 'Studio deleted', switches to another available studio and navigates to Home",
+        "React Query cache invalidated for studio list",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 10,
-      "passes": true,
-      "notes": "Tool pills rendered inline on the assistant message's toolCalls array. ToolCallStatus type added to both app-store and chat-interface. Pills use Framer Motion scale-in animation, gold (running) or green (complete) color scheme. File attachment was already in ChatInterface — supports PDF (via /api/upload), TXT, Fountain, FDX with drag-and-drop."
-    },
-    {
-      "id": "US-011",
-      "title": "Scout right panel — tool event routing to panel modes",
-      "description": "As a user, I want the right panel to switch modes automatically based on what Scout is doing.",
-      "acceptanceCriteria": [
-        "SSE events with source='reader' and type='reader_start' switch right panel to 'analysis' mode",
-        "SSE events with source='focus_group' switch right panel to 'focus_group' mode",
-        "SSE events with source='reader_chat' switch right panel to 'reader_chat' mode",
-        "SSE events with source='executive' switch right panel to 'executive' mode",
-        "Right panel mode stored in Zustand (rightPanelMode) and persists across messages",
-        "Idle state shows 'Reader activity will appear here' when no analysis has started",
-        "Panel mode transitions use Framer Motion fade/slide animation (200ms)",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Event routing auto-switches panel mode on source-based SSE events. reader_maya/colton/devon analysis_start → 'analysis', focus_group source → 'focus_group', reader_chat source → 'reader_chat', executive source → 'executive'. Phase change guard prevents redundant updates (only switches when mode actually changes). Framer Motion transitions at 200ms with slide+fade from right."
-    },
-    {
-      "id": "US-012",
-      "title": "Reader analysis right panel — live streaming results",
-      "description": "As a user, I want to see each reader's analysis progress and final results in the right panel.",
-      "acceptanceCriteria": [
-        "Analysis mode shows 3 reader cards (Maya, Colton, Devon) with their colored left borders",
-        "reader_start events set reader card to 'Analyzing...' state with pulse animation",
-        "reader_progress events update a progress indicator on the reader card",
-        "reader_complete events populate the card with: recommendation badge, scores (10-bar), strengths, concerns, standout quote",
-        "Scores animate in with a left-to-right fill animation (300ms staggered per bar)",
-        "After all 3 readers complete, a 'Harmonized Scores' section appears at the top with combined scores",
-        "Reader cards are expandable/collapsible to show full details",
-        "Data stored in Zustand readerStates Map so it persists when switching panels",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "ReaderAnalysisPanel uses expandedReaders/toggleReaderExpanded from Zustand for expand/collapse. ScoreBars component renders 10 bars with Framer Motion staggered scaleX animation (300ms per bar, 50ms stagger). HarmonizedScoresSection computes averaged scores from all 3 readers and appears at top with AnimatePresence. reader_progress SSE events (analysis_stream type) update progress bar during streaming. ReaderStreamState has optional progress field."
-    },
-    {
-      "id": "US-013",
-      "title": "Focus group right panel — live streaming conversation",
-      "description": "As a user, I want to watch a live focus group conversation between readers in the right panel.",
-      "acceptanceCriteria": [
-        "Focus group mode shows a chat-style message list with reader avatars and colors",
-        "focus_group_message events append messages with correct reader name, color, and avatar",
-        "Moderator (Scout) messages styled with gold accent border",
-        "Typing indicator shows reader name + animated dots before their message arrives",
-        "Messages auto-scroll to bottom as new ones arrive (with ScrollArea)",
-        "User can type follow-up questions via input at bottom — sent as user message to Scout",
-        "Messages stored in Zustand focusGroupMessages array",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "FocusGroupPanel uses native div with overflow-y-auto for scroll (not Radix ScrollArea which doesn't support ref forwarding). Gold accent border on moderator messages via border-l-2 with inline borderLeftColor style. Follow-up input sends to /api/scout with full EventRouterCallbacks — focus group messages routed back into Zustand focusGroupMessages."
-    },
-    {
-      "id": "US-014",
-      "title": "Reader chat right panel — 1:1 conversations",
-      "description": "As a user, I want to have private 1:1 conversations with individual readers in the right panel.",
-      "acceptanceCriteria": [
-        "Reader chat mode shows reader selector with 3 avatars (colored circles with initials)",
-        "Selecting a reader opens chat interface with that reader's color theme (border, avatar)",
-        "Messages sent to POST /api/reader-chat with readerId, message, projectId, draftId, conversationHistory",
-        "Reader responses stream via SSE (text_delta events) token-by-token",
-        "Conversation history maintained per reader in Zustand (keyed by readerId)",
-        "Reader's display name shown in header ('Chatting with Maya Chen')",
-        "Back button returns to reader selector without losing conversation history",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "Conversation history stored in Zustand readerChatMessages (Record<string, ReaderChatMessage[]>). Back button only clears activeReaderChatId, not messages. Header shows 'Chatting with {name}'. Native div with overflow-y-auto replaces ScrollArea for ref access. addReaderChatMessage and updateReaderChatMessage actions manage per-reader history."
-    },
-    {
-      "id": "US-015",
-      "title": "Executive evaluation right panel",
-      "description": "As a user, I want to see executive evaluation progress and results in the right panel.",
-      "acceptanceCriteria": [
-        "Executive mode shows a list of executives being evaluated with loading spinners",
-        "executive_start events add executive name to the list with 'Evaluating...' status",
-        "executive_complete events show: verdict badge (PURSUE green / PASS red), confidence %, rationale summary",
-        "Each executive result card shows key factors and concerns as bullet lists",
-        "Results accumulate (don't replace) as each executive completes",
-        "Data stored in Zustand so results persist when switching panels",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "ExecutiveEvalPanel at src/components/scout/executive-eval-panel.tsx. ExecutiveStreamState type in agent-sdk/types.ts. executiveStates Map in Zustand store with setExecutiveState/clearExecutiveStates actions. Event router handles executive_start and executive_complete SSE events. Pre-existing agent-sdk type errors in tools/ files are not blockers (ignoreBuildErrors: true)."
-    },
-    {
-      "id": "US-016",
-      "title": "Deliverable and focus sessions API routes",
-      "description": "As a developer, I need API routes to fetch analysis deliverables and focus session data.",
-      "acceptanceCriteria": [
-        "GET /api/drafts/[id]/deliverable returns the DraftDeliverable record with all JSON fields (harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis, studioCalibration)",
-        "Returns 404 if no deliverable exists for the draft",
-        "GET /api/drafts/[id]/focus-sessions returns FocusSessions with their messages, ordered by createdAt desc",
-        "Each focus session includes messages ordered by sequenceNumber",
-        "Both routes validate auth — return 401 if unauthenticated",
-        "Both routes return 404 for non-existent draft IDs",
-        "Typecheck passes"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": "Routes at src/app/api/drafts/[id]/deliverable/route.ts and src/app/api/drafts/[id]/focus-sessions/route.ts. Both validate auth via getCurrentUser(), verify draft belongs to user's studio via project.studioId check, return 404 for non-existent drafts/deliverables. Focus sessions include messages ordered by sequenceNumber asc."
-    },
-    {
-      "id": "US-017",
-      "title": "Evaluations and studio API routes",
-      "description": "As a developer, I need API routes for executive evaluations and studio configuration.",
-      "acceptanceCriteria": [
-        "GET /api/drafts/[id]/evaluations returns ExecutiveEvaluations with executive profile data included",
-        "GET /api/studio returns the current user's Studio with reader count and project count",
-        "PUT /api/studio accepts { name } and updates the studio record",
-        "GET /api/studio/readers returns ReaderPersonas for the studio",
-        "PUT /api/studio/readers/[id] accepts persona fields and updates the record",
-        "GET /api/studio/executives returns ExecutiveProfiles for the studio",
-        "PUT /api/studio/executives/[id] accepts profile fields and updates the record",
-        "GET /api/studio/intelligence returns StudioIntelligence for the studio",
-        "All routes validate auth and return proper error codes (400, 401, 404)",
-        "Typecheck passes"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": "Routes at src/app/api/drafts/[id]/evaluations/route.ts, src/app/api/studio/route.ts (GET+PUT), src/app/api/studio/readers/route.ts (GET), src/app/api/studio/readers/[id]/route.ts (PUT), src/app/api/studio/executives/route.ts (GET), src/app/api/studio/executives/[id]/route.ts (PUT), src/app/api/studio/intelligence/route.ts (GET). All validate auth via getCurrentUser(), studio scoping for access control."
-    },
-    {
-      "id": "US-018",
-      "title": "React Query hooks for drafts, deliverables, and studio data",
-      "description": "As a developer, I need React Query hooks for all remaining data so views can fetch and cache properly.",
-      "acceptanceCriteria": [
-        "useDrafts(projectId) hook fetches drafts from project endpoint",
-        "useDeliverable(draftId) hook fetches GET /api/drafts/[id]/deliverable (staleTime: 5min)",
-        "useFocusSessions(draftId) hook fetches GET /api/drafts/[id]/focus-sessions",
-        "useEvaluations(draftId) hook fetches GET /api/drafts/[id]/evaluations",
-        "useStudio() hook fetches GET /api/studio (staleTime: 10min)",
-        "useReaderPersonas() hook fetches GET /api/studio/readers",
-        "useExecutiveProfiles() hook fetches GET /api/studio/executives",
-        "useStudioIntelligence() hook fetches GET /api/studio/intelligence (staleTime: 10min)",
-        "Each hook returns { data, isLoading, error } and handles undefined/null gracefully",
-        "Typecheck passes"
-      ],
-      "priority": 18,
-      "passes": true,
-      "notes": "Hooks at src/hooks/use-drafts.ts (useDrafts + draftKeys) and src/hooks/use-studio.ts (useDeliverable, useFocusSessions, useEvaluations, useStudio, useReaderPersonas, useExecutiveProfiles, useStudioIntelligence + studioKeys). draftKeys exported for cache invalidation by other hooks. useDeliverable and useStudioIntelligence return null for 404s (not throw). All hooks follow projectKeys pattern."
-    },
-    {
-      "id": "US-019",
-      "title": "Coverage view wired to real deliverable data",
-      "description": "As a user, I want to see the full harmonized coverage report from real analysis data.",
-      "acceptanceCriteria": [
-        "Coverage view calls useDeliverable(currentDraft.id) to fetch real data",
-        "Harmonized scores section renders real numeric values in 10-bar ScoreIndicator components",
-        "Reader perspectives section maps over readerPerspectives JSON to render ReaderCards with real scores, recommendation, strengths, concerns, quote",
-        "Scout analysis section renders consensus points, divergence points, and watch-outs from scoutAnalysis JSON",
-        "Calibration toggle shows percentile data from studioCalibration JSON",
-        "Loading skeleton shown while useDeliverable is loading (3 score bar skeletons + 3 reader card skeletons)",
-        "Empty state shown when deliverable is null: 'Run analysis from Scout to see coverage' with Scout tab link",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 19,
-      "passes": true,
-      "notes": "Coverage view uses useDeliverable(currentDraft.id) from use-studio.ts. Prefers Zustand currentDeliverable (live streaming data) over fetched API data. API response JSON fields cast to typed interfaces (CoverageReport, HarmonizedScores, etc.). LoadingSkeleton has 3 score bar skeletons + 3 reader card skeletons matching real component dimensions. EmptyState uses BarChart3 icon with 'Run analysis from Scout to see coverage' text and Scout tab link button."
-    },
-    {
-      "id": "US-020",
-      "title": "Focus view wired to real session data",
-      "description": "As a user, I want to browse past focus group sessions with real transcripts.",
-      "acceptanceCriteria": [
-        "Focus view calls useFocusSessions(currentDraft.id) to fetch real sessions",
-        "Session list shows each session with topic, date, message count, and status badge",
-        "Selecting a session renders full message transcript with reader avatars and colors",
-        "Moderator messages styled with gold border, reader messages with their persona color",
-        "Loading skeleton during fetch (3 session card skeletons)",
-        "Empty state: 'Start a focus group from Scout' with explanation text and Scout tab link",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 20,
-      "passes": true,
-      "notes": "Focus view uses useFocusSessions(currentDraft.id) from use-studio.ts. Session list shows topic, date, message count, and status badge. Selecting a session renders full transcript with reader avatars/colors. Moderator messages styled with gold border (#D4A84B). Reader messages styled with reader persona color left border. Loading skeleton shows 3 session card skeletons. Empty state uses Users icon with 'Start a focus group from Scout' text and Scout tab link button."
-    },
-    {
-      "id": "US-021",
-      "title": "Revisions view wired to real draft data",
-      "description": "As a user, I want to see all drafts in a timeline with real scores and comparisons.",
-      "acceptanceCriteria": [
-        "Revisions view calls useDrafts(currentProject.id) to get real drafts",
-        "Left sidebar timeline shows drafts with: draft number, date, overall rating badge, page count",
-        "Selecting a draft fetches its deliverable and shows scores in main panel",
-        "Compare mode: selecting a second draft shows score deltas with directional arrows (green up, red down, gray neutral)",
-        "Reader memory narratives rendered from ReaderMemory.narrativeSummary if available",
-        "'Upload New Draft' button opens the draft upload modal",
-        "Loading skeleton during fetch (timeline skeleton + score table skeleton)",
-        "Empty state: 'Upload your first draft' with upload button",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 21,
-      "passes": true,
-      "notes": "Revisions view uses useDrafts(currentProject.id) from use-drafts.ts and useDeliverable(draftId) from use-studio.ts. Timeline sidebar sorts drafts by draftNumber desc. Compare mode fetches deliverable for both drafts and shows delta arrows (green up, red down, gray neutral). Reader perspectives rendered from deliverable readerPerspectives JSON with strengths/concerns/quote. Upload New Draft button opens DraftUploadModal. Loading skeleton shows timeline + score table + reader card skeletons. Empty state shows GitBranch icon with Upload button."
-    },
-    {
-      "id": "US-022",
-      "title": "Pitch view wired to real evaluation data",
-      "description": "As a user, I want to run executive evaluations and see persisted results.",
-      "acceptanceCriteria": [
-        "Pitch view calls useExecutiveProfiles() to show real executive grid",
-        "Pitch view calls useEvaluations(currentDraft.id) to show past results",
-        "Executive cards show name, title, company from database profiles",
-        "'Run Simulation' button sends message to Scout requesting executive evaluation (via /api/scout)",
-        "Results render with: PURSUE/PASS badge, confidence percentage, rationale, key factors, concerns",
-        "Loading state during evaluation shows per-executive spinner",
-        "Empty state when no evaluations: 'Complete coverage analysis first' with guidance",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 22,
-      "passes": true,
-      "notes": "Pitch view uses useExecutiveProfiles() for real DB executives and useEvaluations(currentDraft.id) for persisted results. Run Simulation sends message to /api/scout via createSSEConnection with executive callbacks. Live streaming results from Zustand executiveStates shown during evaluation, then replaced by persisted API results on subsequent visits. Loading skeleton shows 3 executive card skeletons + 2 result card skeletons. Empty states: no draft → Go to Home, no deliverable → 'Complete coverage analysis first' with Scout link. Both PURSUE/PASS verdict formats handled (uppercase from API, lowercase from live SSE)."
-    },
-    {
-      "id": "US-023",
-      "title": "Studio configuration view wired to real data",
-      "description": "As a user, I want to view and edit my studio's reader personas, executives, and calibration data.",
-      "acceptanceCriteria": [
-        "Readers tab calls useReaderPersonas() and displays editable fields (name, displayName, background, voiceDescription, weights)",
-        "Save button on reader persona calls PUT /api/studio/readers/[id] and shows success toast",
-        "Executives tab calls useExecutiveProfiles() and displays editable fields (name, title, company, priorityFactors, dealBreakers)",
-        "Save button on executive calls PUT /api/studio/executives/[id] and shows success toast",
-        "Calibration tab calls useStudioIntelligence() and shows score distributions, percentiles, totalProjectsAnalyzed",
-        "Settings tab shows studio name (editable) — save calls PUT /api/studio",
-        "Inline validation: required fields show red border and error text when empty",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 23,
-      "passes": true,
-      "notes": "Studio view uses useReaderPersonas(), useExecutiveProfiles(), useStudioIntelligence(), and useStudio() hooks from use-studio.ts. Readers and executives have inline edit mode with Save/Cancel buttons using useMutation + PUT /api/studio/readers/[id] and /api/studio/executives/[id]. Calibration tab shows real totalProjectsAnalyzed, recommendationBreakdown, and scoreDistributions (cast from unknown JSON fields). Settings tab shows editable studio name with PUT /api/studio. All save buttons show Loader2 spinner during mutation. Inline validation shows red border + error text for required fields. Loading skeleton uses SectionSkeleton component with pulse animation cards."
-    },
-    {
-      "id": "US-024",
-      "title": "Loading skeleton components",
-      "description": "As a user, I want to see skeleton placeholders while data loads so the UI doesn't jump.",
-      "acceptanceCriteria": [
-        "Skeleton base component at src/components/shared/skeleton.tsx with pulse animation using bg-elevated",
-        "ProjectCardSkeleton: matches project card dimensions (title bar, logline lines, footer with badges)",
-        "ReaderCardSkeleton: matches reader card dimensions (avatar circle, name bar, score bars, text lines)",
-        "ScoreBarSkeleton: matches 10-bar visualization dimensions",
-        "ChatMessageSkeleton: avatar circle + text lines (2-3 lines, varying widths)",
-        "TimelineItemSkeleton: circle + bar + text for revisions sidebar",
-        "All skeletons use rounded corners matching real component radii",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 24,
-      "passes": true,
-      "notes": "Skeleton base component at src/components/shared/skeleton.tsx uses bg-elevated with animate-pulse. All variant skeletons (ProjectCardSkeleton, ReaderCardSkeleton, ScoreBarSkeleton, ChatMessageSkeleton, TimelineItemSkeleton) match their real component dimensions exactly — same rounded corners, gaps, widths, and layout structure. Existing inline skeletons in view components already follow these patterns."
-    },
-    {
-      "id": "US-025",
-      "title": "Error boundaries wrapping all views",
-      "description": "As a user, I want graceful error handling instead of blank screens when something breaks.",
-      "acceptanceCriteria": [
-        "ErrorBoundary component at src/components/shared/error-boundary.tsx (React class component with getDerivedStateFromError)",
-        "Fallback UI shows: AlertCircle icon (48px, text-danger), error message, 'Try Again' button that resets the boundary",
-        "ErrorBoundary wraps each tab view: Scout, Coverage, Focus, Revisions, Pitch, Studio",
-        "API fetch errors caught in React Query hooks display inline error state (red text + retry button) instead of throwing",
-        "SSE stream errors in Scout chat show 'Connection lost. Retry?' message with button",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 25,
-      "passes": true,
-      "notes": "ErrorBoundary at src/components/shared/error-boundary.tsx (React class component with getDerivedStateFromError). Fallback shows AlertCircle 48px icon, error message, and 'Try Again' button that resets state. Each tab view in page.tsx wrapped with <ErrorBoundary key={tab}>. All views with React Query hooks (Coverage, Focus, Revisions, Pitch, Studio sub-sections) have inline error state (AlertTriangle icon + red text + error.message). SSE stream errors in Scout chat already show error message + Retry button (pre-existing from US-009)."
-    },
-    {
-      "id": "US-026",
-      "title": "Empty states for all views",
-      "description": "As a user, I want helpful empty states that guide me on what to do next.",
-      "acceptanceCriteria": [
-        "EmptyState component at src/components/shared/empty-state.tsx accepting icon, title, description, actionLabel, onAction props",
-        "Home empty state: Target icon, 'Create your first project', 'Get started by creating a project', New Project button",
-        "Scout empty state (no project): FileText icon, 'Select a project first', 'Choose a project from Home to start analyzing'",
-        "Scout empty state (no draft): Upload icon, 'Upload a script to get started', with upload button",
-        "Coverage empty state: BarChart3 icon, 'No coverage yet', 'Run analysis from Scout to see coverage', link to Scout tab",
-        "Focus empty state: Users icon, 'No focus groups yet', 'Start a focus group from Scout'",
-        "Revisions empty state: GitBranch icon, 'No drafts yet', 'Upload your first draft', upload button",
-        "Pitch empty state: Briefcase icon, 'No evaluations yet', 'Complete coverage analysis first'",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 26,
-      "passes": true,
-      "notes": "Shared EmptyState component at src/components/shared/empty-state.tsx accepts icon (LucideIcon), title, description, actionLabel?, onAction? props. Uses Framer Motion fade-in animation, bg-surface icon container, bullseye-gold action link. ScoutView uses EmptyState for no-project (FileText icon, 'Select a project first') and no-draft (Upload icon, 'Upload a script to get started' with DraftUploadModal). Home, Coverage, Focus, Revisions, and Pitch views already had proper inline empty states matching the AC."
-    },
-    {
-      "id": "US-027",
-      "title": "Mobile responsive — bottom tab bar and general layout",
-      "description": "As a user, I want to use Bullseye on mobile without the layout breaking.",
-      "acceptanceCriteria": [
-        "Left icon rail hidden on screens < 768px (md breakpoint)",
-        "Bottom tab bar appears on mobile: fixed to bottom, same icons as sidebar, gold active indicator",
-        "Bottom tab bar shows icon + small label text for each tab",
-        "Project grid goes to single column on mobile (grid-cols-1)",
-        "Modals render as full-screen sheets on mobile (not centered floating)",
-        "Chat input stays fixed at bottom of viewport on mobile",
-        "Reader cards stack to single column on tablet (< 1024px)",
-        "All text readable without horizontal scrolling at 375px viewport width",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 27,
-      "passes": true,
-      "notes": "Left icon rail uses hidden md:flex. Mobile bottom tab bar uses fixed positioning with safe-area-bottom padding. Modals use items-end md:items-center + rounded-t-2xl md:rounded-2xl for bottom-sheet on mobile. Reader cards use lg:grid-cols-3 (not md) for tablet stacking. ScoreIndicator hides rating labels on mobile to prevent overflow. All content areas use px-4 md:px-8 for tighter mobile padding."
-    },
-    {
-      "id": "US-028",
-      "title": "Mobile responsive — Scout split-screen layout",
-      "description": "As a user, I want Scout's split-screen layout to work on mobile with a panel toggle.",
-      "acceptanceCriteria": [
-        "On mobile (< 768px), Scout layout stacks vertically instead of side-by-side",
-        "Toggle buttons ('Chat' / 'Activity') appear at top to switch between left panel (chat) and right panel (analysis)",
-        "Active toggle button has gold underline indicator",
-        "Both panels take full width when active",
-        "Right panel still receives and stores SSE events even when not visible",
-        "Switching toggles uses fade transition (not hard cut)",
-        "Score bars and reader cards remain readable at mobile widths",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 28,
-      "passes": true,
-      "notes": "Mobile toggle uses Chat/Activity buttons with layoutId gold underline animation. ScoutChat always mounted (opacity/pointer-events toggle, not display:none) to maintain SSE connection and streaming refs. RightPanelContent reads from Zustand so SSE data persists regardless of visibility. Both panels use absolute positioning on mobile with opacity transition (150ms) for fade effect. Desktop uses md:relative + md:flex-row for side-by-side layout at >= 768px."
-    },
-    {
-      "id": "US-029",
-      "title": "Interactive polish — hover, active, disabled, and transition states",
-      "description": "As a user, I want every interactive element to feel responsive and intentional.",
-      "acceptanceCriteria": [
-        "All Button components have: hover:opacity-90 or hover:bg change, active:scale-[0.98] press effect",
-        "All Card components have: hover:border-white/10 (subtle border brighten on hover)",
-        "Disabled buttons show opacity-50 and cursor-not-allowed",
-        "Tab switches use Framer Motion AnimatePresence with fade transition (150ms)",
-        "Right panel mode switches use Framer Motion slide + fade (200ms, from right)",
-        "Score bars in ScoreIndicator animate on mount: width transitions from 0 to final value over 400ms with stagger (50ms per bar)",
-        "Navigation icon tooltips have 200ms delay before appearing",
-        "All transitions use ease-out timing function and consistent 150-200ms duration",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 29,
-      "passes": true,
-      "notes": "Button base class in ui/button.tsx has active:scale-[0.98] + duration-150 ease-out. Card base class in ui/card.tsx has hover:border-white/10. Tooltip default delayDuration=200ms. ScoreIndicator bars use Framer Motion scaleX animation (400ms, 50ms stagger per bar, ease-out). Tab switches use 150ms ease-out in AnimatePresence. Right panel transitions use 200ms slide+fade with ease-out [0,0,0.58,1]. All transition-colors throughout app-shell and scout-layout normalized to duration-150 ease-out."
-    },
-    {
-      "id": "US-030",
-      "title": "Persist analysis results to database after Scout completes",
-      "description": "As a developer, I need Scout's analysis results saved to the database so other views can display them.",
-      "acceptanceCriteria": [
-        "After spawn_readers completes, reader perspectives are saved to ReaderMemory records in the database",
-        "After harmonize_analyses completes, a DraftDeliverable record is created with harmonizedCoverage, harmonizedScores, readerPerspectives, scoutAnalysis",
-        "After focus_group completes, a FocusSession record is created with all FocusGroupMessages",
-        "After executive_eval completes, ExecutiveEvaluation records are created per executive",
-        "StudioIntelligence record is updated with new score distributions after each analysis",
-        "All persistence happens server-side in the MCP tool implementations (not in the frontend)",
-        "React Query caches are invalidated after analysis completes (deliverable, evaluations, focus-sessions)",
-        "Typecheck passes"
-      ],
-      "priority": 30,
-      "passes": true,
-      "notes": "Executive evaluations persisted to ExecutiveEvaluation table in executive.ts. Focus group messages persisted to FocusSession + FocusGroupMessage tables in focus-group.ts. StudioIntelligence updated after harmonization in analysis.ts via updateStudioIntelligence() from studio-intelligence.ts. Studio intelligence tools now read from DB with in-memory cache. React Query caches (deliverable, evaluations, focus-sessions, intelligence) invalidated in scout-chat.tsx onResult callback."
-    },
-    {
-      "id": "US-031",
-      "title": "Build and type safety cleanup",
-      "description": "As a developer, I want the app to build cleanly with zero errors or warnings.",
-      "acceptanceCriteria": [
-        "npm run build completes with zero errors",
-        "npx tsc --noEmit passes with zero type errors",
-        "No explicit 'any' types remaining — replaced with proper types or 'unknown' with narrowing",
-        "All unused imports removed across all files",
-        "All unused variables removed across all files",
-        "No console.log statements in production code (replace with proper error handling or remove)",
-        "ESLint passes with zero warnings (or warnings are explicitly suppressed with justification comments)",
-        "Typecheck passes"
-      ],
-      "priority": 31,
-      "passes": true,
-      "notes": "Fixed 9 type errors (Prisma JSON casts via unknown, FocusGroupItem/ChatHighlight serialized via JSON.parse/stringify). Removed all unused imports/variables across 15+ files. Removed ignoreBuildErrors from next.config.ts. ESLint configured with argsIgnorePattern/varsIgnorePattern for _ prefix convention. focus-view setState-in-effect replaced with derived state. console.error statements kept (server-side error logging). Build passes with full TypeScript checking."
+      "passes": false,
+      "notes": ""
     }
   ]
 }

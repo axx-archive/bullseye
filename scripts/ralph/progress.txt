@@ -68,6 +68,24 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - React `setState` in useEffect: derive state in render phase instead (useMemo or inline computation)
 - ESLint flat config: `argsIgnorePattern: "^_"` + `varsIgnorePattern: "^_"` for @typescript-eslint/no-unused-vars
 
+- Shared components go in src/components/shared/ with named exports
+- UI primitives (Radix-based) are in src/components/ui/
+- Use 'use client' directive for client components
+- Import cn() from @/lib/utils for conditional classNames
+
+---
+
+## 2026-01-23 - US-001 (user-customization branch)
+- Implemented reusable UserAvatar component at src/components/shared/user-avatar.tsx
+- Props: src, name, email, size ('sm'=28px, 'md'=40px, 'lg'=64px)
+- Image mode: circular img with object-cover and rounded-full
+- Fallback mode: colored circle with white initials (first letter of name/email or '?')
+- Deterministic color from 10-color palette using string hash
+- Files changed: src/components/shared/user-avatar.tsx (new)
+- **Learnings for future iterations:**
+  - The project already has Radix Avatar primitives in src/components/ui/avatar.tsx but the UserAvatar is a higher-level abstraction
+  - Shared components use named exports, not default exports
+  - The reader-card.tsx shows the existing pattern for avatar-like initials rendering
 ---
 
 ## 2026-01-22 - US-001
