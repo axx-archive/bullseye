@@ -601,10 +601,31 @@ function ProjectCard({ project, onOpen, onDelete, showDragHandle, onDragHandlePo
         <h3 className="text-sm font-semibold mb-1 line-clamp-1">{project.title}</h3>
       )}
       {project.logline && (
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
           {project.logline}
         </p>
       )}
+
+      {/* Metadata pills */}
+      {(project.genre && project.genre !== 'Unclassified') || (project.writer && project.writer !== 'Unknown') ? (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {project.genre && project.genre !== 'Unclassified' && (
+            <span className="text-xs bg-muted/50 text-muted-foreground rounded-full px-2 py-0.5">
+              {project.genre}
+            </span>
+          )}
+          {project.format && FORMAT_LABELS[project.format] && (
+            <span className="text-xs bg-muted/50 text-muted-foreground rounded-full px-2 py-0.5">
+              {FORMAT_LABELS[project.format]}
+            </span>
+          )}
+          {project.writer && project.writer !== 'Unknown' && (
+            <span className="text-xs bg-muted/50 text-muted-foreground rounded-full px-2 py-0.5">
+              {project.writer}
+            </span>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/30">
         <div className="flex items-center gap-4">

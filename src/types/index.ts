@@ -398,6 +398,7 @@ export interface Project {
   logline?: string;
   genre: string;
   format: ProjectFormat;
+  writer?: string | null;
   status: ProjectStatus;
   evaluationStatus: EvaluationStatus;
   sortOrder: number;
