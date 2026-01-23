@@ -110,6 +110,13 @@ interface ExecutiveState {
 // CHAT STATE
 // ============================================
 
+export interface ToolCallStatus {
+  id: string;
+  name: string;
+  displayName: string;
+  status: 'running' | 'complete';
+}
+
 export interface StoreChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -121,6 +128,7 @@ export interface StoreChatMessage {
   timestamp?: Date;
   isStreaming?: boolean;
   attachment?: { name: string; size: number };
+  toolCalls?: ToolCallStatus[];
 }
 
 interface ChatState {

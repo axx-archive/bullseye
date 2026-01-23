@@ -3,24 +3,27 @@
 import { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
+import type { ToolCallStatus } from '@/stores/app-store';
 import { ChatInterface, QuickActions, type ChatMessage, type FileAttachment } from '@/components/chat/chat-interface';
 import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
 import { Target } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  'ingest_script': 'Ingesting script',
-  'spawn_readers': 'Readers analyzing',
-  'harmonize_analyses': 'Synthesizing coverage',
-  'run_focus_group': 'Running focus group',
-  'run_executive_eval': 'Executive evaluation',
-  'get_calibration_context': 'Loading studio context',
-  'get_studio_intelligence': 'Loading studio intelligence',
-  'memory_read': 'Reading memory',
-  'memory_write': 'Saving memory',
-  'memory_read_all': 'Loading all memories',
-  'generate_focus_questions': 'Generating questions',
-  'reader_chat': 'Chatting with reader',
+  'ingest_script': 'Ingesting script...',
+  'spawn_readers': 'Analyzing with readers...',
+  'harmonize_analyses': 'Synthesizing coverage...',
+  'run_focus_group': 'Running focus group...',
+  'focus_group': 'Running focus group...',
+  'run_executive_eval': 'Evaluating with executives...',
+  'executive_eval': 'Evaluating with executives...',
+  'get_calibration_context': 'Loading studio context...',
+  'get_studio_intelligence': 'Loading studio intelligence...',
+  'memory_read': 'Reading memory...',
+  'memory_write': 'Saving memory...',
+  'memory_read_all': 'Loading all memories...',
+  'generate_focus_questions': 'Generating questions...',
+  'reader_chat': 'Chatting with reader...',
 };
 
 function getToolDisplayName(toolName: string): string {
@@ -48,6 +51,8 @@ export function ScoutChat() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
+  const currentAssistantIdRef = useRef<string | null>(null);
+  const toolCallsRef = useRef<ToolCallStatus[]>([]);
   const lastRequestRef = useRef<{
     content: string;
     attachment?: FileAttachment;
@@ -61,6 +66,8 @@ export function ScoutChat() {
     assistantId: string,
   ) => {
     streamingTextRef.current = '';
+    currentAssistantIdRef.current = assistantId;
+    toolCallsRef.current = [];
 
     // Build message history for context
     const allMessages = [...existingMessages, userMessage].map((m) => ({
@@ -129,18 +136,52 @@ export function ScoutChat() {
       },
       onToolStart: (tool) => {
         setActiveTool(tool);
+        const baseName = tool.includes('__') ? tool.split('__').pop()! : tool;
+        const displayName = getToolDisplayName(tool);
+        const toolCall: ToolCallStatus = {
+          id: uuidv4(),
+          name: baseName,
+          displayName,
+          status: 'running',
+        };
+        toolCallsRef.current = [...toolCallsRef.current, toolCall];
+        if (currentAssistantIdRef.current) {
+          updateChatMessage(currentAssistantIdRef.current, {
+            toolCalls: [...toolCallsRef.current],
+          });
+        }
       },
-      onToolEnd: () => {
+      onToolEnd: (tool) => {
         setActiveTool(null);
+        const baseName = tool.includes('__') ? tool.split('__').pop()! : tool;
+        toolCallsRef.current = toolCallsRef.current.map((tc) =>
+          tc.name === baseName && tc.status === 'running'
+            ? { ...tc, status: 'complete' as const }
+            : tc
+        );
+        if (currentAssistantIdRef.current) {
+          updateChatMessage(currentAssistantIdRef.current, {
+            toolCalls: [...toolCallsRef.current],
+          });
+        }
       },
       onResult: () => {
         setStreaming(false);
         setActiveTool(null);
-        updateChatMessage(assistantId, { isStreaming: false });
+        // Mark any remaining running tools as complete
+        toolCallsRef.current = toolCallsRef.current.map((tc) =>
+          tc.status === 'running' ? { ...tc, status: 'complete' as const } : tc
+        );
+        updateChatMessage(assistantId, {
+          isStreaming: false,
+          toolCalls: toolCallsRef.current.length > 0 ? [...toolCallsRef.current] : undefined,
+        });
+        currentAssistantIdRef.current = null;
       },
       onError: (error) => {
         setStreaming(false);
         setActiveTool(null);
+        currentAssistantIdRef.current = null;
         // If we have partial text, keep it and append error
         const errorContent = streamingTextRef.current
           ? streamingTextRef.current
