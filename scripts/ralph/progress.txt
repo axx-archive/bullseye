@@ -55,6 +55,9 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - ScoreIndicator hides rating text labels on mobile (hidden sm:inline) to prevent horizontal overflow
 - When a component must stay mounted on mobile (e.g., SSE connections, streaming refs), use `opacity-0 pointer-events-none` instead of `hidden` (display:none) — preserves React hooks and refs
 - Mobile panel toggles with fade: absolute positioning + `transition-opacity duration-150` is simpler than AnimatePresence when one panel must stay mounted
+- Interactive element transitions: use `duration-150 ease-out` consistently for CSS transitions; for Framer Motion use `ease: [0, 0, 0.58, 1]` (CSS ease-out equivalent)
+- Button press effect: `active:scale-[0.98]` on the base Button class and custom buttons; combined with `transition-all` or `transition-transform`
+- Tooltip delay: default is 200ms for navigation tooltips — set via TooltipProvider `delayDuration={200}` in app-shell
 
 ---
 
@@ -733,5 +736,38 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - For mobile panel toggles with fade: absolute positioning + opacity transition is simpler than AnimatePresence conditional rendering when one panel must stay mounted
   - Desktop responsive reset: use `md:relative md:inset-auto md:opacity-100 md:pointer-events-auto md:z-auto` to override mobile absolute + opacity styles
   - The layoutId `mobile-scout-toggle` must be unique from `mobile-nav-indicator` (bottom tab bar) and `nav-indicator` (desktop rail) to prevent cross-component animation conflicts
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-029
+- What was implemented:
+  - Button base class (ui/button.tsx): added `active:scale-[0.98]` press effect, explicit `duration-150 ease-out` timing
+  - Card base class (ui/card.tsx): added `hover:border-white/10` subtle border brighten with `transition-[border-color] duration-150 ease-out`
+  - Tooltip default delay: changed from 0 to 200ms in both tooltip.tsx default and app-shell TooltipProvider
+  - Tab switch animation: updated AnimatePresence transition from 200ms custom ease to 150ms ease-out `[0, 0, 0.58, 1]`
+  - Right panel mode transitions: all 5 panel modes (idle, analysis, focus_group, reader_chat, executive) now use explicit ease-out `[0, 0, 0.58, 1]` at 200ms
+  - ScoreIndicator bar animation: replaced static `transition-colors` with Framer Motion `scaleX` animation (initial: 0, animate: 1, duration: 400ms, delay: i * 50ms, transformOrigin: left, ease-out)
+  - App-shell nav buttons: all `transition-colors` instances updated with explicit `duration-150 ease-out`
+  - Scout-layout mobile toggle buttons: added `duration-150 ease-out` to transition-colors
+  - Scout-layout panel opacity transitions: added `ease-out` to existing `duration-150`
+  - Project cards: added `active:scale-[0.98]` and `ease-out` to transition-all
+  - Modal close buttons: added `active:scale-[0.98] duration-150 ease-out`
+  - ChevronRight reveal on project cards: added `duration-150 ease-out`
+- Files changed:
+  - src/components/ui/button.tsx (modified — added active:scale-[0.98] + duration-150 ease-out to base class)
+  - src/components/ui/card.tsx (modified — added hover:border-white/10 transition)
+  - src/components/ui/tooltip.tsx (modified — default delayDuration changed from 0 to 200)
+  - src/components/layout/app-shell.tsx (modified — tooltip delay, tab transition 150ms, nav buttons ease-out)
+  - src/components/scout/scout-layout.tsx (modified — right panel ease-out, mobile toggle durations, panel opacity ease-out)
+  - src/components/shared/score-indicator.tsx (modified — Framer Motion scaleX bar animation)
+  - src/components/home/home-view.tsx (modified — project card active:scale, ease-out, ChevronRight reveal)
+  - src/components/home/project-create-modal.tsx (modified — close button active:scale, duration)
+  - src/components/home/draft-upload-modal.tsx (modified — close button active:scale, duration)
+- **Learnings for future iterations:**
+  - CSS ease-out in Tailwind is the built-in `ease-out` class; for Framer Motion use cubic bezier `[0, 0, 0.58, 1]` which is the CSS ease-out equivalent
+  - `active:scale-[0.98]` is subtle enough for button press but visible — don't go below 0.96 or it feels laggy
+  - Tooltip delayDuration is set both in the component default (tooltip.tsx) AND in app-shell's TooltipProvider — both must match for consistent behavior
+  - ScoreIndicator is used extensively (coverage, revisions, reader cards) — mount animation triggers each time the component enters the DOM, which is desired for tab switches but can be excessive for in-page updates. If needed, add a `skipAnimation` prop later.
+  - `transition-[border-color]` is more performant than `transition-all` for the card hover border effect — only animates border-color, not shadow/transform
   - Browser verification not available — manual testing needed
 ---

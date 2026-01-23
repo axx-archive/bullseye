@@ -548,8 +548,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 29,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Button base class in ui/button.tsx has active:scale-[0.98] + duration-150 ease-out. Card base class in ui/card.tsx has hover:border-white/10. Tooltip default delayDuration=200ms. ScoreIndicator bars use Framer Motion scaleX animation (400ms, 50ms stagger per bar, ease-out). Tab switches use 150ms ease-out in AnimatePresence. Right panel transitions use 200ms slide+fade with ease-out [0,0,0.58,1]. All transition-colors throughout app-shell and scout-layout normalized to duration-150 ease-out."
     },
     {
       "id": "US-030",
