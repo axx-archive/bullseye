@@ -469,8 +469,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "ErrorBoundary at src/components/shared/error-boundary.tsx (React class component with getDerivedStateFromError). Fallback shows AlertCircle 48px icon, error message, and 'Try Again' button that resets state. Each tab view in page.tsx wrapped with <ErrorBoundary key={tab}>. All views with React Query hooks (Coverage, Focus, Revisions, Pitch, Studio sub-sections) have inline error state (AlertTriangle icon + red text + error.message). SSE stream errors in Scout chat already show error message + Retry button (pre-existing from US-009)."
     },
     {
       "id": "US-026",

@@ -612,3 +612,33 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - All skeleton components are named exports, no default export — import as `{ ProjectCardSkeleton }` etc.
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-025
+- What was implemented:
+  - ErrorBoundary class component at src/components/shared/error-boundary.tsx
+  - Uses getDerivedStateFromError for React error catching
+  - Fallback UI: AlertCircle icon (48px/w-12), error message, 'Try Again' button that resets state
+  - Accepts optional `fallback` prop for custom fallback UI
+  - Each tab view in page.tsx wrapped with `<ErrorBoundary key={tab}>` — key ensures boundary resets on tab switch
+  - Coverage view: added `error` destructuring from useDeliverable, inline error state with AlertTriangle icon
+  - Focus view: added `error` from useFocusSessions, inline error state
+  - Revisions view: added `error` from useDrafts, inline error state
+  - Pitch view: added `error` from useExecutiveProfiles + useEvaluations, inline error state
+  - Studio view: added `error` to all 4 sub-sections (ReadersSection, ExecutivesSection, CalibrationSection, SettingsSection)
+  - SSE stream errors already handled by scout-chat (US-009) with retry button — no changes needed
+- Files changed:
+  - src/components/shared/error-boundary.tsx (new)
+  - src/app/page.tsx (modified — imported ErrorBoundary, wrapped each view)
+  - src/components/coverage/coverage-view.tsx (modified — added error destructuring + inline error state)
+  - src/components/focus/focus-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/revisions/revisions-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/pitch/pitch-view.tsx (modified — added error handling + AlertTriangle import)
+  - src/components/studio/studio-view.tsx (modified — added error handling to 4 sub-sections + AlertTriangle import)
+- **Learnings for future iterations:**
+  - ErrorBoundary uses `key` prop to reset when tab changes — without this, switching tabs after an error would still show the error fallback
+  - React Query hooks return `{ error }` typed as `Error | null` — destructure and display `error.message` for user-facing text
+  - Inline error states (AlertTriangle + red text) are better UX than throwing to the ErrorBoundary for data fetch failures — the boundary catches unexpected render errors
+  - Pre-existing type errors in agent-sdk/tools/ are known (Prisma JSON type issues) and don't affect the build (ignoreBuildErrors: true)
+  - The pattern for inline error states: `if (error) { return <div><AlertTriangle /><p>{error.message}</p></div>; }` — goes after loading check, before data rendering
+  - Browser verification not available — manual testing needed
+---
