@@ -395,8 +395,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Revisions view uses useDrafts(currentProject.id) from use-drafts.ts and useDeliverable(draftId) from use-studio.ts. Timeline sidebar sorts drafts by draftNumber desc. Compare mode fetches deliverable for both drafts and shows delta arrows (green up, red down, gray neutral). Reader perspectives rendered from deliverable readerPerspectives JSON with strengths/concerns/quote. Upload New Draft button opens DraftUploadModal. Loading skeleton shows timeline + score table + reader card skeletons. Empty state shows GitBranch icon with Upload button."
     },
     {
       "id": "US-022",

@@ -513,3 +513,29 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Native div with overflow-y-auto for scroll containers (pattern from US-013/US-014)
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-021
+- What was implemented:
+  - Revisions view refactored to use `useDrafts(currentProject.id)` React Query hook for real draft data
+  - Left sidebar timeline shows drafts sorted by draftNumber desc with: draft number, date, page count, "Analyzed" badge for COMPLETED status
+  - Selecting a draft fetches its deliverable via `useDeliverable(draftId)` and shows harmonized scores in main panel
+  - Compare mode: selecting a second draft fetches its deliverable and shows score deltas with directional arrows (green ArrowUp, red ArrowDown, gray Minus)
+  - DeltaSummary component shows grid of score changes with colored indicators
+  - Reader perspectives from deliverable rendered as ReaderMemoryCards with strengths, concerns, and standout quote
+  - DEFAULT_READERS lookup matches reader names to colors/voiceTags for consistent presentation
+  - "Upload New Draft" button in timeline sidebar opens DraftUploadModal
+  - Loading skeleton shows timeline skeleton (3 items) + score table skeleton (6 bars) + reader card skeletons (3 cards)
+  - Empty state shows GitBranch icon (48px), "No Drafts Yet" heading, description, and "Upload First Draft" button that opens DraftUploadModal
+  - Removed all mock data and simulated drafts — view is now purely data-driven from API
+  - Score bars animate with Framer Motion (width 0 → value%, 400ms ease-out)
+  - Removed unused types (DraftData, DeliverableData) after initial implementation
+- Files changed:
+  - src/components/revisions/revisions-view.tsx (rewritten — uses useDrafts + useDeliverable hooks, added compare mode, loading/empty states)
+- **Learnings for future iterations:**
+  - useDrafts returns UploadDraftResponse[] from the project detail endpoint — createdAt is a string (ISO), needs `new Date()` for display
+  - useDeliverable returns DeliverableResponse with JSON fields typed as `unknown` — must cast to HarmonizedScores/ReaderPerspective[] in consumer
+  - Compare mode needs two separate useDeliverable calls — one for selected draft, one for comparison draft (both enabled conditionally)
+  - DraftUploadModal requires currentProject in Zustand to be set — the revisions view already has currentProject from useAppStore
+  - The drafts array from useDrafts comes sorted by draftNumber desc (from project detail endpoint) — no need to re-sort for "latest first" display
+  - Browser verification not available — manual testing needed
+---
