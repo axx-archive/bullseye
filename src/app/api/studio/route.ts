@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { createClient } from '@/lib/supabase/server';
+import { DEFAULT_READERS, DEFAULT_EXECUTIVES } from '@/lib/defaults/studio-defaults';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -76,38 +77,66 @@ export async function POST(request: NextRequest) {
   }
 
   const name = body.name.trim();
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'studio';
 
-  // Find or create the database user
-  let dbUser = await db.user.findUnique({
+  // Check if user already exists in DB
+  const existingUser = await db.user.findUnique({
     where: { supabaseAuthId: authUser.id },
   });
 
-  // Create studio and link user in a transaction
-  const studio = await db.studio.create({
-    data: {
-      name,
-      slug,
-      ownerId: dbUser?.id || 'temp', // will be updated below
-    },
-  });
+  if (existingUser) {
+    // User exists — just create the studio and update their active studio
+    const studio = await db.studio.create({
+      data: {
+        name,
+        slug,
+        ownerId: existingUser.id,
+      },
+    });
 
-  if (dbUser) {
-    // Update existing user to point to new studio
     await db.user.update({
-      where: { id: dbUser.id },
+      where: { id: existingUser.id },
       data: { studioId: studio.id },
     });
-    // Fix ownerId if it was a temp placeholder
-    if (studio.ownerId === 'temp') {
-      await db.studio.update({
-        where: { id: studio.id },
-        data: { ownerId: dbUser.id },
-      });
-    }
-  } else {
-    // Create new user linked to the new studio
-    dbUser = await db.user.create({
+
+    // Seed default readers and executives
+    await db.readerPersona.createMany({
+      data: DEFAULT_READERS.map((reader) => ({
+        ...reader,
+        studioId: studio.id,
+        favoriteFilms: [...reader.favoriteFilms],
+        analyticalFocus: [...reader.analyticalFocus],
+      })),
+    });
+    await db.executiveProfile.createMany({
+      data: DEFAULT_EXECUTIVES.map((exec) => ({
+        ...exec,
+        studioId: studio.id,
+        filmography: [...exec.filmography],
+        recentTradeContext: [...exec.recentTradeContext],
+        priorityFactors: [...exec.priorityFactors],
+        dealBreakers: [...exec.dealBreakers],
+      })),
+    });
+
+    return NextResponse.json(studio, { status: 201 });
+  }
+
+  // User doesn't exist (cascade-deleted with previous studio).
+  // Circular FK: Studio needs ownerId (User.id), User needs studioId (Studio.id).
+  // Use deferred constraints to create both in one transaction.
+  const result = await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('SET CONSTRAINTS ALL DEFERRED');
+
+    const studio = await tx.studio.create({
+      data: {
+        name,
+        slug,
+        ownerId: 'placeholder',
+      },
+    });
+
+    const newUser = await tx.user.create({
       data: {
         supabaseAuthId: authUser.id,
         email: authUser.email!,
@@ -116,12 +145,34 @@ export async function POST(request: NextRequest) {
         studioId: studio.id,
       },
     });
-    // Update studio owner to the new user
-    await db.studio.update({
-      where: { id: studio.id },
-      data: { ownerId: dbUser.id },
-    });
-  }
 
-  return NextResponse.json(studio, { status: 201 });
+    const updatedStudio = await tx.studio.update({
+      where: { id: studio.id },
+      data: { ownerId: newUser.id },
+    });
+
+    // Seed default readers and executives
+    await tx.readerPersona.createMany({
+      data: DEFAULT_READERS.map((reader) => ({
+        ...reader,
+        studioId: studio.id,
+        favoriteFilms: [...reader.favoriteFilms],
+        analyticalFocus: [...reader.analyticalFocus],
+      })),
+    });
+    await tx.executiveProfile.createMany({
+      data: DEFAULT_EXECUTIVES.map((exec) => ({
+        ...exec,
+        studioId: studio.id,
+        filmography: [...exec.filmography],
+        recentTradeContext: [...exec.recentTradeContext],
+        priorityFactors: [...exec.priorityFactors],
+        dealBreakers: [...exec.dealBreakers],
+      })),
+    });
+
+    return updatedStudio;
+  });
+
+  return NextResponse.json(result, { status: 201 });
 }
