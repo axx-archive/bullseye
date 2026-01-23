@@ -29,6 +29,7 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Draft storage path: `{projectId}/{draftNumber}.pdf` in Supabase Storage `scripts` bucket
 - Tooltip for disabled buttons: wrap the disabled element in `<Tooltip>` + `<TooltipTrigger asChild>` with a `<span>` wrapper (not a button, since disabled buttons don't trigger hover events)
 - ESLint forbids `setState` inside `useEffect` — use click handlers or refs to manage state sync
+- Independent panel scrolling: add `overflow-hidden` to panel containers, let children manage their own `overflow-y-auto` or `ScrollArea`
 
 ---
 
@@ -242,4 +243,20 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - Draft storage path follows pattern `{projectId}/{draftNumber}.pdf` — use draftNumber (not draftId) for Supabase Storage paths
   - The `useDrafts` hook fetches drafts from the project detail endpoint (GET /api/projects/[id]) — invalidating `projectKeys.detail` refreshes the draft list
   - For "cannot delete only draft" protection, validate both client-side (disabled button + tooltip) and server-side (count check returns 400)
+---
+
+## 2026-01-23 - US-013
+- Added `overflow-hidden` to both left panel (ScoutChat) and right panel (RightPanelContent) containers in `scout-layout.tsx`
+- This constrains each panel's height boundary so internal `ScrollArea` (left panel's ChatInterface) and `overflow-y-auto` (right panel's FocusGroupPanel, ReaderChatPanel, ExecutiveEvalPanel) create independent scroll contexts
+- Left panel: ChatInterface uses `ScrollArea className="flex-1"` which scrolls independently within the overflow-hidden container
+- Right panel: Each sub-component (FocusGroupPanel, ReaderChatPanel, ExecutiveEvalPanel) has its own `overflow-y-auto` on its scrollable area
+- Auto-scroll behavior preserved: ChatInterface's scroll-to-bottom ref, FocusGroupPanel's scrollContainerRef, ReaderChatPanel's scrollRef all continue to work within their contained areas
+- Mobile view unaffected: on mobile, panels use `absolute inset-0` which already constrains height
+- Files changed: src/components/scout/scout-layout.tsx
+- **Learnings for future iterations:**
+  - For independent panel scrolling in a flex layout, the key is `overflow-hidden` on the panel container, NOT `overflow-y-auto` — the children handle their own scrolling
+  - `flex-1 min-h-0` on the parent content area ensures flex children can shrink below their content size
+  - `overflow-hidden` creates a new block formatting context that constrains `h-full` / `flex-1` children to the actual available height
+  - The panel structure is: outer `flex flex-col overflow-hidden` → child `h-full flex flex-col` → grandchild `flex-1 overflow-y-auto` (or ScrollArea)
+  - `absolute inset-0` on mobile already constrains height, so `overflow-hidden` is harmless there
 ---
