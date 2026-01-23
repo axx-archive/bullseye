@@ -16,6 +16,8 @@ Started: Fri Jan 23 05:42:50 PST 2026
 - Anthropic SDK (`@anthropic-ai/sdk`): pass `{ apiKey }` to constructor for per-request key
 - SSE error handling in `event-router.ts`: parses JSON body for error messages on non-200 responses
 - Scout chat error UI: check `m.content.includes('API key in Settings')` to differentiate API key errors from generic errors
+- `ProjectWithCount` (exported from `use-projects.ts`) includes `studio: { id, name }` — use this for grouping/display
+- Projects API returns studio info and orders by `sortOrder asc, updatedAt desc`
 
 ---
 
@@ -99,4 +101,23 @@ Started: Fri Jan 23 05:42:50 PST 2026
   - SSE connections return JSON (not SSE) on auth/validation errors — event-router must handle both
   - `useAppStore.getState().setActiveTab('settings')` navigates to settings from any component without hook
   - The scout-chat already had pending attachment auto-send logic (useEffect) added in a prior commit
+---
+
+## 2026-01-23 - US-006
+- Refactored home-view.tsx from a flat project grid to studio-grouped layout with collapsible headers
+- Added `groupProjectsByStudio()` utility function that groups projects by their studio and sorts studios alphabetically
+- Added collapsible studio headers with ChevronDown icon that rotates on collapse (-rotate-90)
+- Used Framer Motion `AnimatePresence` for smooth collapse/expand animations
+- Updated projects API route to include `studio: { id, name }` in response and order by `sortOrder asc, updatedAt desc`
+- Exported `ProjectWithCount` type from `use-projects.ts` (now includes `studio` field)
+- Updated optimistic create in `useCreateProject` to include the new `studio` field
+- Collapse state managed in component state via `useState<Set<string>>`
+- Each studio header shows project count badge
+- Files changed: src/components/home/home-view.tsx, src/app/api/projects/route.ts, src/hooks/use-projects.ts
+- **Learnings for future iterations:**
+  - Projects API now returns studio name — no extra fetch needed for grouping
+  - `ProjectWithCount` is exported from `use-projects.ts` — import from there, not redeclare locally
+  - API route uses multi-field orderBy: `[{ sortOrder: 'asc' }, { updatedAt: 'desc' }]`
+  - Studio grouping uses `project.studio?.id || project.studioId` for fallback (optimistic creates may lack studio)
+  - AnimatePresence with `initial={false}` prevents animation on first render
 ---

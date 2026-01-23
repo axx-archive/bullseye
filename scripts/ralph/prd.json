@@ -103,7 +103,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Currently home-view.tsx shows a flat grid. Refactor to group by studio."
     },
     {
