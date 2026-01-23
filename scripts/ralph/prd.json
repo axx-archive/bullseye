@@ -433,8 +433,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Studio view uses useReaderPersonas(), useExecutiveProfiles(), useStudioIntelligence(), and useStudio() hooks from use-studio.ts. Readers and executives have inline edit mode with Save/Cancel buttons using useMutation + PUT /api/studio/readers/[id] and /api/studio/executives/[id]. Calibration tab shows real totalProjectsAnalyzed, recommendationBreakdown, and scoreDistributions (cast from unknown JSON fields). Settings tab shows editable studio name with PUT /api/studio. All save buttons show Loader2 spinner during mutation. Inline validation shows red border + error text for required fields. Loading skeleton uses SectionSkeleton component with pulse animation cards."
     },
     {
       "id": "US-024",

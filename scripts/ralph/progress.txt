@@ -567,3 +567,29 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The `connectionRef` is important to prevent garbage collection of the SSE connection
   - Browser verification not available — manual testing needed
 ---
+
+## 2026-01-22 - US-023
+- What was implemented:
+  - Studio configuration view rewritten to use real API data via React Query hooks
+  - Readers tab: uses `useReaderPersonas()` hook, displays editable fields (name, displayName, background, voiceDescription, weights)
+  - Readers save: PUT /api/studio/readers/[id] via useMutation, invalidates studioKeys.readers, shows success toast
+  - Executives tab: uses `useExecutiveProfiles()` hook, displays editable fields (name, title, company, priorityFactors, dealBreakers)
+  - Executives save: PUT /api/studio/executives/[id] via useMutation, invalidates studioKeys.executives, shows success toast
+  - Calibration tab: uses `useStudioIntelligence()` hook, shows totalProjectsAnalyzed, recommendationBreakdown (recommend/consider/pass), scoreDistributions percentiles
+  - Calibration empty state: when intelligence is null, shows BarChart3 icon with "No calibration data yet" message
+  - Settings tab: uses `useStudio()` hook, editable studio name field, save calls PUT /api/studio
+  - Inline validation: required fields show red border (border-danger class) and red error text when empty on save attempt
+  - Loading skeletons for all tabs via SectionSkeleton component (pulse animated cards matching real component dimensions)
+  - All save buttons show Loader2 spinner during mutation, disabled while pending
+  - Edit mode: toggle with Edit2/X buttons, Cancel resets fields to original values
+  - Removed all imports of DEFAULT_READERS and DEFAULT_EXECUTIVES (no more static data)
+- Files changed:
+  - src/components/studio/studio-view.tsx (rewritten — uses useReaderPersonas, useExecutiveProfiles, useStudioIntelligence, useStudio hooks + useMutation for saves)
+- **Learnings for future iterations:**
+  - StudioIntelligence JSON fields (scoreDistributions, recommendationBreakdown) typed as `unknown` from React Query — must cast to typed interfaces in component
+  - Reader persona weights are stored as individual columns (premiseWeight, characterWeight, etc.) not as a JSON weights object — map individually in edit forms
+  - Executive priorityFactors and dealBreakers are string arrays in the DB — for edit UI, use comma-separated text input and split on save
+  - Settings section initializes state from API data using a one-time flag pattern (`initialized` state) to avoid overwriting user edits on re-render
+  - useMutation's onSuccess callback is the right place to invalidate queries + close edit mode — ensures fresh data replaces stale form values
+  - Browser verification not available — manual testing needed
+---
