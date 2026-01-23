@@ -104,8 +104,8 @@ export async function POST(req: Request) {
       };
 
       try {
-        // Create the MCP tool server with event emitter
-        const toolServer = createBullseyeToolServer(sendEvent);
+        // Create the MCP tool server with event emitter and user's API key
+        const toolServer = createBullseyeToolServer(sendEvent, apiKey);
 
         // Start the Scout agent query
         const q = query({

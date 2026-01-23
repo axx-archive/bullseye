@@ -5,12 +5,12 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { getReaderById, DEFAULT_READERS } from '../agents/reader-personas';
 import { memoryReadEngine } from '../memory';
 import type { SubAgentMemory } from '../memory';
-import type { FocusGroupMessage, ReaderPerspective, Divergence } from '@/types';
+import type { FocusGroupMessage, ReaderPerspective, Divergence, CoverageReport } from '@/types';
 
-function getAnthropicClient(): Anthropic {
+function getAnthropicClient(apiKey?: string): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const AnthropicSDK = require('@anthropic-ai/sdk').default;
-  return new AnthropicSDK();
+  return apiKey ? new AnthropicSDK({ apiKey }) : new AnthropicSDK();
 }
 
 // ============================================
@@ -24,6 +24,8 @@ export interface FocusGroupConfig {
   readerPerspectives: ReaderPerspective[];
   readerMemories: Map<string, SubAgentMemory>;
   divergencePoints: Divergence[];
+  scriptContext?: CoverageReport;
+  apiKey?: string;
 }
 
 export interface FocusGroupStreamEvent {
@@ -63,6 +65,9 @@ You are speaking to: Maya Chen (The Optimist), Colton Rivers (The Skeptic), and 
 // ============================================
 
 export class FocusGroupEngine {
+  private apiKey?: string;
+  private scriptContext?: CoverageReport;
+
   /**
    * Run a complete focus group session
    */
@@ -70,6 +75,8 @@ export class FocusGroupEngine {
     config: FocusGroupConfig,
     onEvent: (event: FocusGroupStreamEvent) => void
   ): Promise<FocusGroupMessage[]> {
+    this.apiKey = config.apiKey;
+    this.scriptContext = config.scriptContext;
     const messages: FocusGroupMessage[] = [];
     let sequenceNumber = 0;
 
@@ -188,6 +195,8 @@ export class FocusGroupEngine {
   async *streamFocusGroup(
     config: FocusGroupConfig
   ): AsyncGenerator<FocusGroupStreamEvent> {
+    this.apiKey = config.apiKey;
+    this.scriptContext = config.scriptContext;
     const messages: FocusGroupMessage[] = [];
     let sequenceNumber = 0;
 
@@ -309,7 +318,29 @@ TOPIC: ${config.topic || 'General script discussion'}
 
 QUESTIONS TO COVER:
 ${config.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+`;
 
+    // Include script context from harmonized coverage so readers can reference actual content
+    if (config.scriptContext) {
+      context += `
+SCRIPT BEING DISCUSSED:
+Title: "${config.scriptContext.title}" by ${config.scriptContext.author}
+Genre: ${config.scriptContext.genre}, Format: ${config.scriptContext.format}
+Logline: ${config.scriptContext.logline}
+
+Synopsis: ${config.scriptContext.synopsis}
+
+Key Strengths: ${config.scriptContext.strengths.join('; ')}
+Key Weaknesses: ${config.scriptContext.weaknesses.join('; ')}
+
+Premise Analysis: ${config.scriptContext.premiseAnalysis}
+Character Analysis: ${config.scriptContext.characterAnalysis}
+Dialogue Analysis: ${config.scriptContext.dialogueAnalysis}
+Structure Analysis: ${config.scriptContext.structureAnalysis}
+`;
+    }
+
+    context += `
 READER PERSPECTIVES SUMMARY:
 `;
 
@@ -380,7 +411,7 @@ Briefly summarize the key points of agreement and disagreement (1-2 sentences), 
 Keep it to 2-3 sentences.`;
     }
 
-    const response = await getAnthropicClient().messages.create({
+    const response = await getAnthropicClient(this.apiKey).messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 512,
       system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
@@ -413,7 +444,7 @@ Set the stage briefly, acknowledge the divergence points you noticed in their an
       prompt = `Close the focus group with a brief summary. Keep it to 2-3 sentences.`;
     }
 
-    const stream = await getAnthropicClient().messages.stream({
+    const stream = await getAnthropicClient(this.apiKey).messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 512,
       system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
@@ -462,15 +493,24 @@ ${perspective ? `
 ${memoryContext}
 
 Respond naturally as ${reader.name} (${reader.displayName}). Be conversational but substantive.
-- Reference specific evidence from the script
+- Reference specific details from the script (characters, scenes, dialogue)
 - Engage with what other readers said if relevant
 - Stay true to your analytical perspective
 - Keep your response focused (3-5 sentences)`;
 
-    const response = await getAnthropicClient().messages.create({
+    // Build system prompt with script context for grounded discussion
+    let systemPrompt = reader.systemPromptBase;
+    if (this.scriptContext) {
+      systemPrompt += `\n\nSCRIPT CONTEXT (for reference during discussion):
+Title: "${this.scriptContext.title}" by ${this.scriptContext.author}
+Logline: ${this.scriptContext.logline}
+Synopsis: ${this.scriptContext.synopsis}`;
+    }
+
+    const response = await getAnthropicClient(this.apiKey).messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 512,
-      system: reader.systemPromptBase,
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -506,12 +546,21 @@ Your perspective: ${perspective ? `Overall ${perspective.scores.overall}, recomm
 
 ${memoryContext}
 
-Respond naturally as ${reader.name}. Be conversational, reference script evidence, 3-5 sentences.`;
+Respond naturally as ${reader.name}. Be conversational, reference specific script details, 3-5 sentences.`;
 
-    const stream = await getAnthropicClient().messages.stream({
+    // Build system prompt with script context for grounded discussion
+    let systemPrompt = reader.systemPromptBase;
+    if (this.scriptContext) {
+      systemPrompt += `\n\nSCRIPT CONTEXT (for reference during discussion):
+Title: "${this.scriptContext.title}" by ${this.scriptContext.author}
+Logline: ${this.scriptContext.logline}
+Synopsis: ${this.scriptContext.synopsis}`;
+    }
+
+    const stream = await getAnthropicClient(this.apiKey).messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 512,
-      system: reader.systemPromptBase,
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
     });
 
