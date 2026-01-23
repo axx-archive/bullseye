@@ -34,6 +34,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - StoreChatMessage type exported from app-store — matches ChatMessage from chat-interface.tsx (timestamp optional)
 - Tool status pills are tracked via `toolCalls: ToolCallStatus[]` on the assistant message — updated via `updateChatMessage(id, { toolCalls })` during streaming
 - MCP tool names prefixed with `mcp__bullseye-tools__` — strip with `tool.split('__').pop()` to get the base name for TOOL_DISPLAY_NAMES lookup
+- Event router auto-switches rightPanelMode based on SSE source — reader sources → 'analysis', focus_group → 'focus_group', reader_chat/executive → their respective modes
+- Phase change guard in scout-chat's onPhaseChange callback prevents redundant mode switches and side effects (check `useAppStore.getState().rightPanelMode !== phase` before acting)
 
 ---
 
@@ -250,5 +252,32 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - Use refs (currentAssistantIdRef, toolCallsRef) for callback-scoped state that needs to persist across SSE events without causing re-renders
   - MCP tool names come as 'mcp__bullseye-tools__ingest_script' — strip prefix with split('__').pop() to get base name for display mapping
   - The ToolCallStatus type is defined in both app-store and chat-interface — they're structurally identical so TypeScript treats them as compatible
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-011
+- What was implemented:
+  - SSE event routing automatically switches right panel mode based on event source
+  - reader_maya/reader_colton/reader_devon source with analysis_start type → switches to 'analysis' mode
+  - focus_group source events → switches to 'focus_group' mode
+  - reader_chat source events → switches to 'reader_chat' mode
+  - executive source events → switches to 'executive' mode
+  - ScoutEventSource type extended with 'reader_chat' and 'executive' sources
+  - Phase change guard in scout-chat prevents redundant updates (checks current mode before switching)
+  - Prevents focus group messages from being cleared if already in focus_group mode
+  - Framer Motion transitions updated from 300ms to 200ms per AC
+  - Idle state shows 'Reader activity will appear here' (exact AC text)
+  - ScoutLayout renders 5 panel modes: idle, analysis, focus_group, reader_chat, executive
+  - All non-idle panels use fade+slide animation (opacity 0→1, x: 20→0 enter, x: 0→-20 exit)
+- Files changed:
+  - src/lib/agent-sdk/types.ts (modified — added reader_chat and executive to ScoutEventSource)
+  - src/lib/agent-sdk/event-router.ts (modified — auto-switch panel mode on source-based events, added reader_chat/executive cases)
+  - src/components/scout/scout-layout.tsx (modified — updated idle text, changed transition duration to 0.2s)
+  - src/components/scout/scout-chat.tsx (modified — added phase change guard to prevent redundant updates)
+- **Learnings for future iterations:**
+  - Event router's `routeEvent` function switches on `event.source` — new source types need case statements here
+  - Phase change guard pattern: `const currentMode = useAppStore.getState().rightPanelMode; if (currentMode !== phase) { ... }` prevents redundant state updates and side effects like clearing messages
+  - ScoutLayout uses AnimatePresence with `mode="wait"` for sequential panel transitions (exit → enter, not overlap)
+  - focus_group source events fire for every message — calling onPhaseChange every time is fine since the guard in scout-chat prevents redundant updates
   - Browser verification not available — manual testing needed
 ---

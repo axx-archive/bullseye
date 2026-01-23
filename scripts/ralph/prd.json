@@ -205,8 +205,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Event routing auto-switches panel mode on source-based SSE events. reader_maya/colton/devon analysis_start → 'analysis', focus_group source → 'focus_group', reader_chat source → 'reader_chat', executive source → 'executive'. Phase change guard prevents redundant updates (only switches when mode actually changes). Framer Motion transitions at 200ms with slide+fade from right."
     },
     {
       "id": "US-012",
