@@ -382,6 +382,7 @@ export type ProjectFormat =
   | 'DOCUMENTARY';
 
 export type ProjectStatus = 'ACTIVE' | 'ARCHIVED' | 'COMPLETED';
+export type EvaluationStatus = 'UNDER_CONSIDERATION' | 'APPROVED' | 'REJECTED';
 export type DraftStatus = 'PENDING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
 
 export interface Project {
@@ -391,6 +392,8 @@ export interface Project {
   genre: string;
   format: ProjectFormat;
   status: ProjectStatus;
+  evaluationStatus: EvaluationStatus;
+  sortOrder: number;
   studioId: string;
   createdAt: Date;
   updatedAt: Date;

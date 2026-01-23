@@ -106,6 +106,8 @@ export function useCreateProject() {
         genre: newProject.genre,
         format: newProject.format,
         status: 'ACTIVE',
+        evaluationStatus: 'UNDER_CONSIDERATION',
+        sortOrder: 0,
         studioId: '',
         createdAt: new Date(),
         updatedAt: new Date(),

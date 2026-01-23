@@ -65,6 +65,8 @@ model Project {
   genre                 String
   format                ProjectFormat
   status                ProjectStatus       @default(ACTIVE)
+  evaluationStatus      EvaluationStatus    @default(UNDER_CONSIDERATION)
+  sortOrder             Int                 @default(0)
   studioId              String
   createdByUserId       String
   createdAt             DateTime            @default(now())
@@ -90,6 +92,12 @@ enum ProjectStatus {
   ACTIVE
   ARCHIVED
   COMPLETED
+}
+
+enum EvaluationStatus {
+  UNDER_CONSIDERATION
+  APPROVED
+  REJECTED
 }
 
 model Draft {
