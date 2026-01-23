@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { createClient } from '@/lib/supabase/server';
-import { DEFAULT_READERS, DEFAULT_EXECUTIVES } from '@/lib/defaults/studio-defaults';
+import { DEFAULT_READERS, DEFAULT_EXECUTIVES, DOWN_HOME_IDENTITY } from '@/lib/defaults/studio-defaults';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -85,13 +85,31 @@ export async function POST(request: NextRequest) {
   });
 
   if (existingUser) {
-    // User exists — just create the studio and update their active studio
+    // Check if this is the user's first studio
+    const ownedStudioCount = await db.studio.count({
+      where: { ownerId: existingUser.id },
+    });
+    const isFirstStudio = ownedStudioCount === 0;
+
+    // First studio uses Down Home identity; additional studios use request body name
+    const studioData = isFirstStudio
+      ? {
+          name: DOWN_HOME_IDENTITY.name,
+          slug: DOWN_HOME_IDENTITY.slug,
+          pov: DOWN_HOME_IDENTITY.pov,
+          pillars: [...DOWN_HOME_IDENTITY.pillars],
+          beliefs: [...DOWN_HOME_IDENTITY.beliefs],
+          mandates: [...DOWN_HOME_IDENTITY.mandates],
+          ownerId: existingUser.id,
+        }
+      : {
+          name,
+          slug,
+          ownerId: existingUser.id,
+        };
+
     const studio = await db.studio.create({
-      data: {
-        name,
-        slug,
-        ownerId: existingUser.id,
-      },
+      data: studioData,
     });
 
     await db.user.update({
@@ -123,6 +141,7 @@ export async function POST(request: NextRequest) {
   }
 
   // User doesn't exist (cascade-deleted with previous studio).
+  // New user always gets Down Home as their first studio.
   // Circular FK: Studio needs ownerId (User.id), User needs studioId (Studio.id).
   // Use deferred constraints to create both in one transaction.
   const result = await db.$transaction(async (tx) => {
@@ -130,8 +149,12 @@ export async function POST(request: NextRequest) {
 
     const studio = await tx.studio.create({
       data: {
-        name,
-        slug,
+        name: DOWN_HOME_IDENTITY.name,
+        slug: DOWN_HOME_IDENTITY.slug,
+        pov: DOWN_HOME_IDENTITY.pov,
+        pillars: [...DOWN_HOME_IDENTITY.pillars],
+        beliefs: [...DOWN_HOME_IDENTITY.beliefs],
+        mandates: [...DOWN_HOME_IDENTITY.mandates],
         ownerId: 'placeholder',
       },
     });
