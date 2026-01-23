@@ -136,6 +136,40 @@ export function useCreateProject() {
   });
 }
 
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string, MutationContext>({
+    mutationFn: async (id) => {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Failed to delete project' }));
+        throw new Error(error.error || 'Failed to delete project');
+      }
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: projectKeys.all });
+      const previous = queryClient.getQueryData<ProjectWithCount[]>(projectKeys.all);
+
+      queryClient.setQueryData<ProjectWithCount[]>(projectKeys.all, (old) =>
+        old?.filter((p) => p.id !== id)
+      );
+
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(projectKeys.all, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
 interface UpdateProjectInput {
   id: string;
   evaluationStatus?: EvaluationStatus;

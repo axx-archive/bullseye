@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(
   _request: NextRequest,
@@ -88,4 +89,42 @@ export async function PATCH(
   });
 
   return NextResponse.json(updated);
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  // Validate the project belongs to the user's studio
+  const existing = await db.project.findUnique({
+    where: { id },
+    select: { studioId: true },
+  });
+
+  if (!existing || existing.studioId !== user.studioId) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
+
+  // Remove associated files from Supabase Storage (scripts/{projectId}/ folder)
+  const supabase = createAdminClient();
+  const { data: files } = await supabase.storage
+    .from('scripts')
+    .list(id);
+
+  if (files && files.length > 0) {
+    const filePaths = files.map((f) => `${id}/${f.name}`);
+    await supabase.storage.from('scripts').remove(filePaths);
+  }
+
+  // Delete project — cascades to drafts, deliverables, chat messages, focus sessions, reader memories, executive evaluations
+  await db.project.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
 }

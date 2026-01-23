@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
-import { useProjects, useUpdateProject, type ProjectWithCount } from '@/hooks/use-projects';
+import { useProjects, useUpdateProject, useDeleteProject, type ProjectWithCount } from '@/hooks/use-projects';
+import { useToastStore } from '@/stores/toast-store';
 import {
   Plus,
   Clock,
@@ -13,6 +14,7 @@ import {
   Target,
   MoreVertical,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectCreateModal } from '@/components/home/project-create-modal';
@@ -22,6 +24,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import type { EvaluationStatus } from '@/types';
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -160,8 +170,11 @@ function StudioStats({ projects }: { projects: ProjectWithCount[] }) {
 export function HomeView() {
   const { setCurrentProject, setActiveTab } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
+  const { mutate: deleteProject, isPending: isDeleting } = useDeleteProject();
+  const addToast = useToastStore((s) => s.addToast);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [collapsedStudios, setCollapsedStudios] = useState<Set<string>>(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const studioGroups = projects ? groupProjectsByStudio(projects) : [];
 
@@ -179,6 +192,20 @@ export function HomeView() {
         next.add(studioId);
       }
       return next;
+    });
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteConfirmId) return;
+    deleteProject(deleteConfirmId, {
+      onSuccess: () => {
+        addToast('Project deleted', 'success');
+        setDeleteConfirmId(null);
+      },
+      onError: (err) => {
+        addToast(err.message || 'Failed to delete project', 'error');
+        setDeleteConfirmId(null);
+      },
     });
   }
 
@@ -265,19 +292,24 @@ export function HomeView() {
                         className="overflow-hidden"
                       >
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {group.projects.map((project, i) => (
-                            <motion.div
-                              key={project.id}
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: i * 0.05, duration: 0.3 }}
-                            >
-                              <ProjectCard
-                                project={project}
-                                onOpen={() => handleOpenProject(project)}
-                              />
-                            </motion.div>
-                          ))}
+                          <AnimatePresence>
+                            {group.projects.map((project, i) => (
+                              <motion.div
+                                key={project.id}
+                                layout
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                                transition={{ delay: i * 0.05, duration: 0.3 }}
+                              >
+                                <ProjectCard
+                                  project={project}
+                                  onOpen={() => handleOpenProject(project)}
+                                  onDelete={() => setDeleteConfirmId(project.id)}
+                                />
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
                         </div>
                       </motion.div>
                     )}
@@ -298,6 +330,33 @@ export function HomeView() {
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the project and all its drafts. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              onClick={() => setDeleteConfirmId(null)}
+              className="px-4 py-2 text-sm font-medium rounded-md border border-border hover:bg-elevated/50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -320,7 +379,7 @@ function ProjectCardSkeleton() {
   );
 }
 
-function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: () => void }) {
+function ProjectCard({ project, onOpen, onDelete }: { project: ProjectWithCount; onOpen: () => void; onDelete: () => void }) {
   const draftCount = project._count?.drafts ?? 0;
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
   const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
@@ -408,6 +467,16 @@ function ProjectCard({ project, onOpen }: { project: ProjectWithCount; onOpen: (
               >
                 <Pencil className="w-3.5 h-3.5" />
                 Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="flex items-center gap-2 text-red-500 focus:text-red-500"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
