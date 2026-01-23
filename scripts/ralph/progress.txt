@@ -934,3 +934,62 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - The initialization pattern (nameInitialized flag) prevents re-setting displayName state on re-renders after API refetch
   - .next/types/validator.ts may contain stale type references — delete .next/types/ to clear false positives
 ---
+
+## 2026-01-23 - US-005 (user-customization branch)
+- Removed 'studio' (Settings/gear icon) entry from PROJECT_TABS in app-shell.tsx
+- User avatar in bottom-left nav now opens Settings tab via setActiveTab('studio')
+- Avatar renders using UserAvatar component with size='sm', fed by useUserProfile() React Query hook
+- Tooltip shows displayName if set, otherwise email, fallback 'Settings'
+- Active state: ring-2 ring-bullseye-gold around avatar when Settings tab is active
+- Mobile bottom tab bar: Settings gear replaced with UserAvatar (size='sm' with w-5 h-5 override)
+- Removed sign-out button from nav rail — moved to Settings page as SignOutSection component
+- Added TAB_LABELS map for context bar heading (supports 'studio' → 'Settings' label)
+- Removed unused imports: Settings icon, LogOut, useRouter, createClient, useEffect from app-shell
+- Added LogOut icon, useRouter, createClient to studio-view.tsx for SignOutSection
+- Files changed:
+  - src/components/layout/app-shell.tsx (modified — removed Settings tab from nav, replaced with UserAvatar, removed sign-out)
+  - src/components/studio/studio-view.tsx (modified — added SignOutSection at bottom of SettingsSection)
+- **Learnings for future iterations:**
+  - TabId 'studio' is kept in the type — only the nav entry point changed from gear to avatar
+  - TAB_LABELS record is needed because the context bar heading previously used PROJECT_TABS.find() which no longer includes 'studio'
+  - Mobile UserAvatar in bottom tab bar needs className override (w-5 h-5 text-[8px]) to match 20px icon sizes
+  - SignOutSection is a separate component to encapsulate router/supabase client dependencies away from SettingsSection
+  - useUserProfile hook's 5-min staleTime means the avatar data is fetched once on mount and reused
+---
+
+## 2026-01-23 - US-006 (user-customization branch)
+- Injected user display name into agent prompts for personalized interactions
+- Scout API route: retrieves user via getCurrentUser(), appends name context to system prompt if user.name is set
+- Reader chat API route: same pattern — appends user name context after the CONVERSATION MODE section
+- Focus group engine: added `userName` optional field to FocusGroupConfig, included in moderator's conversationContext
+- Focus group tool: retrieves user via getCurrentUser() and passes userName to the engine config
+- If no display name is set, no injection occurs (agents behave as before)
+- Files changed:
+  - src/app/api/scout/route.ts (modified — import getCurrentUser, build dynamic systemPrompt with user name context)
+  - src/app/api/reader-chat/route.ts (modified — import getCurrentUser, append user name context to reader system prompt)
+  - src/lib/agent-sdk/tools/focus-group.ts (modified — import getCurrentUser, pass userName to engine config)
+  - src/lib/focus-group/index.ts (modified — added userName to FocusGroupConfig, included in buildConversationContext)
+- **Learnings for future iterations:**
+  - The user name injection is a one-liner appended after existing prompts — no prompt restructuring needed
+  - getCurrentUser() works in both API routes and MCP tool handlers (both run server-side in the same request context)
+  - user.name maps to the Prisma User model's `name` field (set via PUT /api/user/profile as displayName)
+  - The injection text is identical across all three contexts for consistency: "The user you are working with is named {name}. Address them by name occasionally in conversation — naturally, not forced."
+---
+
+## 2026-01-23 - US-007 (user-customization branch)
+- Removed 'studio' from TabId type in both app-store.ts and types/index.ts
+- Removed StudioView import and case from page.tsx tab content switch
+- Removed desktop UserAvatar Settings button from nav rail bottom actions
+- Removed mobile Settings avatar button from bottom tab bar
+- Removed TAB_LABELS 'studio' entry and unused UserAvatar/useUserProfile imports from app-shell.tsx
+- studio-view.tsx file preserved (not deleted) for reuse in US-008
+- Files changed:
+  - src/stores/app-store.ts (modified — removed 'studio' from TabId union)
+  - src/types/index.ts (modified — removed 'studio' from TabState.activeTab)
+  - src/app/page.tsx (modified — removed StudioView import and switch case)
+  - src/components/layout/app-shell.tsx (modified — removed Settings nav entries, unused imports, TAB_LABELS entry)
+- **Learnings for future iterations:**
+  - 'studio' as a TabId was dual-purpose (Settings page + studio config) — removing it cleanly requires US-008 to introduce a new access pattern for studio config
+  - The StudioSwitcherDropdown and studio state (currentStudio, studios) remain in app-shell — only the Settings entry point was removed
+  - TAB_LABELS is used by the context bar heading — removing entries won't cause errors since it falls back to the raw activeTab value
+---

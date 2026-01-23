@@ -93,7 +93,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Keep Settings as a valid tab in the activeTab type. Just change the nav entry point from gear icon to avatar."
     },
     {
@@ -109,7 +109,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Keep it subtle — append a short line to existing prompts, don't restructure them"
     },
     {
@@ -126,7 +126,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
