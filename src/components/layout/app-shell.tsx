@@ -1,10 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/stores/app-store';
-import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import {
   Target,
@@ -13,14 +11,14 @@ import {
   Users,
   GitBranch,
   Presentation,
-  Settings,
   Upload,
-  LogOut,
   Check,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TabId } from '@/stores/app-store';
 import { DraftUploadModal } from '@/components/home/draft-upload-modal';
+import { UserAvatar } from '@/components/shared/user-avatar';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const PROJECT_TABS = [
   { id: 'scout', label: 'Scout', icon: Target },
@@ -28,8 +26,16 @@ const PROJECT_TABS = [
   { id: 'focus', label: 'Focus', icon: Users },
   { id: 'revisions', label: 'Revisions', icon: GitBranch },
   { id: 'pitch', label: 'Pitch', icon: Presentation },
-  { id: 'studio', label: 'Studio', icon: Settings },
 ] as const;
+
+const TAB_LABELS: Record<string, string> = {
+  scout: 'Scout',
+  coverage: 'Coverage',
+  focus: 'Focus',
+  revisions: 'Revisions',
+  pitch: 'Pitch',
+  studio: 'Settings',
+};
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -45,24 +51,9 @@ export function AppShell({ children }: AppShellProps) {
     setCurrentStudio,
     setCurrentProject,
   } = useAppStore();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [showStudioSwitcher, setShowStudioSwitcher] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const router = useRouter();
-  const supabase = createClient();
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUserEmail(user?.email ?? null);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase client recreated each render, including it causes infinite loops
-  }, []);
-
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push('/login');
-    router.refresh();
-  }
+  const { data: userProfile } = useUserProfile();
 
   function handleGoHome() {
     setCurrentProject(null);
@@ -209,36 +200,30 @@ export function AppShell({ children }: AppShellProps) {
               </div>
             )}
 
-            {userEmail && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={handleSignOut}
-                      className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-elevated/80 transition-colors duration-150 ease-out"
-                    >
-                      <LogOut className="w-[18px] h-[18px] text-muted-foreground" strokeWidth={1.5} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
-                    <span className="text-xs font-medium">Sign out</span>
-                  </TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="w-8 h-8 rounded-full bg-elevated flex items-center justify-center">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase">
-                        {userEmail.charAt(0)}
-                      </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
-                    <span className="text-xs">{userEmail}</span>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
+            {/* User avatar — opens Settings */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setActiveTab('studio')}
+                  className={cn(
+                    'rounded-full transition-all duration-150 ease-out',
+                    activeTab === 'studio' && 'ring-2 ring-bullseye-gold'
+                  )}
+                >
+                  <UserAvatar
+                    src={userProfile?.avatarUrl}
+                    name={userProfile?.displayName}
+                    email={userProfile?.email}
+                    size="sm"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                <span className="text-xs font-medium">
+                  {userProfile?.displayName || userProfile?.email || 'Settings'}
+                </span>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </nav>
 
@@ -249,7 +234,7 @@ export function AppShell({ children }: AppShellProps) {
             <div className="flex items-center justify-between px-4 md:px-8 pt-4 md:pt-6 pb-2">
               <div className="flex items-center gap-2 md:gap-4 min-w-0">
                 <h1 className="text-lg md:text-2xl font-semibold tracking-tight flex-shrink-0">
-                  {PROJECT_TABS.find((t) => t.id === activeTab)?.label}
+                  {TAB_LABELS[activeTab] || activeTab}
                 </h1>
                 {currentProject && (
                   <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-surface text-xs text-muted-foreground min-w-0">
@@ -319,6 +304,39 @@ export function AppShell({ children }: AppShellProps) {
               />
             );
           })}
+          {/* Settings via user avatar */}
+          <button
+            onClick={() => setActiveTab('studio')}
+            className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 min-w-[48px] rounded-lg transition-colors duration-150 ease-out"
+          >
+            <div className="relative">
+              <div className={cn(
+                'rounded-full transition-all duration-150',
+                activeTab === 'studio' && 'ring-2 ring-bullseye-gold'
+              )}>
+                <UserAvatar
+                  src={userProfile?.avatarUrl}
+                  name={userProfile?.displayName}
+                  email={userProfile?.email}
+                  size="sm"
+                  className="w-5 h-5 text-[8px]"
+                />
+              </div>
+              {activeTab === 'studio' && (
+                <motion.div
+                  layoutId="mobile-nav-indicator"
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-gradient-gold"
+                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                />
+              )}
+            </div>
+            <span className={cn(
+              'text-[9px] font-medium leading-tight',
+              activeTab === 'studio' ? 'text-foreground' : 'text-muted-foreground'
+            )}>
+              Settings
+            </span>
+          </button>
         </nav>
       </div>
       <DraftUploadModal

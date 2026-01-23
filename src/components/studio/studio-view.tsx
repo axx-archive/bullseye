@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +25,7 @@ import {
   Loader2,
   AlertTriangle,
   Upload,
+  LogOut,
 } from 'lucide-react';
 import {
   useStudio,
@@ -1016,7 +1019,38 @@ function SettingsSection() {
           Save Settings
         </Button>
       </div>
+
+      {/* Sign out */}
+      <SignOutSection />
     </div>
+  );
+}
+
+function SignOutSection() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
+
+  return (
+    <Card className="border-border/50">
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Sign Out</p>
+            <p className="text-xs text-muted-foreground">Sign out of your account</p>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={handleSignOut}>
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
