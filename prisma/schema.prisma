@@ -83,6 +83,7 @@ model Project {
   logline               String?
   genre                 String
   format                ProjectFormat
+  writer                String?
   status                ProjectStatus       @default(ACTIVE)
   evaluationStatus      EvaluationStatus    @default(UNDER_CONSIDERATION)
   sortOrder             Int                 @default(0)
