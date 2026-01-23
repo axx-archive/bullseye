@@ -36,6 +36,8 @@ Started: Thu Jan 22 16:30:42 PST 2026
 - MCP tool names prefixed with `mcp__bullseye-tools__` — strip with `tool.split('__').pop()` to get the base name for TOOL_DISPLAY_NAMES lookup
 - Event router auto-switches rightPanelMode based on SSE source — reader sources → 'analysis', focus_group → 'focus_group', reader_chat/executive → their respective modes
 - Phase change guard in scout-chat's onPhaseChange callback prevents redundant mode switches and side effects (check `useAppStore.getState().rightPanelMode !== phase` before acting)
+- Reader chat messages stored in Zustand `readerChatMessages` (Record<string, ReaderChatMessage[]>) — keyed by readerId, persists across panel switches
+- `addReaderChatMessage(readerId, msg)` and `updateReaderChatMessage(readerId, msgId, updates)` for per-reader message management
 
 ---
 
@@ -330,5 +332,32 @@ Started: Thu Jan 22 16:30:42 PST 2026
   - For follow-up inputs in sub-panels (focus group, reader chat), wire a full EventRouterCallbacks object to createSSEConnection — use `useAppStore.getState()` in callbacks for fresh state
   - Gold accent color for moderator/Scout is `#D4A84B` — use `border-l-2` with inline `borderLeftColor` style (Tailwind can't do arbitrary colors inline)
   - The focus-group-panel.tsx file was previously untracked — it's a new file in this branch
+  - Browser verification not available — manual testing needed
+---
+
+## 2026-01-22 - US-014
+- What was implemented:
+  - Reader chat right panel with per-reader conversation history in Zustand
+  - ReaderChatMessage type and readerChatMessages (Record<string, ReaderChatMessage[]>) added to Zustand store
+  - addReaderChatMessage(readerId, message) and updateReaderChatMessage(readerId, messageId, updates) actions added
+  - Conversations persist per reader — switching readers or navigating away doesn't lose history
+  - Back button (ChevronLeft) returns to reader selector without clearing messages
+  - Header shows "Chatting with {reader.name}" per AC
+  - Native div with overflow-y-auto replaces Radix ScrollArea for proper scrollTop ref access
+  - Reader selector shows 3 avatars with colored circles and initials
+  - SSE streaming via POST /api/reader-chat with readerId, message, projectId, draftId, conversationHistory
+  - text_delta events stream token-by-token into assistant message via updateReaderChatMessage
+  - text_complete events finalize the message
+  - Typing indicator with animated dots while waiting for first token
+  - Error handling updates assistant message with error text
+- Files changed:
+  - src/stores/app-store.ts (modified — added ReaderChatMessage type, readerChatMessages state, add/update actions)
+  - src/components/scout/reader-chat-panel.tsx (rewritten — uses Zustand for per-reader message persistence)
+- **Learnings for future iterations:**
+  - Per-reader chat messages are stored as Record<string, ReaderChatMessage[]> keyed by readerId — not a flat array
+  - Back button only clears activeReaderChatId (not messages) — this preserves history when returning to selector
+  - ReaderChatMessage is exported from app-store for use in the panel component's ChatBubble props
+  - The reader-chat-panel.tsx was previously untracked — it's a new file in this branch
+  - conversationHistory sent to /api/reader-chat is built from Zustand messages (excluding the streaming placeholder)
   - Browser verification not available — manual testing needed
 ---
