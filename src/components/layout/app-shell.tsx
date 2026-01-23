@@ -14,6 +14,7 @@ import {
   GitBranch,
   Presentation,
   Settings,
+  Settings2,
   Upload,
   LogOut,
   Check,
@@ -113,7 +114,7 @@ export function AppShell({ children }: AppShellProps) {
                 />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+            <TooltipContent side="right">
               <span className="text-xs font-medium">Home</span>
             </TooltipContent>
           </Tooltip>
@@ -157,7 +158,7 @@ export function AppShell({ children }: AppShellProps) {
                       />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                  <TooltipContent side="right">
                     <span className="text-xs font-medium">
                       {disabled ? `${tab.label} (open a project)` : tab.label}
                     </span>
@@ -166,6 +167,38 @@ export function AppShell({ children }: AppShellProps) {
               );
             })}
           </div>
+
+          {/* Settings — always accessible */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={cn(
+                  'relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
+                  'hover:bg-elevated/80',
+                  activeTab === 'settings' && 'bg-elevated'
+                )}
+              >
+                {activeTab === 'settings' && (
+                  <motion.div
+                    layoutId="nav-indicator"
+                    className="absolute -left-[22px] w-1 h-5 rounded-full bg-gradient-gold"
+                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  />
+                )}
+                <Settings2
+                  className={cn(
+                    'w-[20px] h-[20px] transition-colors duration-200',
+                    activeTab === 'settings' ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                  strokeWidth={activeTab === 'settings' ? 2 : 1.5}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <span className="text-xs font-medium">Settings</span>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Bottom actions */}
           <div className="flex flex-col items-center gap-2 mt-4">
@@ -185,7 +218,7 @@ export function AppShell({ children }: AppShellProps) {
                       </div>
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                  <TooltipContent side="right">
                     <span className="text-xs font-medium">{currentStudio?.name || 'Studios'}</span>
                   </TooltipContent>
                 </Tooltip>
@@ -220,7 +253,7 @@ export function AppShell({ children }: AppShellProps) {
                       <LogOut className="w-[18px] h-[18px] text-muted-foreground" strokeWidth={1.5} />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                  <TooltipContent side="right">
                     <span className="text-xs font-medium">Sign out</span>
                   </TooltipContent>
                 </Tooltip>
@@ -233,7 +266,7 @@ export function AppShell({ children }: AppShellProps) {
                       </span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="glass border-border/50 px-3 py-1.5">
+                  <TooltipContent side="right">
                     <span className="text-xs">{userEmail}</span>
                   </TooltipContent>
                 </Tooltip>
@@ -245,7 +278,7 @@ export function AppShell({ children }: AppShellProps) {
         {/* Main Content */}
         <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
           {/* Context bar — only shows in project context */}
-          {activeTab !== 'home' && (
+          {activeTab !== 'home' && activeTab !== 'settings' && (
             <div className="flex items-center justify-between px-4 md:px-8 pt-4 md:pt-6 pb-2">
               <div className="flex items-center gap-2 md:gap-4 min-w-0">
                 <h1 className="text-lg md:text-2xl font-semibold tracking-tight flex-shrink-0">
@@ -270,7 +303,7 @@ export function AppShell({ children }: AppShellProps) {
                       <span className="hidden sm:inline">Upload Draft</span>
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent className="glass border-border/50">
+                  <TooltipContent>
                     <span className="text-xs">Upload a new draft (PDF)</span>
                   </TooltipContent>
                 </Tooltip>
@@ -319,6 +352,12 @@ export function AppShell({ children }: AppShellProps) {
               />
             );
           })}
+          <MobileTabButton
+            icon={Settings2}
+            label="Settings"
+            isActive={activeTab === 'settings'}
+            onClick={() => setActiveTab('settings')}
+          />
         </nav>
       </div>
       <DraftUploadModal
