@@ -22,6 +22,12 @@ model Studio {
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
+  // Studio Identity
+  pov                   String?             // Point of View
+  pillars               String[]            @default([])
+  beliefs               String[]            @default([])
+  mandates              String[]            @default([])
+
   // Relations
   owner                 User                @relation("OwnedStudios", fields: [ownerId], references: [id], onDelete: Cascade)
   projects              Project[]
