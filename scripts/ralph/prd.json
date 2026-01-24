@@ -182,7 +182,7 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "The Agent SDK query() function passes the model string directly to Anthropic's API. Opus 4.5 model ID is 'claude-opus-4-5-20251101'. The SDK version ^0.2.17 should support it since it's just a string parameter."
     },
     {

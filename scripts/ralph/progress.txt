@@ -124,3 +124,13 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - Use Promise.all for parallel DB queries (memories + focus messages) to minimize latency
   - Focus messages are fetched desc by sequenceNumber then reversed to get chronological order
 ---
+
+## 2026-01-23 - US-011
+- What was implemented: Migrated Scout orchestration to Opus 4.5. Changed model from `claude-sonnet-4-20250514` to `claude-opus-4-5-20251101` in /api/scout/route.ts. Increased maxBudgetUsd from 2.0 to 5.0 to accommodate Opus 4.5's higher per-token cost for longer analysis runs.
+- Files changed: src/app/api/scout/route.ts
+- **Learnings for future iterations:**
+  - The Agent SDK query() passes `model` as a string directly to Anthropic API — no SDK version changes needed for new model support
+  - Opus 4.5 model ID: `claude-opus-4-5-20251101`
+  - maxBudgetUsd should be increased when switching to more expensive models to avoid premature budget exhaustion during long multi-turn analysis sessions
+  - The Scout route is the only place where the Scout orchestrator model is configured — reader/focus/executive models are in their respective tool files
+---
