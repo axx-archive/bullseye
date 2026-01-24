@@ -35,7 +35,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Add a scoutInitPhase state ('idle' | 'processing' | 'analyzing' | 'engaging' | 'error') that updates based on SSE event callbacks. Display this as a stepped indicator in the chat area during initialization."
     },
     {

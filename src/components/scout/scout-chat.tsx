@@ -51,6 +51,86 @@ function getToolDisplayName(toolName: string): string {
   return TOOL_DISPLAY_NAMES[baseName] || baseName.replace(/_/g, ' ');
 }
 
+type ScoutInitPhase = 'idle' | 'processing' | 'analyzing' | 'engaging' | 'error';
+
+const INIT_PHASE_LABELS: Record<ScoutInitPhase, string> = {
+  idle: '',
+  processing: 'Processing script',
+  analyzing: 'Starting analysis',
+  engaging: 'Readers engaging',
+  error: 'Something went wrong',
+};
+
+const INIT_PHASE_ORDER: ScoutInitPhase[] = ['processing', 'analyzing', 'engaging'];
+
+function ScoutInitProgress({ phase, staleMessage, errorMessage, onRetry }: {
+  phase: ScoutInitPhase;
+  staleMessage: string | null;
+  errorMessage: string | null;
+  onRetry?: () => void;
+}) {
+  if (phase === 'idle') return null;
+
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4 max-w-xs text-center">
+        {phase === 'error' ? (
+          <>
+            <div className="w-2 h-2 rounded-full bg-red-500" />
+            <p className="text-sm text-red-400">{errorMessage || 'An error occurred during initialization.'}</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="px-4 py-2 rounded-full text-xs font-medium text-bullseye-gold bg-bullseye-gold/10 border border-bullseye-gold/30 hover:bg-bullseye-gold/20 transition-colors"
+              >
+                Retry
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              {INIT_PHASE_ORDER.map((p) => {
+                const currentIdx = INIT_PHASE_ORDER.indexOf(phase);
+                const thisIdx = INIT_PHASE_ORDER.indexOf(p);
+                const isActive = p === phase;
+                const isComplete = thisIdx < currentIdx;
+                return (
+                  <div key={p} className="flex items-center gap-2">
+                    <div
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        isActive
+                          ? 'bg-bullseye-gold animate-pulse'
+                          : isComplete
+                            ? 'bg-bullseye-gold/80'
+                            : 'bg-muted-foreground/30'
+                      }`}
+                    />
+                    <span
+                      className={`text-xs transition-colors ${
+                        isActive
+                          ? 'text-bullseye-gold font-medium'
+                          : isComplete
+                            ? 'text-muted-foreground'
+                            : 'text-muted-foreground/50'
+                      }`}
+                    >
+                      {INIT_PHASE_LABELS[p]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {staleMessage && (
+              <p className="text-xs text-muted-foreground/70">{staleMessage}</p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ScoutChat() {
   const {
     chatMessages,
@@ -78,6 +158,10 @@ export function ScoutChat() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [queueMessage, setQueueMessage] = useState<string | null>(null);
+  const [scoutInitPhase, setScoutInitPhase] = useState<ScoutInitPhase>('idle');
+  const [initStaleMessage, setInitStaleMessage] = useState<string | null>(null);
+  const [initErrorMessage, setInitErrorMessage] = useState<string | null>(null);
+  const initStaleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const prevProjectIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
@@ -90,6 +174,42 @@ export function ScoutChat() {
   } | null>(null);
   const processingAttachmentRef = useRef(false);
   const handleSendMessageRef = useRef<(content: string, attachment?: FileAttachment) => void>(() => {});
+
+  const resetInitStaleTimer = useCallback(() => {
+    if (initStaleTimerRef.current) {
+      clearTimeout(initStaleTimerRef.current);
+    }
+    setInitStaleMessage(null);
+    initStaleTimerRef.current = setTimeout(() => {
+      setInitStaleMessage('Still working...');
+    }, 10000);
+  }, []);
+
+  const advanceInitPhase = useCallback((newPhase: ScoutInitPhase) => {
+    setScoutInitPhase(newPhase);
+    if (newPhase !== 'idle' && newPhase !== 'error') {
+      resetInitStaleTimer();
+    }
+  }, [resetInitStaleTimer]);
+
+  const clearInitPhase = useCallback(() => {
+    setScoutInitPhase('idle');
+    setInitStaleMessage(null);
+    setInitErrorMessage(null);
+    if (initStaleTimerRef.current) {
+      clearTimeout(initStaleTimerRef.current);
+      initStaleTimerRef.current = null;
+    }
+  }, []);
+
+  // Clean up stale timer on unmount
+  useEffect(() => {
+    return () => {
+      if (initStaleTimerRef.current) {
+        clearTimeout(initStaleTimerRef.current);
+      }
+    };
+  }, []);
 
   const sendMessageToScout = useCallback((
     content: string,
@@ -128,8 +248,9 @@ export function ScoutChat() {
     // Create event router callbacks
     const callbacks: EventRouterCallbacks = {
       onScoutTextDelta: (text) => {
-        // Clear queue indicator when content starts arriving
+        // Clear queue and init indicators when content starts arriving
         setQueueMessage(null);
+        clearInitPhase();
         // Detect turn boundary: if the previous turn completed, start a new message
         if (turnCompleteRef.current) {
           turnCompleteRef.current = false;
@@ -169,6 +290,10 @@ export function ScoutChat() {
       },
       onReaderStart: (readerId) => {
         setReaderState(readerId, { readerId, status: 'streaming', progress: 0 });
+        // Advance init phase to 'engaging' when readers start
+        if (scoutInitPhase === 'processing' || scoutInitPhase === 'analyzing') {
+          advanceInitPhase('engaging');
+        }
       },
       onReaderProgress: (readerId, progress) => {
         setReaderState(readerId, { progress });
@@ -225,6 +350,10 @@ export function ScoutChat() {
       onToolStart: (tool) => {
         setQueueMessage(null);
         setActiveTool(tool);
+        // Advance init phase to 'analyzing' when first tool starts
+        if (scoutInitPhase === 'processing') {
+          advanceInitPhase('analyzing');
+        }
         const baseName = tool.includes('__') ? tool.split('__').pop()! : tool;
         const displayName = getToolDisplayName(tool);
         const toolCall: ToolCallStatus = {
@@ -265,6 +394,7 @@ export function ScoutChat() {
         setStreaming(false);
         setActiveTool(null);
         setQueueMessage(null);
+        clearInitPhase();
         // Mark any remaining running tools as complete on the current assistant message
         const finalAssistantId = currentAssistantIdRef.current || assistantId;
         toolCallsRef.current = toolCallsRef.current.map((tc) =>
@@ -302,6 +432,16 @@ export function ScoutChat() {
         setStreaming(false);
         setActiveTool(null);
         setQueueMessage(null);
+        // If we were in an init phase, show error in the progress indicator
+        if (scoutInitPhase !== 'idle') {
+          setScoutInitPhase('error');
+          setInitErrorMessage(String(error));
+          if (initStaleTimerRef.current) {
+            clearTimeout(initStaleTimerRef.current);
+            initStaleTimerRef.current = null;
+          }
+          setInitStaleMessage(null);
+        }
         const errorAssistantId = currentAssistantIdRef.current || assistantId;
         currentAssistantIdRef.current = null;
         // If we have partial text, keep it and append error
@@ -332,7 +472,7 @@ export function ScoutChat() {
       requestPayload,
       callbacks
     );
-  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient]);
+  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient, scoutInitPhase, advanceInitPhase, clearInitPhase]);
 
   const handleSendMessage = useCallback((content: string, attachment?: FileAttachment) => {
     // Build the user-facing message content
@@ -367,6 +507,11 @@ export function ScoutChat() {
 
     setStreaming(true);
 
+    // Start init progress indicator when sending with an attachment (script upload flow)
+    if (attachment?.status === 'ready' && attachment.content) {
+      advanceInitPhase('processing');
+    }
+
     // Add a streaming assistant message placeholder
     const assistantId = uuidv4();
     const assistantMessage: ChatMessage = {
@@ -383,10 +528,13 @@ export function ScoutChat() {
     const existingMessages = chatMessages.filter((m) => m.role !== 'system' || !m.content.startsWith('__error__'));
 
     sendMessageToScout(content, attachment, existingMessages, userMessage, assistantId);
-  }, [chatMessages, addChatMessage, setStreaming, sendMessageToScout]);
+  }, [chatMessages, addChatMessage, setStreaming, sendMessageToScout, advanceInitPhase]);
 
   const handleRetry = useCallback(() => {
     if (!lastRequestRef.current) return;
+
+    // Clear any init error state
+    clearInitPhase();
 
     // Remove the error system message(s) and the failed assistant message
     const { chatMessages: currentMessages } = useAppStore.getState();
@@ -410,7 +558,7 @@ export function ScoutChat() {
     // Re-send the last request
     const { content, attachment } = lastRequestRef.current;
     handleSendMessage(content, attachment);
-  }, [handleSendMessage]);
+  }, [handleSendMessage, clearInitPhase]);
 
   const handleQuickAction = useCallback((action: string) => {
     switch (action) {
@@ -529,13 +677,20 @@ export function ScoutChat() {
 
   return (
     <div className="h-full flex flex-col">
-      {isLoadingHistory ? (
+      {isLoadingHistory && scoutInitPhase === 'idle' ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse" />
             Loading conversation...
           </div>
         </div>
+      ) : scoutInitPhase !== 'idle' && !hasMessages ? (
+        <ScoutInitProgress
+          phase={scoutInitPhase}
+          staleMessage={initStaleMessage}
+          errorMessage={initErrorMessage}
+          onRetry={handleRetry}
+        />
       ) : !hasMessages ? (
         <div className="flex-1 flex flex-col items-center justify-center relative">
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
@@ -598,15 +753,24 @@ export function ScoutChat() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col">
-          <ChatInterface
-            messages={displayMessages}
-            onSendMessage={handleSendMessage}
-            isLoading={isStreaming}
-            activityStatus={activeTool ? getToolDisplayName(activeTool) : null}
-            placeholder="Message Scout..."
-            agentName="Scout"
-            agentColor="#D4A84B"
-          />
+          {scoutInitPhase !== 'idle' ? (
+            <ScoutInitProgress
+              phase={scoutInitPhase}
+              staleMessage={initStaleMessage}
+              errorMessage={initErrorMessage}
+              onRetry={handleRetry}
+            />
+          ) : (
+            <ChatInterface
+              messages={displayMessages}
+              onSendMessage={handleSendMessage}
+              isLoading={isStreaming}
+              activityStatus={activeTool ? getToolDisplayName(activeTool) : null}
+              placeholder="Message Scout..."
+              agentName="Scout"
+              agentColor="#D4A84B"
+            />
+          )}
           {queueMessage && (
             <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
               <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse" />

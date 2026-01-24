@@ -11,6 +11,8 @@ Started: Sat Jan 24 07:57:21 PST 2026
 - `processingAttachmentRef` prevents double-firing of the attachment effect
 - TypeScript typecheck: `npx tsc --noEmit`; lint: `npx eslint <file>`
 - The project is a Next.js app with Prisma ORM
+- SSE callback phases: attachment send → 'processing', onToolStart → 'analyzing', onReaderStart → 'engaging', onScoutTextDelta → clears init phase
+- The `ScoutInitProgress` component renders a stepped phase indicator with stale timeout (10s) support
 
 ---
 
@@ -27,4 +29,23 @@ Started: Sat Jan 24 07:57:21 PST 2026
   - `clearChat()` is called on every project change — any effect that sends messages must wait for it to complete
   - For new projects with no history, the fetch returns an empty array quickly, so the `isHistoryLoaded` flag flips fast
   - The existing `processingAttachmentRef` prevents double-sends but does NOT prevent sends during loading — the new `isHistoryLoaded` state handles that
+---
+
+## 2026-01-24 - US-002
+- **What was implemented**: Added stepped progress indicators for SCOUT initialization
+- **Files changed**: `src/components/scout/scout-chat.tsx`
+- **Implementation details**:
+  - Added `ScoutInitPhase` type: `'idle' | 'processing' | 'analyzing' | 'engaging' | 'error'`
+  - Created `ScoutInitProgress` component with stepped dots + labels showing phase progression
+  - Added `scoutInitPhase`, `initStaleMessage`, `initErrorMessage` state to ScoutChat
+  - Init phase transitions: attachment send → 'processing', onToolStart → 'analyzing', onReaderStart → 'engaging'
+  - `clearInitPhase()` called on `onScoutTextDelta` (content arrives) and `onResult` (stream ends)
+  - 10-second stale timer shows "Still working..." if phase doesn't advance
+  - Error phase shows error message + Retry button
+  - Progress indicator replaces the "Loading conversation" spinner and chat interface during initialization
+- **Learnings for future iterations:**
+  - The init phase is only triggered when sending with an attachment (script upload flow) — regular messages don't show the progress indicator
+  - `scoutInitPhase` is read inside `sendMessageToScout` callbacks which means it's captured at callback creation time — the dependency array must include it
+  - The `clearInitPhase` function handles both timer cleanup and state reset — always use it instead of just setting phase to 'idle'
+  - The progress indicator replaces the ChatInterface entirely during init (not an overlay) to avoid confusing partial UI
 ---
