@@ -76,6 +76,7 @@ export function ScoutChat() {
   const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [queueMessage, setQueueMessage] = useState<string | null>(null);
   const prevProjectIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef('');
@@ -441,11 +442,15 @@ export function ScoutChat() {
     if (projectId === prevProjectIdRef.current) return;
     prevProjectIdRef.current = projectId;
 
-    // Clear current chat messages
+    // Clear current chat messages and mark history as not yet loaded
     clearChat();
+    setIsHistoryLoaded(false);
 
-    // If no project, nothing to load
-    if (!projectId) return;
+    // If no project, nothing to load — mark as loaded immediately
+    if (!projectId) {
+      setIsHistoryLoaded(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -471,7 +476,10 @@ export function ScoutChat() {
       } catch (err) {
         console.error(err);
       } finally {
-        if (!cancelled) setIsLoadingHistory(false);
+        if (!cancelled) {
+          setIsLoadingHistory(false);
+          setIsHistoryLoaded(true);
+        }
       }
     };
 
@@ -481,8 +489,9 @@ export function ScoutChat() {
   }, [currentProject, clearChat]);
 
   // Auto-send when a pending attachment arrives (e.g., after draft upload)
+  // Waits for history loading to complete so clearChat() doesn't conflict
   useEffect(() => {
-    if (pendingScoutAttachment && !isStreaming && !processingAttachmentRef.current) {
+    if (pendingScoutAttachment && !isStreaming && !processingAttachmentRef.current && isHistoryLoaded) {
       processingAttachmentRef.current = true;
       const attachment: FileAttachment = {
         file: new File([], pendingScoutAttachment.filename),
@@ -496,7 +505,7 @@ export function ScoutChat() {
       handleSendMessageRef.current('Analyze this script', attachment);
       processingAttachmentRef.current = false;
     }
-  }, [pendingScoutAttachment, isStreaming, setPendingScoutAttachment]);
+  }, [pendingScoutAttachment, isStreaming, setPendingScoutAttachment, isHistoryLoaded]);
 
   // Filter out internal error markers for display
   const displayMessages: ChatMessage[] = chatMessages.map((m) => {
