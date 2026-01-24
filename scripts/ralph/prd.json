@@ -219,7 +219,7 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "This is a server-side utility. Each user has their own API key and rate limits, but since this is a single-user app (one API key at a time), a singleton per-process is fine. The sliding window pattern: store timestamps + token counts in an array, filter to last 60s on each check."
     },
     {

@@ -17,6 +17,7 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - When resetting project state, all ephemeral state spans AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState — use `resetProjectState()` or inline the full reset in `setCurrentProject`
 - React Query deliverable hooks use `enabled: !!draftId` — clearing `currentDraft` to null automatically disables them without explicit invalidation
 - Context budget utility (src/lib/agent-sdk/context-budget.ts) is pure — pass data in, get assembled prompt + metadata out. Token estimation: chars / 4.
+- Rate limiter (src/lib/rate-limiter.ts): import `rateLimiter` singleton, call `await rateLimiter.acquire({ estimatedInputTokens })` before API calls, call `rateLimiter.report(actualIn, actualOut)` after completion
 
 ---
 
@@ -144,4 +145,16 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - `src/lib/agent-sdk/client.ts` has its own `MODELS` constant — update it too for consistency even if not all keys are currently referenced.
   - Focus group has 5 separate model references across moderator turns, streaming turns, reader response generation, and reaction generation.
   - Haiku calls to preserve: ingest.ts (metadata extraction), memory.ts, memory/index.ts, studio-intelligence/index.ts
+---
+
+## 2026-01-23 - US-013
+- What was implemented: Created `src/lib/rate-limiter.ts` with a `RateLimiter` class implementing sliding-window rate limiting for Anthropic API calls. Tracks three limits: requests per minute (50), input tokens per minute (30K), output tokens per minute (8K). Exposes `acquire(options)` (async, delays with exponential backoff up to 15s when capacity unavailable) and `report(actualInput, actualOutput)` (updates actual token usage after request completes). Includes optional `onQueued`/`onProcessing` callbacks for UI notification. Exports a singleton instance.
+- Files changed: src/lib/rate-limiter.ts (new file)
+- **Learnings for future iterations:**
+  - The rate limiter is a server-side singleton per-process — import `rateLimiter` from `src/lib/rate-limiter`
+  - `acquire()` takes an options object with `estimatedInputTokens` (use chars/4) and optional `onQueued`/`onProcessing` callbacks for SSE event emission
+  - `report()` updates the most recent entry with actual token counts from the API response — call after each request completes
+  - Sliding window purges entries > 60s old on every check — no manual cleanup needed
+  - Exponential backoff starts at 500ms, doubles up to 15s max while waiting for capacity
+  - The `getUsage()` method returns current window stats for debugging/monitoring
 ---
