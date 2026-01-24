@@ -219,7 +219,7 @@ interface AppStore extends TabState, StudioState, ProjectState, AnalysisState, F
 export const useAppStore = create<AppStore>()(
   devtools(
     persist(
-      (set, _get) => ({
+      (set, get) => ({
         // ============ TAB STATE ============
         activeTab: 'home' as TabId,
         setActiveTab: (tab) => set({ activeTab: tab }),
@@ -427,7 +427,21 @@ export const useAppStore = create<AppStore>()(
         executiveStates: new Map<string, ExecutiveStreamState>(),
 
         setSessionId: (id) => set({ sessionId: id }),
-        setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
+        setRightPanelMode: (mode) => {
+          set({ rightPanelMode: mode });
+          // Persist scoutPhase to the database (fire-and-forget)
+          const projectId = get().currentProject?.id;
+          if (projectId) {
+            const scoutPhase = mode === 'idle' ? null : mode;
+            fetch(`/api/projects/${projectId}/scout-state`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scoutPhase }),
+            }).catch((err) => {
+              console.error('Failed to persist scoutPhase:', err);
+            });
+          }
+        },
         setReaderState: (readerId, state) =>
           set((s) => {
             const newMap = new Map(s.readerStates);
