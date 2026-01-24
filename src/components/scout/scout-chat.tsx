@@ -13,6 +13,21 @@ import { studioKeys } from '@/hooks/use-studio';
 import { Target } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
+function persistChatMessage(projectId: string, data: {
+  role: string;
+  content: string;
+  agentType?: string;
+  toolCalls?: ToolCallStatus[];
+  attachmentName?: string;
+  attachmentSize?: number;
+}) {
+  fetch(`/api/projects/${projectId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(console.error);
+}
+
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'ingest_script': 'Ingesting script...',
   'spawn_readers': 'Analyzing with readers...',
@@ -134,6 +149,15 @@ export function ScoutChat() {
         if (currentAssistantIdRef.current) {
           updateChatMessage(currentAssistantIdRef.current, { isStreaming: false });
         }
+        // Persist assistant turn (fire-and-forget)
+        const pid = useAppStore.getState().currentProject?.id;
+        if (pid && streamingTextRef.current) {
+          persistChatMessage(pid, {
+            role: 'assistant',
+            content: streamingTextRef.current,
+            agentType: 'SCOUT',
+          });
+        }
       },
       onReaderStart: (readerId) => {
         setReaderState(readerId, { readerId, status: 'streaming', progress: 0 });
@@ -233,6 +257,19 @@ export function ScoutChat() {
           isStreaming: false,
           toolCalls: toolCallsRef.current.length > 0 ? [...toolCallsRef.current] : undefined,
         });
+
+        // Persist final assistant state with toolCalls if any (fire-and-forget)
+        // Note: text content was already persisted by onScoutTextComplete, so only persist here if toolCalls exist
+        const pid = useAppStore.getState().currentProject?.id;
+        if (pid && toolCallsRef.current.length > 0 && streamingTextRef.current) {
+          persistChatMessage(pid, {
+            role: 'assistant',
+            content: streamingTextRef.current,
+            agentType: 'SCOUT',
+            toolCalls: toolCallsRef.current,
+          });
+        }
+
         currentAssistantIdRef.current = null;
 
         // Invalidate React Query caches for data that may have been persisted
@@ -298,6 +335,18 @@ export function ScoutChat() {
       attachment: attachment ? { name: attachment.name, size: attachment.size } : undefined,
     };
     addChatMessage(userMessage);
+
+    // Persist user message (fire-and-forget)
+    const projectId = useAppStore.getState().currentProject?.id;
+    if (projectId) {
+      persistChatMessage(projectId, {
+        role: 'user',
+        content: displayContent,
+        attachmentName: attachment?.name,
+        attachmentSize: attachment?.size,
+      });
+    }
+
     setStreaming(true);
 
     // Add a streaming assistant message placeholder
