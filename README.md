@@ -17,7 +17,7 @@ BULLSEYE uses multiple AI agents to analyze screenplays the way a professional s
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router, Turbopack)
-- **AI**: Claude Agent SDK + Anthropic Claude API (Sonnet 4 for analysis and chat)
+- **AI**: Claude Agent SDK + Anthropic Claude API (Opus 4.5 for analysis/orchestration, Haiku 4 for lightweight tasks)
 - **Database**: PostgreSQL via Supabase
 - **ORM**: Prisma 7 (with pg adapter)
 - **Auth**: Supabase Auth (email/password, cookie-based sessions)
@@ -32,6 +32,7 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── projects/          # Project CRUD + draft upload
+│   │   │   └── [id]/chat/     # Project-scoped chat persistence (GET/POST)
 │   │   ├── drafts/[id]/       # Deliverable, focus-sessions, evaluations
 │   │   ├── scout/             # Scout SSE streaming endpoint
 │   │   ├── reader-chat/       # 1:1 reader chat SSE endpoint
@@ -54,12 +55,14 @@ src/
 ├── hooks/                 # React Query hooks (useProjects, useDrafts, useStudio, etc.)
 ├── lib/
 │   ├── agent-sdk/         # Claude Agent SDK integration (MCP tool server, prompts, event routing)
+│   │   └── context-budget.ts  # Token budget allocation for 200K context window
 │   ├── agents/            # Reader persona definitions
 │   ├── executive/         # Executive profiles
 │   ├── harmonization/     # Score harmonization logic
 │   ├── memory/            # Three-layer memory engine
 │   ├── studio-intelligence/ # Calibration and percentile engine
 │   ├── supabase/          # Supabase client utilities (server, browser, admin)
+│   ├── rate-limiter.ts    # Sliding-window rate limiter for Opus 4.5 API limits
 │   ├── auth.ts            # getCurrentUser helper
 │   └── db.ts              # Prisma client singleton (pg adapter)
 ├── stores/                # Zustand stores (app-store, toast-store)
@@ -102,7 +105,7 @@ npm run dev                  # Start dev server (localhost:3000)
 
 ### Scout + MCP Tool Server
 
-Scout is the user-facing orchestrator, powered by Claude Sonnet 4 via the Claude Agent SDK. It runs as an agentic loop with access to an MCP tool server (`src/lib/agent-sdk/tools/`) that provides:
+Scout is the user-facing orchestrator, powered by Claude Opus 4.5 via the Claude Agent SDK. It runs as an agentic loop with access to an MCP tool server (`src/lib/agent-sdk/tools/`) that provides:
 
 - `ingest_script` — Parse and store uploaded screenplay text
 - `spawn_readers` — Launch parallel reader analysis (3 independent agents)
@@ -114,6 +117,14 @@ Scout is the user-facing orchestrator, powered by Claude Sonnet 4 via the Claude
 - `studio_intelligence` — Historical calibration context
 
 The Scout endpoint (`/api/scout`) streams results via SSE with typed events that drive the frontend's real-time UI.
+
+### Chat Persistence
+
+Scout conversations are project-scoped and persisted to the database via `ChatSession` and `ChatSessionMessage` models. When switching between projects, chat history is loaded/saved automatically. Scout receives full project context (script text, reader memories, focus group history) within a managed token budget to stay within the 200K context window.
+
+### Rate Limiting
+
+A sliding-window rate limiter (`src/lib/rate-limiter.ts`) ensures all API calls stay within Opus 4.5 Tier 1 limits (50 req/min, 30K input tokens/min, 8K output tokens/min). When requests are queued, the SSE stream emits status events and the UI shows a subtle processing indicator.
 
 ### Agent System
 
