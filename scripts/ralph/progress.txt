@@ -134,3 +134,14 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - maxBudgetUsd should be increased when switching to more expensive models to avoid premature budget exhaustion during long multi-turn analysis sessions
   - The Scout route is the only place where the Scout orchestrator model is configured — reader/focus/executive models are in their respective tool files
 ---
+
+## 2026-01-23 - US-012
+- What was implemented: Migrated all reader, focus group, executive evaluation, reader-chat, and focus question generation flows from `claude-sonnet-4-20250514` to `claude-opus-4-5-20251101`. Updated MODELS constants in `src/lib/agents/index.ts` and `src/lib/agent-sdk/client.ts`. Updated direct model string references in focus-group, executive, reader-chat tool, focus-questions tool, and API routes. Kept all Haiku calls (metadata, memory, studio intelligence) unchanged.
+- Files changed: src/lib/agents/index.ts, src/lib/agent-sdk/client.ts, src/lib/agent-sdk/tools/reader-chat.ts, src/lib/agent-sdk/tools/focus-questions.ts, src/lib/focus-group/index.ts (5 occurrences), src/lib/executive/index.ts (2 occurrences), src/app/api/reader-chat/route.ts, src/app/api/chat/route.ts
+- **Learnings for future iterations:**
+  - The model string is scattered across many files — some use a MODELS constant (agents/index.ts), others use inline strings. Check both patterns when migrating.
+  - `src/lib/agents/index.ts` has a `MODELS` constant used by `runReaderAnalysis`, harmonization, and executive evaluation — updating the constant covers all 3.
+  - `src/lib/agent-sdk/client.ts` has its own `MODELS` constant — update it too for consistency even if not all keys are currently referenced.
+  - Focus group has 5 separate model references across moderator turns, streaming turns, reader response generation, and reaction generation.
+  - Haiku calls to preserve: ingest.ts (metadata extraction), memory.ts, memory/index.ts, studio-intelligence/index.ts
+---

@@ -200,7 +200,7 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "Search for all occurrences of 'claude-sonnet-4' across the tools directory. Each should change to 'claude-opus-4-5-20251101'. Haiku calls (metadata, memory) stay unchanged."
     },
     {
