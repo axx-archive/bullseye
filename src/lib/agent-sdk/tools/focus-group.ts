@@ -9,7 +9,7 @@ import { getLastReaderPerspectives, getLastProjectContext } from './readers';
 import { getLastDeliverable } from './analysis';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-import type { SubAgentMemory } from '@/lib/memory';
+import { type SubAgentMemory, extractFocusGroupStatements } from '@/lib/memory';
 import type { Divergence, Rating, CoverageReport } from '@/types';
 import type { EventEmitter } from './readers';
 
@@ -322,6 +322,33 @@ export function createFocusGroupTool(emitEvent: EventEmitter, apiKey?: string) {
             await db.focusGroupMessage.createMany({
               data: messageData,
             });
+
+            // Extract and persist structured focus group memory items
+            const focusStatements = extractFocusGroupStatements(
+              messageData.map((m) => ({
+                speakerType: m.speakerType,
+                readerId: m.readerId,
+                content: m.content,
+                topic: m.topic,
+              }))
+            );
+
+            if (focusStatements.length > 0) {
+              await db.focusGroupMemoryItem.createMany({
+                data: focusStatements.map((stmt) => ({
+                  projectId: effectiveProjectId!,
+                  draftId: effectiveDraftId,
+                  sessionId: session.id,
+                  readerId: stmt.readerId,
+                  statement: stmt.statement,
+                  topic: stmt.topic,
+                  sentiment: stmt.sentiment === 'positive' ? 'POSITIVE' as const
+                    : stmt.sentiment === 'negative' ? 'NEGATIVE' as const
+                    : 'NEUTRAL' as const,
+                  referencedConcern: stmt.referencedConcern || null,
+                })),
+              });
+            }
           }
         } catch (error) {
           console.error('Failed to persist focus group messages:', error);

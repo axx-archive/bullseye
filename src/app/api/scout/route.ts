@@ -164,7 +164,7 @@ export async function POST(req: Request) {
         }),
       ]);
 
-      const [readerMemories, focusMessages] = await Promise.all([
+      const [readerMemories, currentDraftFocusMessages, priorDraftFocusMemory] = await Promise.all([
         latestDraft
           ? db.readerMemory.findMany({
               where: { draftId: latestDraft.id },
@@ -177,6 +177,7 @@ export async function POST(req: Request) {
               },
             })
           : Promise.resolve([]),
+        // Current draft: full tagged statements
         latestDraft
           ? db.focusGroupMessage.findMany({
               where: { session: { draftId: latestDraft.id } },
@@ -188,8 +189,23 @@ export async function POST(req: Request) {
                 content: true,
                 topic: true,
               },
-            }).then((msgs) => msgs.reverse()) // Reverse to get chronological order
+            }).then((msgs) => msgs.reverse())
           : Promise.resolve([]),
+        // Prior drafts: structured memory items (compressed position summaries)
+        db.focusGroupMemoryItem.findMany({
+          where: {
+            projectId,
+            ...(latestDraft ? { draftId: { not: latestDraft.id } } : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 30, // Limit prior draft statements
+          select: {
+            readerId: true,
+            statement: true,
+            topic: true,
+            draftId: true,
+          },
+        }),
       ]);
 
       // Format reader memories into a readable text block
@@ -199,12 +215,21 @@ export async function POST(req: Request) {
           ).join('\n\n')
         : '';
 
-      // Format focus group messages
-      const focusText = focusMessages.length > 0
-        ? focusMessages.map((m) =>
-            `${m.speakerType === 'MODERATOR' ? 'Scout' : m.readerId || 'Reader'}: ${m.content}`
-          ).join('\n')
-        : '';
+      // Format focus group messages — current draft in full, prior drafts as position summaries
+      let focusText = '';
+      if (currentDraftFocusMessages.length > 0) {
+        focusText = currentDraftFocusMessages.map((m) =>
+          `${m.speakerType === 'MODERATOR' ? 'Scout' : m.readerId || 'Reader'}: ${m.content}`
+        ).join('\n');
+      }
+      if (priorDraftFocusMemory.length > 0) {
+        const priorSection = priorDraftFocusMemory.map((m) =>
+          `[Prior Draft] ${m.readerId}: position on ${m.topic} — ${m.statement.slice(0, 150)}`
+        ).join('\n');
+        focusText = focusText
+          ? `${focusText}\n\n--- Prior Draft Focus Group Positions ---\n${priorSection}`
+          : `--- Prior Draft Focus Group Positions ---\n${priorSection}`;
+      }
 
       // Get script text from current script (already ingested) or from draft DB record
       const scriptText = getCurrentScript()?.scriptText || latestDraft?.scriptText || '';

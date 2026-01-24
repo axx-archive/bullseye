@@ -418,6 +418,30 @@ enum Sentiment {
 }
 
 // ============================================
+// FOCUS GROUP MEMORY (Structured per-statement storage)
+// ============================================
+
+model FocusGroupMemoryItem {
+  id                    String              @id @default(cuid())
+  projectId             String
+  draftId               String
+  sessionId             String
+  readerId              String
+
+  // Content
+  statement             String              @db.Text   // The reader's statement
+  topic                 String              // character|structure|dialogue|premise|commerciality|general
+  sentiment             Sentiment?          // POSITIVE|NEGATIVE|NEUTRAL
+  referencedConcern     String?             // Key concern this references
+
+  createdAt             DateTime            @default(now())
+
+  @@index([projectId, readerId])
+  @@index([draftId, readerId])
+  @@index([projectId, draftId])
+}
+
+// ============================================
 // EXECUTIVE PITCH SIMULATION
 // ============================================
 

@@ -492,6 +492,89 @@ Check for consistency and return JSON.`,
   }
 }
 
+// ============================================
+// FOCUS GROUP MEMORY EXTRACTION
+// ============================================
+
+export interface FocusGroupStatement {
+  readerId: string;
+  statement: string;
+  topic: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  referencedConcern?: string;
+}
+
+/**
+ * Extract structured memory items from focus group messages.
+ * Called after a focus group session completes to persist key statements
+ * as queryable, indexed memory items.
+ */
+export function extractFocusGroupStatements(
+  messages: Array<{
+    speakerType: string;
+    readerId: string | null;
+    content: string;
+    topic: string | null;
+  }>
+): FocusGroupStatement[] {
+  const statements: FocusGroupStatement[] = [];
+
+  for (const msg of messages) {
+    // Only extract reader statements (not moderator questions)
+    if (msg.speakerType !== 'READER' || !msg.readerId) continue;
+
+    const sentiment = inferSentiment(msg.content);
+    const topic = msg.topic || inferTopic(msg.content);
+
+    statements.push({
+      readerId: msg.readerId,
+      statement: msg.content,
+      topic,
+      sentiment,
+      referencedConcern: extractConcern(msg.content),
+    });
+  }
+
+  return statements;
+}
+
+function inferSentiment(content: string): 'positive' | 'negative' | 'neutral' {
+  const lower = content.toLowerCase();
+  const positiveWords = ['excellent', 'strong', 'compelling', 'effective', 'works', 'love', 'brilliant'];
+  const negativeWords = ['weak', 'problem', 'issue', 'concern', 'fails', 'doesn\'t work', 'worried', 'unclear'];
+
+  const positiveCount = positiveWords.filter((w) => lower.includes(w)).length;
+  const negativeCount = negativeWords.filter((w) => lower.includes(w)).length;
+
+  if (positiveCount > negativeCount) return 'positive';
+  if (negativeCount > positiveCount) return 'negative';
+  return 'neutral';
+}
+
+function inferTopic(content: string): string {
+  const lower = content.toLowerCase();
+  if (lower.includes('character') || lower.includes('protagonist') || lower.includes('arc')) return 'character';
+  if (lower.includes('structure') || lower.includes('act') || lower.includes('pacing')) return 'structure';
+  if (lower.includes('dialogue') || lower.includes('voice') || lower.includes('subtext')) return 'dialogue';
+  if (lower.includes('premise') || lower.includes('concept') || lower.includes('logline')) return 'premise';
+  if (lower.includes('market') || lower.includes('commercial') || lower.includes('audience')) return 'commerciality';
+  return 'general';
+}
+
+function extractConcern(content: string): string | undefined {
+  // Extract the core concern from a statement if one exists
+  const lower = content.toLowerCase();
+  const concernPatterns = [
+    /(?:my (?:main )?concern is|worried about|the (?:issue|problem) (?:is|with)) (.+?)(?:\.|$)/i,
+    /(?:doesn't|doesn't) (?:work|land) (.+?)(?:\.|$)/i,
+  ];
+  for (const pattern of concernPatterns) {
+    const match = content.match(pattern) || lower.match(pattern);
+    if (match?.[1]) return match[1].trim().slice(0, 200);
+  }
+  return undefined;
+}
+
 // Export singleton instances
 export const memoryWriteEngine = new MemoryWriteEngine();
 export const memoryReadEngine = new MemoryReadEngine();

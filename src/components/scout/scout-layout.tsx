@@ -9,8 +9,84 @@ import { ReaderChatPanel } from './reader-chat-panel';
 import { ExecutiveEvalPanel } from './executive-eval-panel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Activity } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { RightPanelPhase } from '@/lib/agent-sdk/types';
 
 type MobilePanel = 'chat' | 'activity';
+
+interface PillConfig {
+  id: RightPanelPhase;
+  label: string;
+}
+
+const PANEL_PILLS: PillConfig[] = [
+  { id: 'analysis', label: 'Analysis' },
+  { id: 'focus_group', label: 'Focus Group' },
+  { id: 'executive', label: 'Executive' },
+  { id: 'reader_chat', label: 'Reader Chat' },
+];
+
+function RightPanelSelector() {
+  const {
+    rightPanelMode,
+    userSelectedPanel,
+    scoutRecommendedPanel,
+    readerStates,
+    focusGroupMessages,
+    executiveStates,
+    activeReaderChatId,
+    setUserSelectedPanel,
+  } = useAppStore();
+
+  // Determine which pills have data to show
+  const hasData: Record<RightPanelPhase, boolean> = {
+    idle: false,
+    analysis: readerStates.size > 0,
+    focus_group: focusGroupMessages.length > 0,
+    executive: executiveStates.size > 0,
+    reader_chat: !!activeReaderChatId,
+  };
+
+  // Only show pills that have data
+  const visiblePills = PANEL_PILLS.filter((pill) => hasData[pill.id]);
+
+  if (visiblePills.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/30">
+      {visiblePills.map((pill) => {
+        const isActive = rightPanelMode === pill.id;
+        const isRecommended = scoutRecommendedPanel === pill.id && userSelectedPanel !== null && !isActive;
+
+        return (
+          <button
+            key={pill.id}
+            onClick={() => {
+              if (isActive && userSelectedPanel !== null) {
+                // Clicking the active pill while in manual mode returns to auto-follow
+                setUserSelectedPanel(null);
+              } else {
+                setUserSelectedPanel(pill.id);
+              }
+            }}
+            className={cn(
+              'relative px-3 py-1 rounded-full text-xs font-medium transition-all duration-150',
+              isActive
+                ? 'bg-foreground/10 text-foreground'
+                : 'text-muted-foreground hover:text-foreground/70 hover:bg-foreground/5'
+            )}
+          >
+            {pill.label}
+            {/* Pulsing gold dot for SCOUT-recommended panel when user has overridden */}
+            {isRecommended && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-bullseye-gold animate-pulse" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function RightPanelContent() {
   const { rightPanelMode } = useAppStore();
@@ -162,6 +238,7 @@ export function ScoutLayout() {
               : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto md:z-auto z-0'
           }`}
         >
+          <RightPanelSelector />
           <RightPanelContent />
         </div>
       </div>

@@ -169,6 +169,8 @@ export interface ReaderChatMessage {
 interface ScoutSessionState {
   sessionId: string | null;
   rightPanelMode: RightPanelPhase;
+  userSelectedPanel: RightPanelPhase | null; // null = follow SCOUT's recommendations
+  scoutRecommendedPanel: RightPanelPhase; // What SCOUT last set via phase_change
   readerStates: Map<string, ReaderStreamState>;
   focusGroupMessages: FocusGroupUIMessage[];
   focusGroupTypingSpeaker: string | null;
@@ -179,6 +181,8 @@ interface ScoutSessionState {
 
   setSessionId: (id: string | null) => void;
   setRightPanelMode: (mode: RightPanelPhase) => void;
+  setUserSelectedPanel: (mode: RightPanelPhase | null) => void;
+  setScoutRecommendedPanel: (mode: RightPanelPhase) => void;
   setReaderState: (readerId: string, state: Partial<ReaderStreamState>) => void;
   clearReaderStates: () => void;
   addFocusGroupMessage: (message: FocusGroupUIMessage) => void;
@@ -277,6 +281,8 @@ export const useAppStore = create<AppStore>()(
                 isEvaluating: false,
                 currentExecutive: null,
                 rightPanelMode: 'idle' as RightPanelPhase,
+                userSelectedPanel: null,
+                scoutRecommendedPanel: 'idle' as RightPanelPhase,
                 readerStates: new Map(),
                 focusGroupMessages: [],
                 focusGroupTypingSpeaker: null,
@@ -323,6 +329,8 @@ export const useAppStore = create<AppStore>()(
             isEvaluating: false,
             currentExecutive: null,
             rightPanelMode: 'idle' as RightPanelPhase,
+            userSelectedPanel: null,
+            scoutRecommendedPanel: 'idle' as RightPanelPhase,
             readerStates: new Map(),
             focusGroupMessages: [],
             focusGroupTypingSpeaker: null,
@@ -421,6 +429,8 @@ export const useAppStore = create<AppStore>()(
         // ============ SCOUT SESSION STATE ============
         sessionId: null,
         rightPanelMode: 'idle' as RightPanelPhase,
+        userSelectedPanel: null as RightPanelPhase | null,
+        scoutRecommendedPanel: 'idle' as RightPanelPhase,
         readerStates: new Map<string, ReaderStreamState>(),
         focusGroupMessages: [] as FocusGroupUIMessage[],
         focusGroupTypingSpeaker: null,
@@ -443,6 +453,34 @@ export const useAppStore = create<AppStore>()(
             }).catch((err) => {
               console.error('Failed to persist scoutPhase:', err);
             });
+          }
+        },
+        setUserSelectedPanel: (mode) => {
+          if (mode === null) {
+            // User is returning to auto-follow mode — switch to SCOUT's recommended panel
+            const recommended = get().scoutRecommendedPanel;
+            set({ userSelectedPanel: null, rightPanelMode: recommended });
+          } else {
+            set({ userSelectedPanel: mode, rightPanelMode: mode });
+          }
+        },
+        setScoutRecommendedPanel: (mode) => {
+          set({ scoutRecommendedPanel: mode });
+          // Only auto-switch if user hasn't manually selected a panel
+          if (get().userSelectedPanel === null) {
+            set({ rightPanelMode: mode });
+            // Persist scoutPhase to the database (fire-and-forget)
+            const projectId = get().currentProject?.id;
+            if (projectId) {
+              const scoutPhase = mode === 'idle' ? null : mode;
+              fetch(`/api/projects/${projectId}/scout-state`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scoutPhase }),
+              }).catch((err) => {
+                console.error('Failed to persist scoutPhase:', err);
+              });
+            }
           }
         },
         setReaderState: (readerId, state) =>

@@ -138,13 +138,11 @@ export function ScoutChat() {
     addChatMessage,
     updateChatMessage,
     setStreaming,
-    setRightPanelMode,
     setReaderState,
     setDeliverable,
     setActiveTab,
     addFocusGroupMessage,
     setFocusGroupTyping,
-    clearFocusGroupMessages,
     setExecutiveState,
     pendingScoutAttachment,
     setPendingScoutAttachment,
@@ -384,13 +382,10 @@ export function ScoutChat() {
         });
       },
       onPhaseChange: (phase) => {
-        const currentMode = useAppStore.getState().rightPanelMode;
-        if (currentMode !== phase) {
-          setRightPanelMode(phase);
-          if (phase === 'focus_group') {
-            clearFocusGroupMessages();
-          }
-        }
+        // Update SCOUT's recommended panel; the store handles whether to
+        // auto-switch (when user hasn't manually selected) or just update the dot indicator
+        const store = useAppStore.getState();
+        store.setScoutRecommendedPanel(phase);
       },
       onToolStart: (tool) => {
         setQueueMessage(null);
@@ -517,7 +512,7 @@ export function ScoutChat() {
       requestPayload,
       callbacks
     );
-  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient, scoutInitPhase, advanceInitPhase, clearInitPhase, debouncedPersistReaderStates, flushReaderStates]);
+  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, setStreaming, addChatMessage, setExecutiveState, queryClient, scoutInitPhase, advanceInitPhase, clearInitPhase, debouncedPersistReaderStates, flushReaderStates]);
 
   const handleSendMessage = useCallback((content: string, attachment?: FileAttachment) => {
     // Build the user-facing message content

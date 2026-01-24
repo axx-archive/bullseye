@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/lib/utils';
-import { Target, Send } from 'lucide-react';
+import { Target, Send, ChevronDown, ChevronRight } from 'lucide-react';
 import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
 import type { FocusGroupUIMessage } from '@/lib/agent-sdk/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,6 +20,84 @@ const READER_NAMES: Record<string, string> = {
   'reader-colton': 'Colton Rivers',
   'reader-devon': 'Devon Park',
 };
+
+interface PriorFocusSession {
+  id: string;
+  topic: string;
+  completedAt: string;
+  statements: Array<{
+    readerId: string;
+    statement: string;
+    topic: string;
+    sentiment: string;
+  }>;
+}
+
+function PriorSessionsSection({ projectId }: { projectId: string }) {
+  const [sessions, setSessions] = useState<PriorFocusSession[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const hasFetched = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen || hasFetched.current) return;
+    hasFetched.current = true;
+    setIsLoading(true);
+
+    fetch(`/api/projects/${projectId}/focus-history`)
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((data: { sessions: PriorFocusSession[] }) => {
+        setSessions(data.sessions || []);
+      })
+      .catch(() => {
+        // Non-critical — prior sessions just won't show
+      })
+      .finally(() => setIsLoading(false));
+  }, [isOpen, projectId]);
+
+  if (!projectId) return null;
+
+  return (
+    <div className="border-t border-border/30">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground/70 transition-colors"
+      >
+        {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <span className="font-medium uppercase tracking-wider">Prior Sessions</span>
+      </button>
+
+      {isOpen && (
+        <div className="px-4 pb-3 space-y-3">
+          {isLoading && (
+            <div className="text-xs text-muted-foreground/50 animate-pulse">Loading...</div>
+          )}
+          {!isLoading && sessions.length === 0 && (
+            <div className="text-xs text-muted-foreground/50">No prior focus group sessions</div>
+          )}
+          {sessions.map((session) => (
+            <div key={session.id} className="space-y-1.5">
+              <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+                {session.topic}
+              </div>
+              {session.statements.slice(0, 3).map((stmt, i) => (
+                <div key={i} className="flex gap-2 text-xs">
+                  <span
+                    className="font-medium shrink-0"
+                    style={{ color: READER_COLORS[stmt.readerId] || '#8E8E93' }}
+                  >
+                    {READER_NAMES[stmt.readerId] || stmt.readerId}:
+                  </span>
+                  <span className="text-muted-foreground line-clamp-2">{stmt.statement}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FocusGroupSkeleton() {
   return (
@@ -45,7 +123,7 @@ function FocusGroupSkeleton() {
 }
 
 export function FocusGroupPanel() {
-  const { focusGroupMessages, focusGroupTypingSpeaker, isStreaming, chatMessages, addChatMessage, setStreaming, isHydratingScoutState } = useAppStore();
+  const { focusGroupMessages, focusGroupTypingSpeaker, isStreaming, chatMessages, addChatMessage, setStreaming, isHydratingScoutState, currentProject } = useAppStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [followUpInput, setFollowUpInput] = useState('');
 
@@ -177,6 +255,11 @@ export function FocusGroupPanel() {
           )}
         </div>
       </div>
+
+      {/* Prior Sessions (collapsible) */}
+      {currentProject?.id && (
+        <PriorSessionsSection projectId={currentProject.id} />
+      )}
 
       {/* Follow-up input */}
       <div className="px-4 py-3 border-t border-border/30">
