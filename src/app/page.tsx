@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '@/components/layout/app-shell';
 import { useAppStore } from '@/stores/app-store';
 import { ErrorBoundary } from '@/components/shared/error-boundary';
@@ -15,7 +16,9 @@ import { SettingsView } from '@/components/settings/settings-view';
 import { CreateStudioPrompt } from '@/components/studio/create-studio-prompt';
 
 export default function Home() {
-  const { activeTab, isStudioConfigOpen, currentStudio, studios, setCurrentStudio, setStudios } = useAppStore();
+  const { activeTab, isStudioConfigOpen, currentStudio, currentProject, studios, setCurrentStudio, setStudios } = useAppStore();
+  const queryClient = useQueryClient();
+  const prevProjectIdRef = useRef<string | null>(null);
   const [validating, setValidating] = useState(true);
   const [needsStudio, setNeedsStudio] = useState(false);
 
@@ -72,6 +75,20 @@ export default function Home() {
       setNeedsStudio(false);
     }
   }, [currentStudio, validating, needsStudio]);
+
+  // Invalidate deliverable/evaluation/focus React Query caches on project switch
+  useEffect(() => {
+    const projectId = currentProject?.id ?? null;
+    if (projectId === prevProjectIdRef.current) return;
+
+    const prevId = prevProjectIdRef.current;
+    prevProjectIdRef.current = projectId;
+
+    // If switching away from a project, invalidate stale draft query caches
+    if (prevId !== null) {
+      queryClient.removeQueries({ queryKey: ['drafts'], exact: false });
+    }
+  }, [currentProject, queryClient]);
 
   // Show loading state while validating
   if (validating) {

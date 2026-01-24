@@ -39,6 +39,7 @@ interface ProjectState {
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   addDraftToProject: (projectId: string, draft: Draft) => void;
+  resetProjectState: () => void;
 }
 
 // ============================================
@@ -253,7 +254,37 @@ export const useAppStore = create<AppStore>()(
         currentDraft: null,
         projects: [],
 
-        setCurrentProject: (project) => set({ currentProject: project }),
+        setCurrentProject: (project) =>
+          set((state) => {
+            const prevId = state.currentProject?.id ?? null;
+            const newId = project?.id ?? null;
+            if (prevId !== newId) {
+              // Reset all project-specific ephemeral state when switching projects
+              return {
+                currentProject: project,
+                currentDraft: null,
+                currentDeliverable: null,
+                readerPerspectives: [],
+                isAnalyzing: false,
+                analysisProgress: null,
+                focusMessages: [],
+                isLive: false,
+                currentSpeaker: null,
+                isTyping: false,
+                evaluations: [],
+                isEvaluating: false,
+                currentExecutive: null,
+                rightPanelMode: 'idle' as RightPanelPhase,
+                readerStates: new Map(),
+                focusGroupMessages: [],
+                focusGroupTypingSpeaker: null,
+                activeReaderChatId: null,
+                readerChatMessages: {},
+                executiveStates: new Map(),
+              };
+            }
+            return { currentProject: project };
+          }),
         setCurrentDraft: (draft) => set({ currentDraft: draft }),
         addProject: (project) =>
           set((state) => ({ projects: [...state.projects, project] })),
@@ -275,6 +306,28 @@ export const useAppStore = create<AppStore>()(
                 : p
             ),
           })),
+        resetProjectState: () =>
+          set({
+            currentDraft: null,
+            currentDeliverable: null,
+            readerPerspectives: [],
+            isAnalyzing: false,
+            analysisProgress: null,
+            focusMessages: [],
+            isLive: false,
+            currentSpeaker: null,
+            isTyping: false,
+            evaluations: [],
+            isEvaluating: false,
+            currentExecutive: null,
+            rightPanelMode: 'idle' as RightPanelPhase,
+            readerStates: new Map(),
+            focusGroupMessages: [],
+            focusGroupTypingSpeaker: null,
+            activeReaderChatId: null,
+            readerChatMessages: {},
+            executiveStates: new Map(),
+          }),
 
         // ============ ANALYSIS STATE ============
         isAnalyzing: false,
