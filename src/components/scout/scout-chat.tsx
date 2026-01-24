@@ -156,13 +156,16 @@ export function ScoutChat() {
   const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+  // If remounting with a project already set (e.g., tab switch back), history is already loaded in the store
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(!!currentProject);
   const [queueMessage, setQueueMessage] = useState<string | null>(null);
   const [scoutInitPhase, setScoutInitPhase] = useState<ScoutInitPhase>('idle');
   const [initStaleMessage, setInitStaleMessage] = useState<string | null>(null);
   const [initErrorMessage, setInitErrorMessage] = useState<string | null>(null);
   const initStaleTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const prevProjectIdRef = useRef<string | null>(null);
+  // Initialize with current project ID so remounting (tab switch back) doesn't re-clear/re-fetch
+  const prevProjectIdRef = useRef<string | null>(currentProject?.id ?? null);
+  const prevHydrateProjectIdRef = useRef<string | null>(currentProject?.id ?? null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
   const persistReaderDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -680,8 +683,14 @@ export function ScoutChat() {
 
   // Hydrate SCOUT tab state from the database when project changes
   // Runs in parallel with chat history loading for faster mount
+  // Skips on remount if the project is the same (local Zustand state is still valid)
   useEffect(() => {
-    const projectId = currentProject?.id;
+    const projectId = currentProject?.id ?? null;
+
+    // Skip if project hasn't actually changed (e.g., remount from tab switch)
+    if (projectId === prevHydrateProjectIdRef.current) return;
+    prevHydrateProjectIdRef.current = projectId;
+
     if (!projectId) return;
 
     let cancelled = false;
