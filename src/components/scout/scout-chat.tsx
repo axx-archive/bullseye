@@ -165,6 +165,7 @@ export function ScoutChat() {
   const prevProjectIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
+  const persistReaderDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const currentAssistantIdRef = useRef<string | null>(null);
   const toolCallsRef = useRef<ToolCallStatus[]>([]);
   const turnCompleteRef = useRef(false);
@@ -202,11 +203,48 @@ export function ScoutChat() {
     }
   }, []);
 
-  // Clean up stale timer on unmount
+  // Persist reader states to the database (fire-and-forget)
+  const flushReaderStates = useCallback(() => {
+    const projectId = useAppStore.getState().currentProject?.id;
+    if (!projectId) return;
+    const readerStates = useAppStore.getState().readerStates;
+    if (readerStates.size === 0) return;
+    const readerStatesArray = Array.from(readerStates.values()).map((rs) => ({
+      readerId: rs.readerId,
+      status: rs.status,
+      progress: rs.progress,
+      scores: rs.scores,
+      recommendation: rs.recommendation,
+      keyStrengths: rs.keyStrengths,
+      keyConcerns: rs.keyConcerns,
+      standoutQuote: rs.standoutQuote,
+      error: rs.error,
+    }));
+    fetch(`/api/projects/${projectId}/scout-state`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ readerStates: readerStatesArray }),
+    }).catch((err) => console.error('Failed to persist reader states:', err));
+  }, []);
+
+  const debouncedPersistReaderStates = useCallback(() => {
+    if (persistReaderDebounceRef.current) {
+      clearTimeout(persistReaderDebounceRef.current);
+    }
+    persistReaderDebounceRef.current = setTimeout(() => {
+      flushReaderStates();
+      persistReaderDebounceRef.current = null;
+    }, 500);
+  }, [flushReaderStates]);
+
+  // Clean up stale timer and debounce timer on unmount
   useEffect(() => {
     return () => {
       if (initStaleTimerRef.current) {
         clearTimeout(initStaleTimerRef.current);
+      }
+      if (persistReaderDebounceRef.current) {
+        clearTimeout(persistReaderDebounceRef.current);
       }
     };
   }, []);
@@ -290,6 +328,7 @@ export function ScoutChat() {
       },
       onReaderStart: (readerId) => {
         setReaderState(readerId, { readerId, status: 'streaming', progress: 0 });
+        debouncedPersistReaderStates();
         // Advance init phase to 'engaging' when readers start
         if (scoutInitPhase === 'processing' || scoutInitPhase === 'analyzing') {
           advanceInitPhase('engaging');
@@ -297,6 +336,7 @@ export function ScoutChat() {
       },
       onReaderProgress: (readerId, progress) => {
         setReaderState(readerId, { progress });
+        debouncedPersistReaderStates();
       },
       onReaderComplete: (readerId, data) => {
         setReaderState(readerId, {
@@ -308,6 +348,8 @@ export function ScoutChat() {
           keyConcerns: data.keyConcerns,
           standoutQuote: data.standoutQuote,
         });
+        // Flush immediately on complete to ensure final state is persisted
+        flushReaderStates();
       },
       onReaderError: (readerId, error) => {
         setReaderState(readerId, { readerId, status: 'error', error });
@@ -472,7 +514,7 @@ export function ScoutChat() {
       requestPayload,
       callbacks
     );
-  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient, scoutInitPhase, advanceInitPhase, clearInitPhase]);
+  }, [updateChatMessage, setReaderState, setDeliverable, setActiveTab, addFocusGroupMessage, setFocusGroupTyping, clearFocusGroupMessages, setRightPanelMode, setStreaming, addChatMessage, setExecutiveState, queryClient, scoutInitPhase, advanceInitPhase, clearInitPhase, debouncedPersistReaderStates, flushReaderStates]);
 
   const handleSendMessage = useCallback((content: string, attachment?: FileAttachment) => {
     // Build the user-facing message content
