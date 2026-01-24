@@ -167,7 +167,7 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "The ReaderMemory table has narrativeSummary, scores, recommendation fields per reader per draft. The FocusGroupMessage table has speaker, content, role fields. Load the most recent draft's memories and the most recent focus session's messages."
     },
     {

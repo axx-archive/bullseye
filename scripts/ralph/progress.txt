@@ -112,3 +112,15 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - Chat history truncation: iterate from most recent backward until budget exhausted, prepend truncation marker.
   - The function returns both the assembled prompt string and metadata (totalEstimatedTokens, truncated boolean, per-layer breakdown).
 ---
+
+## 2026-01-23 - US-010
+- What was implemented: Integrated project context injection into the Scout API route. When `projectId` is provided, the route now fetches the project's latest draft, reader memories (narrativeSummary, recommendation, keyStrengths, keyConcerns), and focus group messages (last 20 from latest draft's focus session). This context is formatted and passed to `buildContextBudget()` which assembles it within the 200K token budget. The budget-assembled string becomes the system prompt, and only the latest user message is sent as the query prompt. Context loading failures are caught and logged without blocking the conversation.
+- Files changed: src/app/api/scout/route.ts
+- **Learnings for future iterations:**
+  - The FocusGroupMessage model relates to FocusSession (which relates to Draft) — query via `session: { draftId }` for filtering by draft
+  - Reader memories are per-draft (@@unique([draftId, readerId])) — fetch by latestDraft.id to get current analysis context
+  - When using buildContextBudget, the returned `prompt` string replaces the system prompt entirely (it includes system + script + memories + focus + chat)
+  - The original conversationContext/prompt construction is bypassed when project context is loaded — only lastUserMessage.content is needed as the query prompt
+  - Use Promise.all for parallel DB queries (memories + focus messages) to minimize latency
+  - Focus messages are fetched desc by sequenceNumber then reversed to get chronological order
+---
