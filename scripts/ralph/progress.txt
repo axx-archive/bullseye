@@ -14,6 +14,8 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Chat persistence uses ChatSession (1:1 with Project via unique projectId) and ChatSessionMessage (many per session, ordered by createdAt)
 - Fire-and-forget persistence pattern: use a top-level `persistChatMessage(projectId, data)` helper that wraps fetch().catch(console.error)
 - Prisma client is generated to `src/generated/prisma` — import types from there
+- When resetting project state, all ephemeral state spans AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState — use `resetProjectState()` or inline the full reset in `setCurrentProject`
+- React Query deliverable hooks use `enabled: !!draftId` — clearing `currentDraft` to null automatically disables them without explicit invalidation
 
 ---
 
@@ -86,4 +88,15 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - The GET /api/projects/[id]/chat response shape: { messages: Array<{ id, role, content, agentType, toolCalls, attachmentName, attachmentSize, createdAt }> }
   - Map DB `agentType` (nullable string) to StoreChatMessage `agentType` (optional 'SCOUT'|'READER') with nullish coalescing to undefined
   - Use `useAppStore.setState({ chatMessages: mapped })` for bulk-setting messages (same pattern as retry handler)
+---
+
+## 2026-01-23 - US-008
+- What was implemented: Added `resetProjectState` action to the Zustand store that clears all project-specific ephemeral state in one call. Modified `setCurrentProject` to automatically trigger this reset when the project ID changes. Added a React Query cache invalidation effect in page.tsx that removes all draft-keyed queries when switching projects, ensuring deliverable/evaluation/focus tabs show fresh data.
+- Files changed: src/stores/app-store.ts, src/app/page.tsx
+- **Learnings for future iterations:**
+  - The `setCurrentProject` setter can use `set((state) => ...)` form to compare prev/new IDs and conditionally include reset state in the return
+  - All ephemeral project state lives across AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState interfaces — reset must cover all of them
+  - React Query hooks for deliverables/evaluations/focus use `enabled: !!draftId` so clearing `currentDraft` to null disables them automatically
+  - Use `queryClient.removeQueries({ queryKey: ['drafts'], exact: false })` to clear all draft-related caches regardless of specific draftId
+  - The `prevProjectIdRef` pattern (compare prev vs new ID before acting) prevents redundant resets when the currentProject object changes identity but the ID stays the same
 ---

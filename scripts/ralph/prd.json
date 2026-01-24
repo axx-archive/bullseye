@@ -133,7 +133,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "The store already has individual clear functions (clearReaderStates, clearFocusGroupMessages, clearExecutiveStates). Bundle them into a single resetProjectState action. The setCurrentProject setter should trigger this when the project ID actually changes."
     },
     {
