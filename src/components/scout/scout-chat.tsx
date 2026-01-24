@@ -62,6 +62,7 @@ export function ScoutChat() {
   const connectionRef = useRef<{ abort: () => void } | null>(null);
   const currentAssistantIdRef = useRef<string | null>(null);
   const toolCallsRef = useRef<ToolCallStatus[]>([]);
+  const turnCompleteRef = useRef(false);
   const lastRequestRef = useRef<{
     content: string;
     attachment?: FileAttachment;
@@ -79,6 +80,7 @@ export function ScoutChat() {
     streamingTextRef.current = '';
     currentAssistantIdRef.current = assistantId;
     toolCallsRef.current = [];
+    turnCompleteRef.current = false;
 
     // Build message history for context
     const allMessages = [...existingMessages, userMessage].map((m) => ({
@@ -105,11 +107,33 @@ export function ScoutChat() {
     // Create event router callbacks
     const callbacks: EventRouterCallbacks = {
       onScoutTextDelta: (text) => {
+        // Detect turn boundary: if the previous turn completed, start a new message
+        if (turnCompleteRef.current) {
+          turnCompleteRef.current = false;
+          streamingTextRef.current = '';
+          const newAssistantId = uuidv4();
+          currentAssistantIdRef.current = newAssistantId;
+          toolCallsRef.current = [];
+          const newMessage: ChatMessage = {
+            id: newAssistantId,
+            role: 'assistant',
+            content: '',
+            agentType: 'SCOUT',
+            timestamp: new Date(),
+            isStreaming: true,
+          };
+          addChatMessage(newMessage);
+        }
         streamingTextRef.current += text;
-        updateChatMessage(assistantId, { content: streamingTextRef.current });
+        if (currentAssistantIdRef.current) {
+          updateChatMessage(currentAssistantIdRef.current, { content: streamingTextRef.current });
+        }
       },
       onScoutTextComplete: () => {
-        updateChatMessage(assistantId, { isStreaming: false });
+        turnCompleteRef.current = true;
+        if (currentAssistantIdRef.current) {
+          updateChatMessage(currentAssistantIdRef.current, { isStreaming: false });
+        }
       },
       onReaderStart: (readerId) => {
         setReaderState(readerId, { readerId, status: 'streaming', progress: 0 });
@@ -200,11 +224,12 @@ export function ScoutChat() {
       onResult: () => {
         setStreaming(false);
         setActiveTool(null);
-        // Mark any remaining running tools as complete
+        // Mark any remaining running tools as complete on the current assistant message
+        const finalAssistantId = currentAssistantIdRef.current || assistantId;
         toolCallsRef.current = toolCallsRef.current.map((tc) =>
           tc.status === 'running' ? { ...tc, status: 'complete' as const } : tc
         );
-        updateChatMessage(assistantId, {
+        updateChatMessage(finalAssistantId, {
           isStreaming: false,
           toolCalls: toolCallsRef.current.length > 0 ? [...toolCallsRef.current] : undefined,
         });
@@ -222,12 +247,13 @@ export function ScoutChat() {
       onError: (error) => {
         setStreaming(false);
         setActiveTool(null);
+        const errorAssistantId = currentAssistantIdRef.current || assistantId;
         currentAssistantIdRef.current = null;
         // If we have partial text, keep it and append error
         const errorContent = streamingTextRef.current
           ? streamingTextRef.current
           : `Connection error: ${error}`;
-        updateChatMessage(assistantId, {
+        updateChatMessage(errorAssistantId, {
           content: errorContent,
           isStreaming: false,
           role: streamingTextRef.current ? 'assistant' : 'system',
