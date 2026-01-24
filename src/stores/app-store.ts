@@ -522,7 +522,11 @@ export const useAppStore = create<AppStore>()(
       {
         name: 'bullseye-storage',
         partialize: (state) => ({
-          // Only persist certain state
+          // Only persist UI preferences to localStorage.
+          // SCOUT analysis state (readerStates, focusGroupMessages, executiveStates,
+          // rightPanelMode) is intentionally EXCLUDED — it is always hydrated fresh
+          // from the database on project select (see scout-chat.tsx hydration effect)
+          // to ensure multi-device access shows the latest state.
           studios: state.studios,
           currentStudio: state.currentStudio,
           projects: state.projects,
