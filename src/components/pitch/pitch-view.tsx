@@ -90,6 +90,7 @@ export function PitchView() {
       },
       onToolStart: () => {},
       onToolEnd: () => {},
+      onQueueStatus: () => {},
       onResult: () => {},
       onError: () => {},
     };

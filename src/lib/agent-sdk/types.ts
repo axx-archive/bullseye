@@ -20,6 +20,7 @@ export type ScoutEventType =
   | 'reader_chat_message'
   | 'executive_start'
   | 'executive_complete'
+  | 'queue_status'
   | 'error'
   | 'result';
 
@@ -40,6 +41,8 @@ export interface ScoutSSEEvent {
   executiveName?: string;
   error?: string;
   totalCostUsd?: number;
+  status?: 'queued' | 'processing';
+  message?: string;
 }
 
 export type RightPanelPhase = 'idle' | 'analysis' | 'focus_group' | 'reader_chat' | 'executive';

@@ -76,6 +76,7 @@ export function ScoutChat() {
   const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [queueMessage, setQueueMessage] = useState<string | null>(null);
   const prevProjectIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
@@ -126,6 +127,8 @@ export function ScoutChat() {
     // Create event router callbacks
     const callbacks: EventRouterCallbacks = {
       onScoutTextDelta: (text) => {
+        // Clear queue indicator when content starts arriving
+        setQueueMessage(null);
         // Detect turn boundary: if the previous turn completed, start a new message
         if (turnCompleteRef.current) {
           turnCompleteRef.current = false;
@@ -219,6 +222,7 @@ export function ScoutChat() {
         }
       },
       onToolStart: (tool) => {
+        setQueueMessage(null);
         setActiveTool(tool);
         const baseName = tool.includes('__') ? tool.split('__').pop()! : tool;
         const displayName = getToolDisplayName(tool);
@@ -249,9 +253,17 @@ export function ScoutChat() {
           });
         }
       },
+      onQueueStatus: (status, message) => {
+        if (status === 'queued' && message) {
+          setQueueMessage(message);
+        } else {
+          setQueueMessage(null);
+        }
+      },
       onResult: () => {
         setStreaming(false);
         setActiveTool(null);
+        setQueueMessage(null);
         // Mark any remaining running tools as complete on the current assistant message
         const finalAssistantId = currentAssistantIdRef.current || assistantId;
         toolCallsRef.current = toolCallsRef.current.map((tc) =>
@@ -288,6 +300,7 @@ export function ScoutChat() {
       onError: (error) => {
         setStreaming(false);
         setActiveTool(null);
+        setQueueMessage(null);
         const errorAssistantId = currentAssistantIdRef.current || assistantId;
         currentAssistantIdRef.current = null;
         // If we have partial text, keep it and append error
@@ -585,6 +598,12 @@ export function ScoutChat() {
             agentName="Scout"
             agentColor="#D4A84B"
           />
+          {queueMessage && (
+            <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
+              <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse" />
+              {queueMessage}
+            </div>
+          )}
           {/* Retry button when last message is an error */}
           {!isStreaming && chatMessages.some((m) => m.role === 'system' && m.content.startsWith('__error__')) && (
             <div className="flex justify-center gap-2 pb-2">

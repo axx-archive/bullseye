@@ -34,6 +34,7 @@ export interface EventRouterCallbacks {
   // System
   onToolStart: (tool: string) => void;
   onToolEnd: (tool: string) => void;
+  onQueueStatus: (status: 'queued' | 'processing', message?: string) => void;
   onResult: (data: { success: boolean; totalCostUsd?: number; numTurns?: number }) => void;
   onError: (error: string) => void;
 }
@@ -122,6 +123,8 @@ export function routeEvent(event: ScoutSSEEvent, callbacks: EventRouterCallbacks
         callbacks.onToolStart(event.tool);
       } else if (event.type === 'tool_end' && event.tool) {
         callbacks.onToolEnd(event.tool);
+      } else if (event.type === 'queue_status' && event.status) {
+        callbacks.onQueueStatus(event.status, event.message);
       } else if (event.type === 'result') {
         callbacks.onResult(event.data as { success: boolean; totalCostUsd?: number; numTurns?: number });
       } else if (event.type === 'error') {

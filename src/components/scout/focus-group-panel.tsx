@@ -92,6 +92,7 @@ export function FocusGroupPanel() {
       onPhaseChange: () => {},
       onToolStart: () => {},
       onToolEnd: () => {},
+      onQueueStatus: () => {},
       onResult: () => {
         useAppStore.getState().setStreaming(false);
         useAppStore.getState().updateChatMessage(assistantId, { isStreaming: false });

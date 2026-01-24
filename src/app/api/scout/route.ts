@@ -255,7 +255,24 @@ export async function POST(req: Request) {
 
         // Acquire rate limiter capacity before starting the Scout query
         const estimatedInputTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
-        await rateLimiter.acquire({ estimatedInputTokens });
+        await rateLimiter.acquire({
+          estimatedInputTokens,
+          onQueued: () => {
+            sendEvent({
+              source: 'system',
+              type: 'queue_status',
+              status: 'queued',
+              message: 'Processing — requests queued to stay within rate limits...',
+            });
+          },
+          onProcessing: () => {
+            sendEvent({
+              source: 'system',
+              type: 'queue_status',
+              status: 'processing',
+            });
+          },
+        });
 
         // Start the Scout agent query
         const q = query({
