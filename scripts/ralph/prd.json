@@ -151,7 +151,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "This utility will be called by the Scout route before building the final prompt. Keep it pure (no DB calls) — the caller fetches the data and passes it in. The 200K context window for Opus 4.5 is the hard ceiling."
     },
     {

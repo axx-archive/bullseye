@@ -16,6 +16,7 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Prisma client is generated to `src/generated/prisma` — import types from there
 - When resetting project state, all ephemeral state spans AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState — use `resetProjectState()` or inline the full reset in `setCurrentProject`
 - React Query deliverable hooks use `enabled: !!draftId` — clearing `currentDraft` to null automatically disables them without explicit invalidation
+- Context budget utility (src/lib/agent-sdk/context-budget.ts) is pure — pass data in, get assembled prompt + metadata out. Token estimation: chars / 4.
 
 ---
 
@@ -99,4 +100,15 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - React Query hooks for deliverables/evaluations/focus use `enabled: !!draftId` so clearing `currentDraft` to null disables them automatically
   - Use `queryClient.removeQueries({ queryKey: ['drafts'], exact: false })` to clear all draft-related caches regardless of specific draftId
   - The `prevProjectIdRef` pattern (compare prev vs new ID before acting) prevents redundant resets when the currentProject object changes identity but the ID stays the same
+---
+
+## 2026-01-23 - US-009
+- What was implemented: Created src/lib/agent-sdk/context-budget.ts with a `buildContextBudget()` function that assembles Scout's context within the 200K Opus 4.5 token budget. Implements token estimation (chars/4), budget allocation across 5 layers (system 4K, script 80K, chat 50K, memories 20K, focus 10K = 164K total), script truncation (first 40K + last 20K chars with truncation marker), and chat history truncation (most recent messages first). Returns the assembled prompt string and metadata with per-layer token counts and truncation status.
+- Files changed: src/lib/agent-sdk/context-budget.ts (new file)
+- **Learnings for future iterations:**
+  - The context budget utility is pure — no DB calls. The caller (Scout route) fetches data and passes it in.
+  - Token estimation: chars / 4 approximation. Budget: 164K for context, 36K reserved for output + tools.
+  - Script truncation strategy: keep first 40K + last 20K chars when over 320K chars (80K tokens).
+  - Chat history truncation: iterate from most recent backward until budget exhausted, prepend truncation marker.
+  - The function returns both the assembled prompt string and metadata (totalEstimatedTokens, truncated boolean, per-layer breakdown).
 ---
