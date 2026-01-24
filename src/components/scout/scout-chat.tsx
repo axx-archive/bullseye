@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/stores/app-store';
-import type { ToolCallStatus } from '@/stores/app-store';
+import type { ToolCallStatus, StoreChatMessage } from '@/stores/app-store';
 import { ChatInterface, QuickActions, type ChatMessage, type FileAttachment } from '@/components/chat/chat-interface';
 import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
 import { draftKeys } from '@/hooks/use-drafts';
@@ -68,11 +68,15 @@ export function ScoutChat() {
     setExecutiveState,
     pendingScoutAttachment,
     setPendingScoutAttachment,
+    clearChat,
+    currentProject,
   } = useAppStore();
 
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const prevProjectIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef('');
   const connectionRef = useRef<{ abort: () => void } | null>(null);
   const currentAssistantIdRef = useRef<string | null>(null);
@@ -416,6 +420,53 @@ export function ScoutChat() {
     handleSendMessageRef.current = handleSendMessage;
   }, [handleSendMessage]);
 
+  // Load chat history when project changes
+  useEffect(() => {
+    const projectId = currentProject?.id ?? null;
+
+    // Skip if project hasn't actually changed
+    if (projectId === prevProjectIdRef.current) return;
+    prevProjectIdRef.current = projectId;
+
+    // Clear current chat messages
+    clearChat();
+
+    // If no project, nothing to load
+    if (!projectId) return;
+
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      setIsLoadingHistory(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/chat`);
+        if (!res.ok) throw new Error('Failed to load chat history');
+        const data: { messages: Array<{ id: string; role: string; content: string; agentType?: string | null; toolCalls?: ToolCallStatus[] | null; attachmentName?: string | null; attachmentSize?: number | null; createdAt: string }> } = await res.json();
+        if (cancelled) return;
+        if (data.messages.length > 0) {
+          const mapped: StoreChatMessage[] = data.messages.map((m) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            agentType: (m.agentType as 'SCOUT' | 'READER' | undefined) ?? undefined,
+            timestamp: new Date(m.createdAt),
+            toolCalls: (m.toolCalls as ToolCallStatus[] | undefined) ?? undefined,
+            attachment: m.attachmentName ? { name: m.attachmentName, size: m.attachmentSize ?? 0 } : undefined,
+          }));
+          useAppStore.setState({ chatMessages: mapped });
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+
+    return () => { cancelled = true; };
+  }, [currentProject, clearChat]);
+
   // Auto-send when a pending attachment arrives (e.g., after draft upload)
   useEffect(() => {
     if (pendingScoutAttachment && !isStreaming && !processingAttachmentRef.current) {
@@ -456,7 +507,14 @@ export function ScoutChat() {
 
   return (
     <div className="h-full flex flex-col">
-      {!hasMessages ? (
+      {isLoadingHistory ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse" />
+            Loading conversation...
+          </div>
+        </div>
+      ) : !hasMessages ? (
         <div className="flex-1 flex flex-col items-center justify-center relative">
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
             <Target className="w-[300px] h-[300px] text-bullseye-gold" strokeWidth={0.5} />
