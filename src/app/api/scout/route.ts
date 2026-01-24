@@ -6,6 +6,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createBullseyeToolServer } from '@/lib/agent-sdk/tools';
 import { setCurrentScript, getCurrentScript, extractScriptMetadata } from '@/lib/agent-sdk/tools/ingest';
 import { SCOUT_AGENT_SYSTEM_PROMPT } from '@/lib/agent-sdk/prompts';
+import { buildContextBudget } from '@/lib/agent-sdk/context-budget';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
 import { getCurrentUser, getUserApiKey } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -144,6 +145,94 @@ export async function POST(req: Request) {
   let systemPrompt = SCOUT_AGENT_SYSTEM_PROMPT;
   if (user?.name) {
     systemPrompt += `\n\nThe user you are working with is named ${user.name}. Address them by name occasionally in conversation — naturally, not forced.`;
+  }
+
+  // Load project context and build budget-aware prompt if projectId is provided
+  if (projectId) {
+    try {
+      // Fetch latest draft, reader memories, and focus group highlights in parallel
+      const latestDraft = await db.draft.findFirst({
+        where: { projectId },
+        orderBy: { draftNumber: 'desc' },
+        select: { id: true, scriptText: true },
+      });
+
+      const [readerMemories, focusMessages] = await Promise.all([
+        latestDraft
+          ? db.readerMemory.findMany({
+              where: { draftId: latestDraft.id },
+              select: {
+                readerId: true,
+                narrativeSummary: true,
+                recommendation: true,
+                keyStrengths: true,
+                keyConcerns: true,
+              },
+            })
+          : Promise.resolve([]),
+        latestDraft
+          ? db.focusGroupMessage.findMany({
+              where: { session: { draftId: latestDraft.id } },
+              orderBy: { sequenceNumber: 'desc' },
+              take: 20,
+              select: {
+                speakerType: true,
+                readerId: true,
+                content: true,
+                topic: true,
+              },
+            }).then((msgs) => msgs.reverse()) // Reverse to get chronological order
+          : Promise.resolve([]),
+      ]);
+
+      // Format reader memories into a readable text block
+      const memoriesText = readerMemories.length > 0
+        ? readerMemories.map((m) =>
+            `[${m.readerId}] (${m.recommendation})\n${m.narrativeSummary}\nStrengths: ${m.keyStrengths.join(', ')}\nConcerns: ${m.keyConcerns.join(', ')}`
+          ).join('\n\n')
+        : '';
+
+      // Format focus group messages
+      const focusText = focusMessages.length > 0
+        ? focusMessages.map((m) =>
+            `${m.speakerType === 'MODERATOR' ? 'Scout' : m.readerId || 'Reader'}: ${m.content}`
+          ).join('\n')
+        : '';
+
+      // Get script text from current script (already ingested) or from draft DB record
+      const scriptText = getCurrentScript()?.scriptText || latestDraft?.scriptText || '';
+
+      // Build chat history as string array for the context budget utility
+      const chatHistoryStrings = messages.map((m) =>
+        `${m.role === 'user' ? 'User' : 'Scout'}: ${m.content}`
+      );
+
+      // Assemble context within token budget
+      const budgetResult = buildContextBudget({
+        systemPrompt,
+        scriptText,
+        chatHistory: chatHistoryStrings,
+        readerMemories: memoriesText,
+        focusGroupHighlights: focusText,
+      });
+
+      if (budgetResult.metadata.truncated) {
+        console.warn(
+          `[Scout] Context truncated for project ${projectId}. ` +
+          `Total tokens: ~${budgetResult.metadata.totalEstimatedTokens}. ` +
+          `Layers: ${JSON.stringify(budgetResult.metadata.layers)}`
+        );
+      }
+
+      // Use the budget-assembled system prompt and override the raw prompt
+      // The budget result includes system prompt + script + memories + focus + chat history
+      // We only need the latest user message as the actual query prompt
+      systemPrompt = budgetResult.prompt;
+      prompt = lastUserMessage.content;
+    } catch (error) {
+      // Non-critical: context loading failure shouldn't block the conversation
+      console.error('[Scout] Failed to load project context:', error);
+    }
   }
 
   // Create the SSE stream
