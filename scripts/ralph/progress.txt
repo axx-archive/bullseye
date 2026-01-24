@@ -1,102 +1,19 @@
 # Ralph Progress Log
-Started: Fri Jan 23 13:42:16 PST 2026
+Started: Fri Jan 23 18:07:41 PST 2026
 
 ## Codebase Patterns
-- ScrollArea component (radix) does NOT forward refs to the viewport — use a plain div with overflow-y-auto for direct scroll control
-- scout-layout.tsx uses absolute/relative positioning with opacity transitions for mobile panel switching
-- Chat messages are rendered via ChatInterface component in src/components/chat/chat-interface.tsx, not directly in scout-chat.tsx
-- Use `overflow-y-auto` on panel containers to enable independent panel scrolling
-- ReaderAnalysisOutput.scores has BOTH string ratings (premise, character, etc.) AND numeric values (*Numeric fields) — the UI (ReaderStreamState) expects only numeric values keyed by dimension name
-- SSE event data must be transformed to match the UI store's type expectations — don't pass raw LLM output objects directly
-- Prisma generated client is at `src/generated/prisma` and is gitignored — only commit schema.prisma + migrations
-- Prisma config lives in `prisma.config.ts` (auto-detected by CLI commands)
-- For LLM utility calls within tools, use dynamic import: `const AnthropicSDK = (await import('@anthropic-ai/sdk')).default; const client = new AnthropicSDK();`
-- Use `claude-haiku-4-20250414` for fast structured extraction tasks (cheaper/faster than sonnet)
-- The in-memory `currentScript` in ingest.ts IS the server-side session state — there is no separate Zustand store on the server
-- Prisma `findMany`/`findUnique` returns ALL scalar fields by default — newly added columns are included automatically in GET responses
-- Non-critical DB operations in the scout route should be wrapped in try/catch so failures don't block the analysis flow
+- In scout-chat.tsx, use refs (useRef + useEffect to sync) instead of including unstable callbacks in useEffect dependency arrays
+- Run `npm run lint -- <filepath>` to lint specific files; `npx tsc --noEmit` for typecheck
+- The eslint rule `react-hooks/refs` forbids assigning ref.current during render — wrap in useEffect instead
+- handleSendMessage has chatMessages in its useCallback deps, making it unstable — always access via ref for effects
 
 ---
 
 ## 2026-01-23 - US-001
-- Implemented independent scrolling for left (Scout chat) and right (Reader activity) panels
-- Changed overflow-hidden to overflow-y-auto on both panel containers in scout-layout.tsx
-- Replaced ScrollArea with plain div + overflow-y-auto in chat-interface.tsx for direct ref access
-- Added near-bottom threshold check (100px) before auto-scrolling to avoid interrupting user scroll-up
-- Removed unused ScrollArea import
-- Files changed:
-  - src/components/scout/scout-layout.tsx (line 146, 159: overflow-hidden → overflow-y-auto)
-  - src/components/chat/chat-interface.tsx (lines 89-93: auto-scroll with threshold, line 268: ScrollArea → div)
+- What was implemented: Fixed pendingScoutAttachment double-fire by adding a processingRef guard and using a handleSendMessageRef to avoid including the unstable handleSendMessage in the useEffect dependency array
+- Files changed: src/components/scout/scout-chat.tsx
 - **Learnings for future iterations:**
-  - Radix ScrollArea doesn't forward ref to viewport — can't use scrollRef.current.scrollTop on it directly
-  - Both panels need overflow-y-auto (not just left) for independent scrolling to work
-  - The near-bottom check pattern: `scrollHeight - scrollTop - clientHeight < threshold`
----
-
-## 2026-01-23 - US-002
-- Fixed reader score bar visualization by transforming event payload scores
-- Root cause: `analysis.scores` from ReaderAnalysisOutput contains string enum ratings (e.g. 'excellent', 'very_good') keyed by dimension name (premise, character, etc.), but ReaderStreamState.scores expects numeric values (0-100)
-- The numeric values existed as `*Numeric` suffixed keys (premiseNumeric, overallNumeric, etc.) but weren't being mapped to the UI's expected shape
-- Fix: Transform scores in the emitEvent call to map `analysis.scores.premiseNumeric` → `scores.premise`, etc.
-- Files changed:
-  - src/lib/agent-sdk/tools/readers.ts (lines 217-231: transform scores object in analysis_complete event)
-- **Learnings for future iterations:**
-  - ReaderAnalysisOutput.scores is a flat object with BOTH string ratings AND numeric values — always extract the numeric versions for UI consumption
-  - The event-router passes `event.data` through as `Partial<ReaderStreamState>` — the shape must match exactly
-  - numericToFilled() expects 0-100 input, divides by 10 — passing a string silently produces NaN and empty bars (no runtime error)
----
-
-## 2026-01-23 - US-003
-- Added `writer String?` field to Project model in prisma/schema.prisma
-- Ran Prisma migration: `20260123214921_add_project_writer`
-- Regenerated Prisma client — writer is now available on Project type
-- Typecheck passes cleanly
-- Files changed:
-  - prisma/schema.prisma (line 86: added `writer String?`)
-  - prisma/migrations/20260123214921_add_project_writer/migration.sql (new file)
-- **Learnings for future iterations:**
-  - Prisma config is in prisma.config.ts (not default), loaded automatically by `npx prisma` commands
-  - Generated Prisma client output is at `src/generated/prisma` (configured in schema generator block)
-  - The generated client files are gitignored — only schema.prisma and migrations need to be committed
----
-
-## 2026-01-23 - US-004
-- Implemented auto-extraction of metadata (title, writer, genre, format) from script text using LLM
-- Added `extractScriptMetadata()` function to `src/lib/agent-sdk/tools/ingest.ts` that:
-  - Reads first 15000 chars of script text
-  - Calls claude-haiku-4 with structured JSON extraction prompt
-  - Validates and normalizes the format enum value
-  - Returns null gracefully on any failure
-- Integrated extraction into `src/app/api/scout/route.ts` after pre-ingestion:
-  - Calls `extractScriptMetadata()` after `setCurrentScript()` sets defaults
-  - Updates currentScript with extracted values (only overwrites if meaningful — skips 'Unknown' writer)
-  - Updated the prompt injected to Scout to include extracted title/writer/genre/format
-- Files changed:
-  - src/lib/agent-sdk/tools/ingest.ts (added `extractScriptMetadata` export function)
-  - src/app/api/scout/route.ts (import extractScriptMetadata + getCurrentScript, call extraction after pre-ingest, update prompt)
-- **Learnings for future iterations:**
-  - Dynamic import pattern for @anthropic-ai/sdk works cleanly in Next.js API routes and tool files
-  - claude-haiku-4-20250414 is fast enough for synchronous metadata extraction without noticeable delay
-  - JSON extraction from LLM responses: use `.match(/\{[\s\S]*\}/)` for objects, `/\[[\s\S]*\]/` for arrays
-  - The format enum normalization (uppercase + replace spaces/hyphens with underscores) handles edge cases from LLM output
-  - Extraction is graceful — returns null on any failure, so the caller keeps defaults
----
-
-## 2026-01-23 - US-005
-- Implemented persistence of extracted metadata (genre, writer, format) to the Project database record
-- Added `projectId` to ScoutRequest interface and passed it from scout-chat.tsx via the request payload
-- After metadata extraction, the route fetches the Project and conditionally updates fields:
-  - Genre: only if project has default ('Drama') or null genre, and extraction result is meaningful
-  - Writer: only if project doesn't already have a writer set, and extracted value isn't 'Unknown'
-  - Format: only if the extracted format is a valid ProjectFormat enum value
-- Added `db` import and `ProjectFormat` type import to the scout route
-- GET responses for projects already include writer field (Prisma returns all scalar fields by default)
-- Files changed:
-  - src/app/api/scout/route.ts (added db import, projectId destructuring, Project update logic after extraction)
-  - src/components/scout/scout-chat.tsx (pass projectId from app store in request payload)
-- **Learnings for future iterations:**
-  - Prisma `findMany`/`findUnique` without `select` returns ALL scalar fields — no need to add newly added fields explicitly
-  - Use `useAppStore.getState()` inside callbacks to get the latest state (avoids stale closure issues)
-  - Guard all metadata persistence with try/catch — it's non-critical and shouldn't block the analysis flow
-  - The ProjectFormat enum values from Prisma are string literals matching the schema exactly (FEATURE, TV_PILOT, etc.)
+  - handleSendMessage depends on chatMessages via useCallback, so it changes on every message — never use it directly as a useEffect dep for effects that should fire once
+  - The eslint react-hooks/refs rule disallows ref.current assignment during render — use a syncing useEffect instead
+  - The processingRef pattern (set true before action, false after) prevents React StrictMode or fast state changes from re-triggering effects
 ---

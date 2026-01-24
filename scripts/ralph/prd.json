@@ -1,160 +1,260 @@
 {
   "project": "Bullseye",
-  "branchName": "ralph/scout-tab-fixes",
-  "description": "Fix Scout tab scrolling, score bars, script upload flow, metadata extraction, and reader engagement UX",
+  "branchName": "ralph/scout-fixes-v2",
+  "description": "Fix Scout duplicate messages, project-scoped chat persistence, Opus 4.5 migration, and rate limit queuing",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Fix left panel (Scout chat) scrolling",
-      "description": "As a user, I want the Scout chat panel to scroll independently and auto-scroll to the latest message so I can follow the conversation.",
+      "title": "Fix pendingScoutAttachment double-fire in useEffect",
+      "description": "As a user, I want my uploaded script to appear exactly once in the chat so Scout doesn't process it twice.",
       "acceptanceCriteria": [
-        "Left panel in scout-layout.tsx uses overflow-y-auto instead of overflow-hidden",
-        "Chat messages container in scout-chat.tsx auto-scrolls to bottom when new messages arrive (useRef + scrollIntoView or scrollTop = scrollHeight)",
-        "Auto-scroll only triggers if user is near the bottom (within 100px threshold) — don't interrupt if user scrolled up",
-        "Right panel retains overflow-y-auto for independent user-controlled scrolling (no auto-scroll)",
-        "Both panels scroll independently without affecting each other",
+        "Add a processingRef (useRef<boolean>) guard in the pendingScoutAttachment useEffect in scout-chat.tsx to prevent re-entry",
+        "Set processingRef.current = true before calling handleSendMessage, and reset it after setPendingScoutAttachment(null)",
+        "Remove handleSendMessage from the useEffect dependency array (use a ref to access the latest version instead) to prevent the effect re-firing when chatMessages changes",
+        "If the user manually sends a message while pendingScoutAttachment is set, the pending attachment is consumed and not double-sent",
+        "Only ONE user message with the script attachment appears in the chat per upload",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "The left panel currently has overflow-hidden in scout-layout.tsx. The chat container in scout-chat.tsx needs a ref to track scroll position. Use useEffect watching messages length to trigger scroll. Check isNearBottom before auto-scrolling."
+      "notes": "The current useEffect at line 338 of scout-chat.tsx has [pendingScoutAttachment, isStreaming, handleSendMessage, setPendingScoutAttachment] as deps. handleSendMessage is wrapped in useCallback with chatMessages as a dep, meaning it changes on every message add, potentially re-triggering the effect."
     },
     {
       "id": "US-002",
-      "title": "Fix reader score bar visualization",
-      "description": "As a user, I want to see the actual score values rendered as filled bars when reader evaluations come in.",
+      "title": "Fix Scout system prompt ingest_script contradiction",
+      "description": "As a developer, I need the Scout system prompt to not instruct calling ingest_script when the route has already pre-ingested the script.",
       "acceptanceCriteria": [
-        "Debug the data flow: check if analysis_complete SSE events include scores in the payload (log the event data in event-router.ts or scout-chat.tsx)",
-        "Verify readerStates in Zustand store gets populated with score objects containing numeric values for each dimension (premise, character, dialogue, structure, commerciality, overall)",
-        "If the issue is the event payload: fix the reader tool (tools/readers.ts) to include scores in the analysis_complete event",
-        "If the issue is the UI: fix ReaderAnalysisPanel to correctly read scores from readerStates Map entries",
-        "numericToFilled() correctly converts score 0-100 to 0-10 filled bars",
-        "Individual reader cards show filled colored bars for each dimension when status is 'complete'",
-        "Harmonized scores section appears with golden styling and averaged bars when all 3 readers complete",
-        "Recommendation badge shows correct color: recommend=green, consider=yellow, low_consider=orange, pass=red",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "In src/lib/agent-sdk/prompts.ts, update AUTONOMOUS WORKFLOW step 3 (Ingest) to be conditional: 'If the script was pre-ingested (indicated by [UPLOADED SCRIPT FILE] in the message), skip this step — do NOT call ingest_script. Only call ingest_script when script text is pasted directly without the upload marker.'",
+        "The FILE UPLOADS section already says 'Do NOT call ingest_script' — ensure step 3 is consistent with this",
+        "Scout does not call ingest_script when a file was uploaded (the route already set currentScript)",
+        "Scout still calls ingest_script when a user pastes raw script text without uploading a file",
+        "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "The ReaderAnalysisPanel code has the rendering logic for bars and harmonized scores. The issue is likely that readerStates entries don't have scores populated, or the event-router isn't mapping analysis_complete data correctly. Check the shape of data emitted by spawn_readers in tools/readers.ts vs what ReaderAnalysisPanel expects."
+      "passes": false,
+      "notes": "The current step 3 unconditionally says 'Call ingest_script with the script text, metadata, AND projectId/draftId'. But when attachment is present, the route.ts already calls setCurrentScript() and extractScriptMetadata(). Scout calling ingest_script again is redundant and causes double-processing."
     },
     {
       "id": "US-003",
-      "title": "Add writer field to Project model",
-      "description": "As a developer, I need to store the script writer on the Project so metadata persists and can be displayed.",
+      "title": "Fix multi-turn text concatenation in Scout messages",
+      "description": "As a user, I expect each Scout response turn to appear as a separate message rather than being concatenated into one long blob.",
       "acceptanceCriteria": [
-        "Add writer String? field to Project model in prisma/schema.prisma (nullable)",
-        "Run Prisma migration: npx prisma migrate dev --name add_project_writer",
-        "Prisma client regenerates with writer available on Project type",
-        "Typecheck passes"
-      ],
-      "priority": 3,
-      "passes": true,
-      "notes": "Simple schema addition. The Project model already has genre (String) and format (ProjectFormat enum). Writer is new and nullable since existing projects won't have it."
-    },
-    {
-      "id": "US-004",
-      "title": "Auto-extract metadata from script text",
-      "description": "As a user, I want Scout to automatically extract genre, format, and writer from my script so I don't have to provide that info manually.",
-      "acceptanceCriteria": [
-        "Create a metadata extraction step in the scout agent flow that reads the first ~5 pages (first 15000 chars) of script text",
-        "Use an LLM call (via the Anthropic SDK already in the project) to extract: title, writer, genre, format from the script content",
-        "LLM prompt asks for structured JSON response: { title: string, writer: string, genre: string, format: 'FEATURE' | 'TV_PILOT' | 'TV_EPISODE' | 'SHORT' }",
-        "Extraction happens within the ingest_script tool or as a new step after ingest but before spawn_readers",
-        "Extracted values overwrite the defaults set during pre-ingestion (genre='Drama', author='Unknown')",
-        "If extraction fails or returns uncertain results, keep existing defaults gracefully (no crash)",
-        "The extracted metadata is stored on the session IngestedScript object (currentScript in Zustand)",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": true,
-      "notes": "The Anthropic SDK is already imported in the project (@anthropic-ai/sdk). The extraction can use a small fast call with claude-haiku or claude-sonnet. Script text is available via currentScript.scriptText in the Zustand store or the ingest tool context. Extract from scriptText.slice(0, 15000)."
-    },
-    {
-      "id": "US-005",
-      "title": "Persist extracted metadata to Project record",
-      "description": "As a developer, I need extracted metadata saved to the Project record so it's available across the app.",
-      "acceptanceCriteria": [
-        "After metadata extraction, update the Project record: db.project.update({ where: { id: projectId }, data: { genre, writer, format } })",
-        "Only update fields that have meaningful extracted values (not 'Unknown' or 'Unclassified')",
-        "If project already has a non-default genre (not 'Drama') or already has a writer set, don't overwrite (respect user-set values)",
-        "The update happens in the scout API route after extraction completes (within the same request lifecycle)",
-        "GET responses for projects include the writer field",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": true,
-      "notes": "The project update should guard against overwriting: if (project.genre === 'Drama' || !project.genre) update genre. if (!project.writer) update writer. The projectId is available in the scout route context."
-    },
-    {
-      "id": "US-006",
-      "title": "Display metadata pills on Home screen project cards",
-      "description": "As a user, I want to see genre, format, and writer as small pills on my project cards on the Home screen.",
-      "acceptanceCriteria": [
-        "Home screen project cards (find the component in src/components/home/) display up to 3 metadata pills in a flex-wrap row",
-        "Genre pill: shows extracted genre string (e.g., 'Action/Thriller', 'Drama') — skip if null or 'Unclassified'",
-        "Format pill: shows human-readable label ('Feature', 'TV Pilot', 'Short', 'TV Episode', 'Limited Series', 'Documentary') — not the raw enum value",
-        "Writer pill: shows author name — skip if null or 'Unknown'",
-        "Pill styling: text-xs bg-muted/50 text-muted-foreground rounded-full px-2 py-0.5",
-        "Pills wrap to second line if needed (container uses flex-wrap gap-1)",
+        "In scout-chat.tsx's sendMessageToScout function, detect when a text_complete event fires followed by a new text_delta — this indicates a new Agent SDK turn",
+        "When a new turn starts (text_delta after text_complete): reset streamingTextRef.current to empty string, create a NEW assistant message placeholder with a new UUID, update currentAssistantIdRef to the new message ID",
+        "Add a turnCompleteRef (useRef<boolean>) that is set to true on onScoutTextComplete and checked/reset on the next onScoutTextDelta",
+        "Each Scout turn renders as its own distinct chat message in the UI",
+        "Tool calls between turns attach to the correct assistant message (the one that preceded the tool call)",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Currently streamingTextRef.current accumulates text across ALL turns without reset. The onScoutTextComplete callback just sets isStreaming:false on the message. When the next turn starts, text_delta appends to the same ref, creating one giant concatenated message. Fix by detecting turn boundaries."
+    },
+    {
+      "id": "US-004",
+      "title": "Add ChatSession and ChatSessionMessage Prisma models",
+      "description": "As a developer, I need database models to persist project-scoped chat sessions.",
+      "acceptanceCriteria": [
+        "Add ChatSession model to prisma/schema.prisma with fields: id (cuid), projectId (String, unique — one session per project), createdAt, updatedAt",
+        "Add ChatSessionMessage model with fields: id (cuid), sessionId (String, relation to ChatSession), role (String — 'user'|'assistant'|'system'), content (String @db.Text), agentType (String? — 'SCOUT'|'READER'), toolCalls (Json?), attachmentName (String?), attachmentSize (Int?), createdAt (DateTime)",
+        "Add relation: ChatSession has many ChatSessionMessages (cascade delete)",
+        "Add relation: Project has optional ChatSession",
+        "Run Prisma migration successfully",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Keep it simple — one ChatSession per project (unique projectId constraint). Messages are ordered by createdAt. The toolCalls field stores the ToolCallStatus[] array as JSON."
+    },
+    {
+      "id": "US-005",
+      "title": "Create chat persistence API endpoints",
+      "description": "As a developer, I need API endpoints to save and load project chat history.",
+      "acceptanceCriteria": [
+        "Create POST /api/projects/[id]/chat endpoint that saves a single ChatSessionMessage (creates ChatSession if needed)",
+        "Request body: { role, content, agentType?, toolCalls?, attachmentName?, attachmentSize? }",
+        "The endpoint creates the ChatSession record on first message if it doesn't exist for that projectId",
+        "Create GET /api/projects/[id]/chat endpoint that returns all ChatSessionMessages for the project's session, ordered by createdAt ascending",
+        "GET response shape: { messages: Array<{ id, role, content, agentType, toolCalls, attachmentName, attachmentSize, createdAt }> }",
+        "Both endpoints verify user authentication and project ownership (user's studio matches project's studio)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Create files: src/app/api/projects/[id]/chat/route.ts. Use getCurrentUser() for auth. Use db.chatSession.upsert for the POST to handle first-message creation atomically."
+    },
+    {
+      "id": "US-006",
+      "title": "Persist chat messages on send and receive",
+      "description": "As a user, I want my Scout conversations saved automatically so they persist across page refreshes.",
+      "acceptanceCriteria": [
+        "In scout-chat.tsx, after adding a user message to the store, fire-and-forget POST to /api/projects/[id]/chat with the message data",
+        "On onScoutTextComplete (when a Scout turn finishes), fire-and-forget POST the assistant message content",
+        "On onResult (when the full query completes), persist the final assistant message state including toolCalls",
+        "Persistence is async and non-blocking — failures are caught and logged but do not interrupt the chat flow",
+        "Only persist if currentProject?.id is available (skip if no project context)",
+        "Typecheck passes"
+      ],
       "priority": 6,
       "passes": false,
-      "notes": "Find the project card component in src/components/home/. The Project data should already be fetched with the writer field after US-003 migration. Map ProjectFormat enum to display labels: FEATURE→'Feature', TV_PILOT→'TV Pilot', etc."
+      "notes": "Use fetch('/api/projects/${projectId}/chat', { method: 'POST', body: ... }).catch(console.error) for fire-and-forget. The projectId comes from useAppStore.getState().currentProject?.id."
     },
     {
       "id": "US-007",
-      "title": "Script upload immediately engages Scout and readers",
-      "description": "As a user, I want the center upload prompt to hand off my script to Scout and immediately start reader analysis without extra steps.",
+      "title": "Load project chat history on project switch",
+      "description": "As a user, I want to see my previous Scout conversation when I return to a project.",
       "acceptanceCriteria": [
-        "When user uploads via center EmptyState prompt, script is sent to Scout with message 'Analyze this script' (existing pendingScoutAttachment flow)",
-        "Scout immediately ingests (extracts metadata) and proceeds to spawn_readers without asking any questions",
-        "The right panel switches from idle to analysis mode showing reader progress cards",
-        "Upload flow works identically whether triggered from center prompt or chat attachment button",
-        "No intermediate questions from Scout about genre/format/writer (those are auto-extracted)",
+        "Create a useEffect in scout-chat.tsx (or a parent component) that watches currentProject changes",
+        "When currentProject changes: clear chatMessages in the store, then fetch GET /api/projects/[id]/chat",
+        "Map the DB messages to StoreChatMessage format and populate the Zustand chatMessages array",
+        "If the project has no chat history, the empty state (upload prompt) is shown",
+        "While loading, show a brief loading state (or optimistically show empty until data arrives)",
+        "Switching between projects does not leak messages from one project to another",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
       "passes": false,
-      "notes": "The existing pendingScoutAttachment auto-send effect in scout-chat.tsx already sends 'Analyze this script'. The key change is ensuring Scout's system prompt doesn't ask for clarification — it just proceeds. This depends on US-009 (prompt update)."
+      "notes": "The clearChat() action already exists on the store. Use it before loading new messages. The currentProject is available via useAppStore. Consider using React Query (useQuery with projectId as key) for automatic cache management."
     },
     {
       "id": "US-008",
-      "title": "Scout gives process heads-up before engaging readers",
-      "description": "As a user, I want Scout to briefly explain what's about to happen before engaging the readers so I understand the process.",
+      "title": "Clear deliverable state on project switch",
+      "description": "As a user, I want the Coverage, Focus, and Pitch tabs to show the correct project's data when I switch projects.",
       "acceptanceCriteria": [
-        "After ingesting a script, before calling spawn_readers, Scout sends an orientation message to the user",
-        "Message content: 'I'm sending your script to three readers — Maya Chen (The Optimist), Colton Rivers (The Skeptic), and Devon Park (The Craftsman). They'll each provide independent evaluations across premise, character, dialogue, structure, and commerciality. Once all three finish, I'll harmonize their scores into a unified coverage report. You can follow their progress in the panel on the right.'",
-        "This orientation only happens on the FIRST analysis in a session (not on re-analysis or subsequent scripts in same session)",
-        "The message appears as a regular Scout chat message in the left panel (not a toast or system message)",
-        "Add this behavior to the SCOUT_AGENT_SYSTEM_PROMPT as a required step between ingest and spawn_readers",
-        "Typecheck passes"
+        "When currentProject changes in the store, clear: currentDeliverable, readerPerspectives, focusGroupMessages, executiveStates, readerStates, rightPanelMode (set to 'idle')",
+        "Add a resetProjectState action to the store that clears all project-specific ephemeral state in one call",
+        "Call resetProjectState when setCurrentProject is invoked with a different project ID",
+        "After clearing, React Query caches for deliverables/evaluations/focus sessions are invalidated for the new project's drafts",
+        "Deliverable tabs show appropriate empty states for projects without analysis results",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
       "passes": false,
-      "notes": "Add instruction to the system prompt after the ingest step: 'Before spawning readers for the FIRST script in a session, send a brief orientation message explaining the process.' The agent will naturally emit this as a text_delta event which renders in the chat."
+      "notes": "The store already has individual clear functions (clearReaderStates, clearFocusGroupMessages, clearExecutiveStates). Bundle them into a single resetProjectState action. The setCurrentProject setter should trigger this when the project ID actually changes."
     },
     {
       "id": "US-009",
-      "title": "Remove metadata questions from Scout system prompt",
-      "description": "As a developer, I need to update the Scout agent system prompt to stop asking users for genre/format/writer since it's now auto-extracted.",
+      "title": "Build context budget utility for Scout prompts",
+      "description": "As a developer, I need a utility that assembles Scout's context within the 200K token budget.",
       "acceptanceCriteria": [
-        "In src/lib/agent-sdk/prompts.ts, update SCOUT_AGENT_SYSTEM_PROMPT step 1 (Acknowledge & Clarify)",
-        "Remove: 'Ask about genre, format, and any specific concerns'",
-        "Replace with: 'Extract metadata (genre, format, writer) automatically from the script text. Do not ask the user for this information.'",
-        "Keep an optional note: 'If the user volunteers specific concerns or focus areas in their message, note them for the readers.'",
-        "Add instruction: 'If user provides genre/format/writer explicitly in their message, use that instead of extracting.'",
-        "Scout no longer asks clarifying questions about the script before proceeding — just extracts and goes",
+        "Create src/lib/agent-sdk/context-budget.ts with a buildContextBudget() function",
+        "Function accepts: { systemPrompt, scriptText, chatHistory, readerMemories, focusGroupHighlights }",
+        "Token budget allocation: systemPrompt (4K), scriptText (up to 80K), chatHistory (up to 50K, most recent first), readerMemories (up to 20K), focusGroupHighlights (up to 10K) — total must stay under 164K (leaving 36K for output + tools)",
+        "Token estimation: use chars / 4 as approximation",
+        "If scriptText exceeds 80K tokens (~320K chars), truncate: keep first 40K chars + last 20K chars + insert '[...middle content truncated for context limits...]'",
+        "If chatHistory exceeds budget, keep most recent messages that fit and prepend a '[Earlier conversation history truncated]' marker",
+        "Returns assembled prompt string and a metadata object with { totalEstimatedTokens, truncated: boolean, layers: { system, script, chat, memories, focus } }",
         "Typecheck passes"
       ],
       "priority": 9,
       "passes": false,
-      "notes": "The system prompt is in src/lib/agent-sdk/prompts.ts. The 'Acknowledge & Clarify' step is around lines 68-73. Update it to reflect the new auto-extraction flow. This is the foundational change that makes US-007 and US-008 work correctly."
+      "notes": "This utility will be called by the Scout route before building the final prompt. Keep it pure (no DB calls) — the caller fetches the data and passes it in. The 200K context window for Opus 4.5 is the hard ceiling."
+    },
+    {
+      "id": "US-010",
+      "title": "Inject project context into Scout API route",
+      "description": "As a developer, I need the Scout route to load and inject project context (memories, focus history) when resuming a conversation.",
+      "acceptanceCriteria": [
+        "In /api/scout/route.ts, when projectId is provided: fetch the project's latest draft, reader memories (from ReaderMemory table), and focus group highlights (from FocusGroupMessage table, last 20 messages)",
+        "Pass fetched context to buildContextBudget() along with the system prompt, script text (from current draft), and chat history (from request messages)",
+        "Use the assembled prompt from buildContextBudget() as the prompt passed to the Agent SDK query() call",
+        "If no projectId or no prior context exists, fall back to current behavior (just system prompt + messages)",
+        "Context loading is fast — use Promise.all for parallel DB queries",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "The ReaderMemory table has narrativeSummary, scores, recommendation fields per reader per draft. The FocusGroupMessage table has speaker, content, role fields. Load the most recent draft's memories and the most recent focus session's messages."
+    },
+    {
+      "id": "US-011",
+      "title": "Migrate Scout orchestration to Opus 4.5",
+      "description": "As a developer, I need to update the Scout agent to use Claude Opus 4.5 for higher-quality orchestration.",
+      "acceptanceCriteria": [
+        "In /api/scout/route.ts, change model from 'claude-sonnet-4-20250514' to 'claude-opus-4-5-20251101' in the query() options",
+        "Verify the Agent SDK (@anthropic-ai/claude-agent-sdk ^0.2.17) accepts this model string without errors (it passes through to Anthropic API)",
+        "The maxBudgetUsd may need to increase since Opus 4.5 costs more per token — update to 5.0 to accommodate longer analysis runs",
+        "Scout analysis completes successfully end-to-end with the new model",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "The Agent SDK query() function passes the model string directly to Anthropic's API. Opus 4.5 model ID is 'claude-opus-4-5-20251101'. The SDK version ^0.2.17 should support it since it's just a string parameter."
+    },
+    {
+      "id": "US-012",
+      "title": "Migrate reader and analysis flows to Opus 4.5",
+      "description": "As a developer, I need all reader, focus group, executive, and reader-chat flows to use Opus 4.5.",
+      "acceptanceCriteria": [
+        "In src/lib/agent-sdk/tools/readers.ts: update the model used for all 3 reader analyses to 'claude-opus-4-5-20251101'",
+        "In src/lib/agent-sdk/tools/focus-group.ts: update focus group moderation model to 'claude-opus-4-5-20251101'",
+        "In src/lib/agent-sdk/tools/executive.ts: update executive evaluation model to 'claude-opus-4-5-20251101'",
+        "In any reader-chat tool: update 1:1 reader chat model to 'claude-opus-4-5-20251101'",
+        "In focus question generation: update model to 'claude-opus-4-5-20251101'",
+        "Keep metadata extraction (ingest.ts extractScriptMetadata) on 'claude-haiku-4-20250414' — lightweight tasks stay on Haiku",
+        "Keep memory processing on Haiku — no change needed there",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Search for all occurrences of 'claude-sonnet-4' across the tools directory. Each should change to 'claude-opus-4-5-20251101'. Haiku calls (metadata, memory) stay unchanged."
+    },
+    {
+      "id": "US-013",
+      "title": "Create rate limiter utility",
+      "description": "As a developer, I need a rate limiter that queues API requests to stay within Opus 4.5 Tier 1 limits.",
+      "acceptanceCriteria": [
+        "Create src/lib/rate-limiter.ts with a RateLimiter class",
+        "Tracks three sliding windows: requests per minute (max 50), input tokens per minute (max 30000), output tokens per minute (max 8000)",
+        "Expose an async acquire(estimatedInputTokens: number) method that resolves when capacity is available, or delays until a slot opens",
+        "Expose a report(actualInputTokens: number, actualOutputTokens: number) method to update actual usage after a request completes",
+        "Sliding window uses timestamps of recent requests — purge entries older than 60 seconds on each check",
+        "Token estimation for acquire: caller passes chars / 4 as estimatedInputTokens",
+        "If acquire would exceed limits, it waits (via setTimeout + Promise) with exponential backoff up to 15 seconds",
+        "Export a singleton instance (per-process) for use across the app",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "This is a server-side utility. Each user has their own API key and rate limits, but since this is a single-user app (one API key at a time), a singleton per-process is fine. The sliding window pattern: store timestamps + token counts in an array, filter to last 60s on each check."
+    },
+    {
+      "id": "US-014",
+      "title": "Integrate rate limiter into API calls",
+      "description": "As a developer, I need all Anthropic API calls to go through the rate limiter before executing.",
+      "acceptanceCriteria": [
+        "In spawn_readers tool (readers.ts): before launching each reader's API call, call await rateLimiter.acquire(estimatedTokens) where estimatedTokens = scriptText.length / 4",
+        "After each reader completes, call rateLimiter.report(actualInput, actualOutput) with usage from the API response",
+        "In the Scout route: before calling query(), acquire capacity for the estimated prompt size",
+        "In focus-group, executive, and reader-chat tools: add acquire() calls before their API calls",
+        "When spawn_readers runs 3 readers in parallel (Promise.all), each reader independently acquires its own slot — the limiter naturally staggers them if capacity is tight",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "The rate limiter's acquire() is async and will delay if needed. Since readers run in Promise.all, each one's acquire() call might resolve at different times if rate limits are tight, effectively staggering them. The caller doesn't need to handle this explicitly."
+    },
+    {
+      "id": "US-015",
+      "title": "Emit queue status SSE events and show UI indicator",
+      "description": "As a user, I want to see a subtle indicator when my requests are being queued due to rate limits.",
+      "acceptanceCriteria": [
+        "Add a 'queue_status' event type to ScoutSSEEvent: { source: 'system', type: 'queue_status', status: 'queued' | 'processing', message?: string }",
+        "When rateLimiter.acquire() is about to delay (capacity not immediately available), emit a queue_status 'queued' event via the SSE stream",
+        "When the delay resolves and processing begins, emit a queue_status 'processing' event",
+        "In scout-chat.tsx, handle the queue_status event: show a subtle pulsing indicator below the last message with text 'Processing — requests queued to stay within rate limits...'",
+        "Indicator styling: text-xs text-muted-foreground with a small pulsing dot (animate-pulse), consistent with existing tool status indicators",
+        "Indicator disappears when the next text_delta or tool_start event arrives",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "The rate limiter needs a callback or event emitter to notify when queuing happens. Pass the sendEvent callback into the acquire function, or have acquire return a status indicating whether it delayed. The UI indicator should be minimal — not alarming."
     }
   ]
 }

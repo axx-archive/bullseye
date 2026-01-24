@@ -66,6 +66,8 @@ export function ScoutChat() {
     content: string;
     attachment?: FileAttachment;
   } | null>(null);
+  const processingAttachmentRef = useRef(false);
+  const handleSendMessageRef = useRef<(content: string, attachment?: FileAttachment) => void>(() => {});
 
   const sendMessageToScout = useCallback((
     content: string,
@@ -334,9 +336,15 @@ export function ScoutChat() {
     }
   }, [handleSendMessage]);
 
+  // Keep handleSendMessage ref current to avoid re-triggering effects
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  }, [handleSendMessage]);
+
   // Auto-send when a pending attachment arrives (e.g., after draft upload)
   useEffect(() => {
-    if (pendingScoutAttachment && !isStreaming) {
+    if (pendingScoutAttachment && !isStreaming && !processingAttachmentRef.current) {
+      processingAttachmentRef.current = true;
       const attachment: FileAttachment = {
         file: new File([], pendingScoutAttachment.filename),
         name: pendingScoutAttachment.filename,
@@ -346,9 +354,10 @@ export function ScoutChat() {
         status: 'ready',
       };
       setPendingScoutAttachment(null);
-      handleSendMessage('Analyze this script', attachment);
+      handleSendMessageRef.current('Analyze this script', attachment);
+      processingAttachmentRef.current = false;
     }
-  }, [pendingScoutAttachment, isStreaming, handleSendMessage, setPendingScoutAttachment]);
+  }, [pendingScoutAttachment, isStreaming, setPendingScoutAttachment]);
 
   // Filter out internal error markers for display
   const displayMessages: ChatMessage[] = chatMessages.map((m) => {
