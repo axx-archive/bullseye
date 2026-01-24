@@ -10,7 +10,9 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Turn boundaries in Agent SDK streaming: use a turnCompleteRef flag set on text_complete and checked on next text_delta to create new assistant messages
 - When creating new assistant messages mid-stream, also reset streamingTextRef and toolCallsRef so subsequent content is independent
 - onResult/onError should use currentAssistantIdRef.current (not captured assistantId) since the active message may have changed during multi-turn
+- The eslint rule `react-hooks/set-state-in-effect` disallows synchronous setState in effect bodies — extract an async function and call it instead
 - Chat persistence uses ChatSession (1:1 with Project via unique projectId) and ChatSessionMessage (many per session, ordered by createdAt)
+- Fire-and-forget persistence pattern: use a top-level `persistChatMessage(projectId, data)` helper that wraps fetch().catch(console.error)
 - Prisma client is generated to `src/generated/prisma` — import types from there
 
 ---
@@ -52,4 +54,36 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - The existing ChatMessage model (line 494) is a simpler legacy model — the new ChatSession/ChatSessionMessage models are the proper project-scoped persistence layer
   - Use `@unique` on projectId in ChatSession to enforce one session per project at the DB level
   - Use `@@index([sessionId, createdAt])` on ChatSessionMessage for efficient ordered retrieval
+---
+
+## 2026-01-23 - US-005
+- What was implemented: Created POST and GET /api/projects/[id]/chat API endpoints for chat persistence. GET loads all messages for a project's chat session ordered by createdAt. POST upserts the ChatSession (creates on first message) and creates a ChatSessionMessage. Both endpoints verify user authentication and project ownership via studioId matching.
+- Files changed: src/app/api/projects/[id]/chat/route.ts (new file)
+- **Learnings for future iterations:**
+  - The project route pattern uses `params: Promise<{ id: string }>` (Next.js 15 async params) — always await params
+  - Use `db.chatSession.upsert` with `where: { projectId }` to atomically create-or-update the session on first message
+  - Project ownership check: fetch project, compare project.studioId to user.studioId
+  - Return 404 (not 403) for projects the user doesn't own — avoids leaking project existence
+  - The select clause on message queries should match the GET response shape for consistency
+---
+
+## 2026-01-23 - US-006
+- What was implemented: Added fire-and-forget chat message persistence in scout-chat.tsx. User messages are persisted after being added to the store. Assistant turn content is persisted on onScoutTextComplete. On onResult, the final assistant state with toolCalls is persisted (only if toolCalls exist, since text was already saved by onScoutTextComplete). All persistence calls are guarded by a currentProject?.id check and wrapped in .catch(console.error).
+- Files changed: src/components/scout/scout-chat.tsx
+- **Learnings for future iterations:**
+  - Use a top-level helper function (outside the component) for fire-and-forget persistence to keep callback bodies clean
+  - Be careful about duplicate persistence: onScoutTextComplete fires per turn AND onResult fires at the end — only persist from onResult if there's additional data (toolCalls) beyond what onScoutTextComplete already saved
+  - useAppStore.getState().currentProject?.id is the way to access projectId from inside callbacks without adding it as a dependency
+  - The persistChatMessage helper uses fetch().catch(console.error) pattern — non-blocking, silent failure by design
+---
+
+## 2026-01-23 - US-007
+- What was implemented: Added a useEffect in ScoutChat that watches currentProject changes. When the project changes, it clears chatMessages via clearChat(), then fetches GET /api/projects/[id]/chat. DB messages are mapped to StoreChatMessage format and populated into the store. A loading indicator shows while fetching. A prevProjectIdRef prevents redundant fetches when the same project re-renders.
+- Files changed: src/components/scout/scout-chat.tsx
+- **Learnings for future iterations:**
+  - The eslint rule `react-hooks/set-state-in-effect` disallows synchronous setState calls in effect bodies — wrap in an async IIFE or extracted async function to satisfy it
+  - Use prevProjectIdRef pattern to deduplicate effect runs when the dependency (currentProject object) changes identity but the ID stays the same
+  - The GET /api/projects/[id]/chat response shape: { messages: Array<{ id, role, content, agentType, toolCalls, attachmentName, attachmentSize, createdAt }> }
+  - Map DB `agentType` (nullable string) to StoreChatMessage `agentType` (optional 'SCOUT'|'READER') with nullish coalescing to undefined
+  - Use `useAppStore.setState({ chatMessages: mapped })` for bulk-setting messages (same pattern as retry handler)
 ---

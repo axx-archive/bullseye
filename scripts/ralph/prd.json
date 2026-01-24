@@ -82,7 +82,7 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Create files: src/app/api/projects/[id]/chat/route.ts. Use getCurrentUser() for auth. Use db.chatSession.upsert for the POST to handle first-message creation atomically."
     },
     {
@@ -98,7 +98,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Use fetch('/api/projects/${projectId}/chat', { method: 'POST', body: ... }).catch(console.error) for fire-and-forget. The projectId comes from useAppStore.getState().currentProject?.id."
     },
     {
@@ -116,7 +116,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "The clearChat() action already exists on the store. Use it before loading new messages. The currentProject is available via useAppStore. Consider using React Query (useQuery with projectId as key) for automatic cache management."
     },
     {
