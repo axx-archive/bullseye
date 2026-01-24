@@ -15,7 +15,7 @@ function getAnthropicClient(): Anthropic {
 
 // Model configuration
 const MODELS = {
-  sonnet: 'claude-sonnet-4-20250514',
+  sonnet: 'claude-opus-4-5-20251101',
   haiku: 'claude-haiku-4-20250514',
   opus: 'claude-opus-4-20250514',
 } as const;

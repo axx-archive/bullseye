@@ -61,7 +61,7 @@ export const generateFocusQuestionsTool = tool(
 
     try {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-5-20251101',
         max_tokens: 1024,
         system: `You are Scout, the orchestrating intelligence for BULLSEYE. Your task is to generate 5 provocative, discussion-worthy questions for a focus group between three script readers.
 

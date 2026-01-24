@@ -163,7 +163,7 @@ export class ExecutiveEvaluationEngine {
     const evaluationPrompt = this.buildEvaluationPrompt(coverage, scores, executive);
 
     const response = await getAnthropicClient().messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 2048,
       system: systemPrompt,
       messages: [{ role: 'user', content: evaluationPrompt }],
@@ -229,7 +229,7 @@ export class ExecutiveEvaluationEngine {
     const evaluationPrompt = this.buildEvaluationPrompt(coverage, scores, executive);
 
     const stream = await getAnthropicClient().messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 2048,
       system: systemPrompt,
       messages: [{ role: 'user', content: evaluationPrompt }],

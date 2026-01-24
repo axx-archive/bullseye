@@ -554,7 +554,7 @@ Keep it to 2-3 sentences.`;
     }
 
     const response = await getAnthropicClient(this.apiKey).messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
       system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
       messages: [{ role: 'user', content: prompt }],
@@ -593,7 +593,7 @@ Set the stage briefly, acknowledge the divergence points you noticed in their an
     }
 
     const stream = await getAnthropicClient(this.apiKey).messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
       system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
       messages: [{ role: 'user', content: prompt }],
@@ -656,7 +656,7 @@ Synopsis: ${this.scriptContext.synopsis}`;
     }
 
     const response = await getAnthropicClient(this.apiKey).messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
@@ -722,7 +722,7 @@ Synopsis: ${this.scriptContext.synopsis}`;
     }
 
     const response = await getAnthropicClient(this.apiKey).messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 300,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
@@ -823,7 +823,7 @@ Synopsis: ${this.scriptContext.synopsis}`;
     }
 
     const stream = await getAnthropicClient(this.apiKey).messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],

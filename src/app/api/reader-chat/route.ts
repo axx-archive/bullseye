@@ -198,7 +198,7 @@ Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer res
 
         // Stream the response
         const response = await client.messages.stream({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-opus-4-5-20251101',
           max_tokens: 1024,
           system: systemPrompt,
           messages: messages.map((m) => ({
