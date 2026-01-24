@@ -4,6 +4,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { getReaderById, DEFAULT_READERS } from '../agents/reader-personas';
 import { memoryReadEngine } from '../memory';
+import { rateLimiter } from '../rate-limiter';
 import type { SubAgentMemory } from '../memory';
 import type { FocusGroupMessage, ReaderPerspective, Divergence, CoverageReport, ReactionSentiment } from '@/types';
 
@@ -553,12 +554,21 @@ ${hasReactions ? 'Note the reader-to-reader exchanges — acknowledge where they
 Keep it to 2-3 sentences.`;
     }
 
+    const systemContent = MODERATOR_SYSTEM_PROMPT + '\n\n' + context;
+    const estimatedInputTokens = Math.ceil((systemContent.length + prompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens });
+
     const response = await getAnthropicClient(this.apiKey).messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
-      system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
+      system: systemContent,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    rateLimiter.report(
+      response.usage?.input_tokens || estimatedInputTokens,
+      response.usage?.output_tokens || 0
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     return textContent?.type === 'text' ? textContent.text : '';
@@ -592,18 +602,25 @@ Set the stage briefly, acknowledge the divergence points you noticed in their an
       prompt = `Close the focus group with a brief summary. Keep it to 2-3 sentences.`;
     }
 
+    const streamSystemContent = MODERATOR_SYSTEM_PROMPT + '\n\n' + context;
+    const streamEstimatedTokens = Math.ceil((streamSystemContent.length + prompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens: streamEstimatedTokens });
+
     const stream = await getAnthropicClient(this.apiKey).messages.stream({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
-      system: MODERATOR_SYSTEM_PROMPT + '\n\n' + context,
+      system: streamSystemContent,
       messages: [{ role: 'user', content: prompt }],
     });
 
+    let streamOutputLength = 0;
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        streamOutputLength += event.delta.text.length;
         yield event.delta.text;
       }
     }
+    rateLimiter.report(streamEstimatedTokens, Math.ceil(streamOutputLength / 4));
   }
 
   private async generateReaderTurn(
@@ -655,12 +672,20 @@ Logline: ${this.scriptContext.logline}
 Synopsis: ${this.scriptContext.synopsis}`;
     }
 
+    const readerEstimatedTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens: readerEstimatedTokens });
+
     const response = await getAnthropicClient(this.apiKey).messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    rateLimiter.report(
+      response.usage?.input_tokens || readerEstimatedTokens,
+      response.usage?.output_tokens || 0
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     return textContent?.type === 'text' ? textContent.text : '';
@@ -721,12 +746,20 @@ Synopsis: ${this.scriptContext.synopsis}`;
       systemPrompt += `\n\nYour perspective: Overall ${perspective.scores.overall} (${perspective.scores.overallNumeric}/100), recommend: ${perspective.recommendation}`;
     }
 
+    const reactionEstimatedTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens: reactionEstimatedTokens });
+
     const response = await getAnthropicClient(this.apiKey).messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 300,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    rateLimiter.report(
+      response.usage?.input_tokens || reactionEstimatedTokens,
+      response.usage?.output_tokens || 0
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     const text = textContent?.type === 'text' ? textContent.text.trim() : '';
@@ -822,6 +855,9 @@ Logline: ${this.scriptContext.logline}
 Synopsis: ${this.scriptContext.synopsis}`;
     }
 
+    const readerStreamEstTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens: readerStreamEstTokens });
+
     const stream = await getAnthropicClient(this.apiKey).messages.stream({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 512,
@@ -829,11 +865,14 @@ Synopsis: ${this.scriptContext.synopsis}`;
       messages: [{ role: 'user', content: prompt }],
     });
 
+    let readerStreamOutputLen = 0;
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        readerStreamOutputLen += event.delta.text.length;
         yield event.delta.text;
       }
     }
+    rateLimiter.report(readerStreamEstTokens, Math.ceil(readerStreamOutputLen / 4));
   }
 
   private delay(ms: number): Promise<void> {

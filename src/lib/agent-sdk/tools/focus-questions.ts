@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { tool } from '@anthropic-ai/claude-agent-sdk';
+import { rateLimiter } from '@/lib/rate-limiter';
 import { getCurrentScript } from './ingest';
 import { getLastReaderPerspectives } from './readers';
 import { getLastDeliverable } from './analysis';
@@ -60,10 +61,7 @@ export const generateFocusQuestionsTool = tool(
     const client = new AnthropicSDK();
 
     try {
-      const response = await client.messages.create({
-        model: 'claude-opus-4-5-20251101',
-        max_tokens: 1024,
-        system: `You are Scout, the orchestrating intelligence for BULLSEYE. Your task is to generate 5 provocative, discussion-worthy questions for a focus group between three script readers.
+      const focusQuestionsSystemPrompt = `You are Scout, the orchestrating intelligence for BULLSEYE. Your task is to generate 5 provocative, discussion-worthy questions for a focus group between three script readers.
 
 GUIDELINES:
 1. Questions should probe areas of divergence or tension
@@ -82,12 +80,26 @@ Return a JSON array of 5 question objects:
     "targetReader": "maya" | "colton" | "devon" | "all",
     "topic": "character" | "structure" | "dialogue" | "premise" | "commerciality" | "general"
   }
-]`,
+]`;
+      const focusQuestionsUserContent = `Generate 5 focus group questions based on this context:\n\n${context}\n\nReturn JSON only.`;
+
+      const estimatedInputTokens = Math.ceil((focusQuestionsSystemPrompt.length + focusQuestionsUserContent.length) / 4);
+      await rateLimiter.acquire({ estimatedInputTokens });
+
+      const response = await client.messages.create({
+        model: 'claude-opus-4-5-20251101',
+        max_tokens: 1024,
+        system: focusQuestionsSystemPrompt,
         messages: [{
           role: 'user',
-          content: `Generate 5 focus group questions based on this context:\n\n${context}\n\nReturn JSON only.`,
+          content: focusQuestionsUserContent,
         }],
       });
+
+      rateLimiter.report(
+        response.usage?.input_tokens || estimatedInputTokens,
+        response.usage?.output_tokens || 0
+      );
 
       const textContent = response.content.find((c) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {

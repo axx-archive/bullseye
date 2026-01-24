@@ -6,6 +6,7 @@ import { DEFAULT_READERS, getReaderById } from './reader-personas';
 import type { ReaderAnalysisOutput, HarmonizationOutput, ExecutiveEvaluationOutput } from './types';
 import { ReaderAnalysisSchema, HarmonizationSchema, ExecutiveEvaluationSchema } from './types';
 import type { ReaderPerspective, ReaderScores, CoverageReport, HarmonizedScores, StudioCalibration } from '@/types';
+import { rateLimiter } from '@/lib/rate-limiter';
 
 function getAnthropicClient(): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -70,6 +71,15 @@ export async function runReaderAnalysis(
 
   const systemPrompt = buildReaderSystemPrompt(reader, calibrationContext, memoryContext);
 
+  const userContent = `Analyze the following script and provide your assessment.
+
+SCRIPT:
+${scriptText}`;
+
+  // Estimate input tokens: system prompt + user content
+  const estimatedInputTokens = Math.ceil((systemPrompt.length + userContent.length) / 4);
+  await rateLimiter.acquire({ estimatedInputTokens });
+
   const response = await getAnthropicClient().messages.create({
     model: MODELS.sonnet,
     max_tokens: 8192,
@@ -119,6 +129,12 @@ IMPORTANT:
       },
     ],
   });
+
+  // Report actual token usage
+  rateLimiter.report(
+    response.usage?.input_tokens || estimatedInputTokens,
+    response.usage?.output_tokens || 0
+  );
 
   // Extract text content
   const textContent = response.content.find((c) => c.type === 'text');

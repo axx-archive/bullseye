@@ -10,6 +10,7 @@ import { buildContextBudget } from '@/lib/agent-sdk/context-budget';
 import type { ScoutSSEEvent } from '@/lib/agent-sdk/types';
 import { getCurrentUser, getUserApiKey } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { rateLimiter } from '@/lib/rate-limiter';
 import type { ProjectFormat } from '@/generated/prisma/client';
 
 export const maxDuration = 300; // 5 minute timeout for long analysis runs
@@ -252,6 +253,10 @@ export async function POST(req: Request) {
         // Create the MCP tool server with event emitter and user's API key
         const toolServer = createBullseyeToolServer(sendEvent, apiKey);
 
+        // Acquire rate limiter capacity before starting the Scout query
+        const estimatedInputTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
+        await rateLimiter.acquire({ estimatedInputTokens });
+
         // Start the Scout agent query
         const q = query({
           prompt,
@@ -343,7 +348,11 @@ export async function POST(req: Request) {
             }
 
             case 'result': {
-              // Query completed
+              // Query completed — report actual usage to rate limiter
+              // The Agent SDK manages multiple API calls internally;
+              // we report the overall estimated usage for the initial prompt
+              rateLimiter.report(estimatedInputTokens, 0);
+
               if (message.subtype === 'success') {
                 sendEvent({
                   source: 'system',

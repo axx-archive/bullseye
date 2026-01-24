@@ -4,6 +4,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ExecutiveEvaluationResult, CoverageReport, HarmonizedScores, ExecutiveVerdict } from '@/types';
 import { ExecutiveEvaluationSchema } from '../agents/types';
+import { rateLimiter } from '../rate-limiter';
 
 function getAnthropicClient(): Anthropic {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -162,12 +163,20 @@ export class ExecutiveEvaluationEngine {
     const systemPrompt = this.buildExecutiveSystemPrompt(executive);
     const evaluationPrompt = this.buildEvaluationPrompt(coverage, scores, executive);
 
+    const estimatedInputTokens = Math.ceil((systemPrompt.length + evaluationPrompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens });
+
     const response = await getAnthropicClient().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 2048,
       system: systemPrompt,
       messages: [{ role: 'user', content: evaluationPrompt }],
     });
+
+    rateLimiter.report(
+      response.usage?.input_tokens || estimatedInputTokens,
+      response.usage?.output_tokens || 0
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
@@ -228,6 +237,9 @@ export class ExecutiveEvaluationEngine {
     const systemPrompt = this.buildExecutiveSystemPrompt(executive);
     const evaluationPrompt = this.buildEvaluationPrompt(coverage, scores, executive);
 
+    const streamEstimatedTokens = Math.ceil((systemPrompt.length + evaluationPrompt.length) / 4);
+    await rateLimiter.acquire({ estimatedInputTokens: streamEstimatedTokens });
+
     const stream = await getAnthropicClient().messages.stream({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 2048,
@@ -235,11 +247,14 @@ export class ExecutiveEvaluationEngine {
       messages: [{ role: 'user', content: evaluationPrompt }],
     });
 
+    let streamOutputLen = 0;
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        streamOutputLen += event.delta.text.length;
         yield event.delta.text;
       }
     }
+    rateLimiter.report(streamEstimatedTokens, Math.ceil(streamOutputLen / 4));
   }
 
   private buildExecutiveSystemPrompt(executive: ExecutiveProfile): string {

@@ -235,7 +235,7 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "The rate limiter's acquire() is async and will delay if needed. Since readers run in Promise.all, each one's acquire() call might resolve at different times if rate limits are tight, effectively staggering them. The caller doesn't need to handle this explicitly."
     },
     {

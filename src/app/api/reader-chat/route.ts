@@ -6,6 +6,7 @@ import { getReaderById } from '@/lib/agents/reader-personas';
 import { db } from '@/lib/db';
 import { getCurrentUser, getUserApiKey } from '@/lib/auth';
 import { memoryReadEngine } from '@/lib/memory';
+import { rateLimiter } from '@/lib/rate-limiter';
 import type { SubAgentMemory } from '@/lib/memory';
 import type { Rating } from '@/types';
 
@@ -196,6 +197,11 @@ Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer res
         const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
         const client = new AnthropicSDK({ apiKey });
 
+        // Acquire rate limiter capacity before streaming
+        const messagesContent = messages.map((m) => m.content).join('');
+        const estimatedInputTokens = Math.ceil((systemPrompt.length + messagesContent.length) / 4);
+        await rateLimiter.acquire({ estimatedInputTokens });
+
         // Stream the response
         const response = await client.messages.stream({
           model: 'claude-opus-4-5-20251101',
@@ -213,7 +219,7 @@ Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer res
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
             const text = event.delta.text;
             fullResponse += text;
-            
+
             // Send SSE event
             const data = JSON.stringify({
               type: 'text_delta',
@@ -225,6 +231,9 @@ Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer res
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
           }
         }
+
+        // Report actual usage to rate limiter
+        rateLimiter.report(estimatedInputTokens, Math.ceil(fullResponse.length / 4));
 
         // Send completion event
         const completeData = JSON.stringify({

@@ -18,6 +18,7 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - React Query deliverable hooks use `enabled: !!draftId` — clearing `currentDraft` to null automatically disables them without explicit invalidation
 - Context budget utility (src/lib/agent-sdk/context-budget.ts) is pure — pass data in, get assembled prompt + metadata out. Token estimation: chars / 4.
 - Rate limiter (src/lib/rate-limiter.ts): import `rateLimiter` singleton, call `await rateLimiter.acquire({ estimatedInputTokens })` before API calls, call `rateLimiter.report(actualIn, actualOut)` after completion
+- For streaming API calls: accumulate output text length during streaming, then report tokens as `Math.ceil(outputLength / 4)`. For non-streaming: use `response.usage?.input_tokens` and `response.usage?.output_tokens`
 
 ---
 
@@ -157,4 +158,17 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - Sliding window purges entries > 60s old on every check — no manual cleanup needed
   - Exponential backoff starts at 500ms, doubles up to 15s max while waiting for capacity
   - The `getUsage()` method returns current window stats for debugging/monitoring
+---
+
+## 2026-01-23 - US-014
+- What was implemented: Integrated the rate limiter into all Anthropic API call sites. Before each API call, `rateLimiter.acquire({ estimatedInputTokens })` is called (where estimatedInputTokens = total chars / 4). After each response completes, `rateLimiter.report(actualInput, actualOutput)` is called with actual token counts from the API response (or estimated from output length for streaming calls). Integrated into: runReaderAnalysis (agents/index.ts), Scout route (api/scout/route.ts), FocusGroupEngine's generateModeratorTurn/streamModeratorTurn/generateReaderTurn/generateReactionTurn/streamReaderTurn (focus-group/index.ts), ExecutiveEvaluationEngine's evaluateForExecutive/streamEvaluation (executive/index.ts), reader-chat tool (agent-sdk/tools/reader-chat.ts), reader-chat API route (api/reader-chat/route.ts), and focus-questions tool (agent-sdk/tools/focus-questions.ts).
+- Files changed: src/lib/agents/index.ts, src/app/api/scout/route.ts, src/lib/focus-group/index.ts, src/lib/executive/index.ts, src/lib/agent-sdk/tools/reader-chat.ts, src/app/api/reader-chat/route.ts, src/lib/agent-sdk/tools/focus-questions.ts
+- **Learnings for future iterations:**
+  - The rate limiter is already a singleton — just import `{ rateLimiter }` from `@/lib/rate-limiter` (or relative path `../rate-limiter`)
+  - For streaming responses (messages.stream), track output length by accumulating text delta lengths, then estimate tokens as outputLength / 4 for the report call
+  - For non-streaming responses (messages.create), use `response.usage?.input_tokens` and `response.usage?.output_tokens` for accurate reporting
+  - The Scout route uses the Agent SDK `query()` which manages its own internal API calls — we acquire for the initial prompt size before starting, and report after the result event
+  - Since readers run in Promise.all, each reader's acquire() call independently gates its own request, naturally staggering them if rate limits are tight
+  - Focus group engine has 5 separate API call sites (moderator turns, reader turns, reaction turns, streaming variants) — all need rate limiting
+  - Executive engine's evaluateForMultipleExecutives runs executives in parallel via Promise.all — similar to readers, the limiter naturally staggers them
 ---

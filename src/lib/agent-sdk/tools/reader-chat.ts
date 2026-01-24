@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { tool } from '@anthropic-ai/claude-agent-sdk';
+import { rateLimiter } from '@/lib/rate-limiter';
 import { getReaderById } from '@/lib/agents/reader-personas';
 import { getCurrentScript } from './ingest';
 import { getLastReaderPerspectives, getLastProjectContext } from './readers';
@@ -162,22 +163,32 @@ export function createReaderChatTool(emitEvent: EventEmitter) {
       const client = new AnthropicSDK();
 
       try {
-        const response = await client.messages.create({
-          model: 'claude-opus-4-5-20251101',
-          max_tokens: 1024,
-          system: `${reader.systemPromptBase}
+        const readerChatSystemPrompt = `${reader.systemPromptBase}
 
 ${contextBlock}
 
 CONVERSATION MODE:
 You are having a direct conversation with a user who wants to discuss the script. Respond naturally in your voice as ${reader.displayName}. Be conversational but maintain your perspective and analytical focus. Reference specific elements from the script and your analysis when relevant.
 
-Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer response is warranted.`,
+Keep responses focused and engaging—aim for 2-4 paragraphs unless a longer response is warranted.`;
+
+        const estimatedInputTokens = Math.ceil((readerChatSystemPrompt.length + message.length) / 4);
+        await rateLimiter.acquire({ estimatedInputTokens });
+
+        const response = await client.messages.create({
+          model: 'claude-opus-4-5-20251101',
+          max_tokens: 1024,
+          system: readerChatSystemPrompt,
           messages: [{
             role: 'user',
             content: message,
           }],
         });
+
+        rateLimiter.report(
+          response.usage?.input_tokens || estimatedInputTokens,
+          response.usage?.output_tokens || 0
+        );
 
         const textContent = response.content.find((c) => c.type === 'text');
         if (!textContent || textContent.type !== 'text') {
