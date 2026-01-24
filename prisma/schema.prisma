@@ -97,6 +97,7 @@ model Project {
   createdBy             User                @relation(fields: [createdByUserId], references: [id])
   drafts                Draft[]
   chatMessages          ChatMessage[]
+  chatSession           ChatSession?
 }
 
 enum ProjectFormat {
@@ -517,6 +518,34 @@ model ChatMessage {
   user                  User?               @relation(fields: [userId], references: [id])
 
   @@index([projectId, createdAt])
+}
+
+model ChatSession {
+  id                    String              @id @default(cuid())
+  projectId             String              @unique  // One session per project
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  project               Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages              ChatSessionMessage[]
+}
+
+model ChatSessionMessage {
+  id                    String              @id @default(cuid())
+  sessionId             String
+  role                  String              // 'user' | 'assistant' | 'system'
+  content               String              @db.Text
+  agentType             String?             // 'SCOUT' | 'READER'
+  toolCalls             Json?               // ToolCallStatus[] as JSON
+  attachmentName        String?
+  attachmentSize        Int?
+  createdAt             DateTime            @default(now())
+
+  // Relations
+  session               ChatSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
 }
 
 enum MessageRole {

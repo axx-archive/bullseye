@@ -10,6 +10,8 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Turn boundaries in Agent SDK streaming: use a turnCompleteRef flag set on text_complete and checked on next text_delta to create new assistant messages
 - When creating new assistant messages mid-stream, also reset streamingTextRef and toolCallsRef so subsequent content is independent
 - onResult/onError should use currentAssistantIdRef.current (not captured assistantId) since the active message may have changed during multi-turn
+- Chat persistence uses ChatSession (1:1 with Project via unique projectId) and ChatSessionMessage (many per session, ordered by createdAt)
+- Prisma client is generated to `src/generated/prisma` — import types from there
 
 ---
 
@@ -39,4 +41,15 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - Turn boundary detection pattern: set a flag on text_complete, check it on next text_delta, create new message if flag is set
   - When starting a new turn mid-stream, reset streamingTextRef, toolCallsRef, and update currentAssistantIdRef to the new message
   - onResult and onError must reference currentAssistantIdRef.current (dynamic) rather than the initially captured assistantId, since multi-turn creates new messages
+---
+
+## 2026-01-23 - US-004
+- What was implemented: Added ChatSession and ChatSessionMessage Prisma models for project-scoped chat persistence. ChatSession has a unique projectId constraint (one session per project). ChatSessionMessage stores role, content, agentType, toolCalls (JSON), attachmentName, and attachmentSize. Added cascade delete and Project → ChatSession optional relation. Ran migration successfully.
+- Files changed: prisma/schema.prisma, prisma/migrations/20260124021455_add_chat_session_models/migration.sql
+- **Learnings for future iterations:**
+  - Prisma migration command: `npx prisma migrate dev --name <name>` — generates SQL and applies it
+  - After migration, run `npx prisma generate` to regenerate the client with new model types
+  - The existing ChatMessage model (line 494) is a simpler legacy model — the new ChatSession/ChatSessionMessage models are the proper project-scoped persistence layer
+  - Use `@unique` on projectId in ChatSession to enforce one session per project at the DB level
+  - Use `@@index([sessionId, createdAt])` on ChatSessionMessage for efficient ordered retrieval
 ---

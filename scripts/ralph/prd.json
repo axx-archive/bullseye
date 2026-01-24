@@ -65,7 +65,7 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Keep it simple — one ChatSession per project (unique projectId constraint). Messages are ordered by createdAt. The toolCalls field stores the ToolCallStatus[] array as JSON."
     },
     {
