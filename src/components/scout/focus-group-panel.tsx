@@ -21,8 +21,31 @@ const READER_NAMES: Record<string, string> = {
   'reader-devon': 'Devon Park',
 };
 
+function FocusGroupSkeleton() {
+  return (
+    <div className="h-full flex flex-col p-4 space-y-3">
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <div className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse" />
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Focus Group
+        </span>
+      </div>
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="flex gap-3">
+          <div className="w-7 h-7 rounded-full bg-muted-foreground/10 animate-pulse shrink-0" />
+          <div className="space-y-1.5 flex-1">
+            <div className="h-2.5 w-20 bg-muted-foreground/10 rounded animate-pulse" />
+            <div className="h-3 w-full bg-muted-foreground/10 rounded animate-pulse" />
+            <div className="h-3 w-3/4 bg-muted-foreground/10 rounded animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FocusGroupPanel() {
-  const { focusGroupMessages, focusGroupTypingSpeaker, isStreaming, chatMessages, addChatMessage, setStreaming } = useAppStore();
+  const { focusGroupMessages, focusGroupTypingSpeaker, isStreaming, chatMessages, addChatMessage, setStreaming, isHydratingScoutState } = useAppStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [followUpInput, setFollowUpInput] = useState('');
 
@@ -115,6 +138,11 @@ export function FocusGroupPanel() {
       handleSendFollowUp();
     }
   }, [handleSendFollowUp]);
+
+  // Show skeleton while hydrating and no local data
+  if (isHydratingScoutState && focusGroupMessages.length === 0) {
+    return <FocusGroupSkeleton />;
+  }
 
   return (
     <div className="h-full flex flex-col">

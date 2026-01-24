@@ -37,8 +37,45 @@ function numericToFilled(value: number): number {
   return Math.round(value / 10);
 }
 
+function ReaderAnalysisSkeleton() {
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center gap-2 mb-4 px-1">
+        <div className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse" />
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Reader Analysis
+        </span>
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-lg border border-border/50 bg-elevated/30 p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-muted-foreground/10 animate-pulse" />
+            <div className="space-y-1.5">
+              <div className="h-3 w-24 bg-muted-foreground/10 rounded animate-pulse" />
+              <div className="h-2 w-32 bg-muted-foreground/10 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[1, 2, 3].map((j) => (
+              <div key={j} className="flex items-center gap-2">
+                <div className="h-2 w-16 bg-muted-foreground/10 rounded animate-pulse" />
+                <div className="flex-1 h-2 bg-muted-foreground/10 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ReaderAnalysisPanel() {
-  const { readerStates } = useAppStore();
+  const { readerStates, isHydratingScoutState } = useAppStore();
+
+  // Show skeleton while hydrating and no local data
+  if (isHydratingScoutState && readerStates.size === 0) {
+    return <ReaderAnalysisSkeleton />;
+  }
 
   // Check if all 3 readers are complete for harmonized scores
   const allComplete = READER_CONFIG.every(

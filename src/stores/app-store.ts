@@ -175,6 +175,7 @@ interface ScoutSessionState {
   activeReaderChatId: string | null; // For 1:1 reader chat
   readerChatMessages: Record<string, ReaderChatMessage[]>; // Keyed by readerId
   executiveStates: Map<string, ExecutiveStreamState>; // Live executive eval states
+  isHydratingScoutState: boolean; // True while fetching scout-state from DB
 
   setSessionId: (id: string | null) => void;
   setRightPanelMode: (mode: RightPanelPhase) => void;
@@ -188,6 +189,7 @@ interface ScoutSessionState {
   updateReaderChatMessage: (readerId: string, messageId: string, updates: Partial<ReaderChatMessage>) => void;
   setExecutiveState: (executiveId: string, state: Partial<ExecutiveStreamState>) => void;
   clearExecutiveStates: () => void;
+  setHydratingScoutState: (hydrating: boolean) => void;
 }
 
 // ============================================
@@ -425,6 +427,7 @@ export const useAppStore = create<AppStore>()(
         activeReaderChatId: null,
         readerChatMessages: {} as Record<string, ReaderChatMessage[]>,
         executiveStates: new Map<string, ExecutiveStreamState>(),
+        isHydratingScoutState: false,
 
         setSessionId: (id) => set({ sessionId: id }),
         setRightPanelMode: (mode) => {
@@ -480,6 +483,7 @@ export const useAppStore = create<AppStore>()(
             return { executiveStates: newMap };
           }),
         clearExecutiveStates: () => set({ executiveStates: new Map() }),
+        setHydratingScoutState: (hydrating) => set({ isHydratingScoutState: hydrating }),
 
         // ============ UI STATE ============
         sidebarOpen: true,

@@ -50,7 +50,7 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "This model stores the ACTIVE session state (in-progress analysis), separate from ReaderMemory which stores COMPLETED analysis for cross-draft continuity. ReaderAnalysisState is the 'hot' state for UI rendering; ReaderMemory is the 'cold' state for context injection."
     },
     {
@@ -63,7 +63,7 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "This field persists the rightPanelMode value. When null, defaults to 'idle' on the client side."
     },
     {
@@ -82,7 +82,7 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "The endpoint assembles state from multiple tables. Use Promise.all for parallel DB queries. The 'latest draft' is determined by highest draftNumber for the project."
     },
     {
@@ -99,7 +99,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "This endpoint handles debounced writes from the client during SSE streaming. Use db.$transaction for atomic multi-reader updates."
     },
     {
@@ -115,7 +115,7 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Use a useRef to hold the debounce timer. The debounced function reads current readerStates from the Zustand store and sends the full array to the PUT endpoint. On complete events, call the function directly bypassing debounce."
     },
     {
@@ -130,7 +130,7 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Can be done by modifying the setRightPanelMode action in the Zustand store to include a side-effect, or by adding a useEffect in a component that watches rightPanelMode changes."
     },
     {
@@ -148,7 +148,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "This hydration happens in addition to the existing chat history loading. The scout-state fetch can run in parallel with the chat history fetch for faster mount."
     },
     {

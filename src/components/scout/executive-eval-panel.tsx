@@ -4,10 +4,39 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
 import { Loader2, CheckCircle2, XCircle, Briefcase } from 'lucide-react';
 
+function ExecutiveEvalSkeleton() {
+  return (
+    <div className="h-full p-4 space-y-3">
+      <div className="px-1 mb-2">
+        <div className="h-3.5 w-36 bg-muted-foreground/10 rounded animate-pulse" />
+        <div className="h-2.5 w-24 bg-muted-foreground/10 rounded animate-pulse mt-1.5" />
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-lg border border-border/50 bg-elevated/30 p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-muted-foreground/10 animate-pulse" />
+            <div className="space-y-1.5">
+              <div className="h-3 w-28 bg-muted-foreground/10 rounded animate-pulse" />
+              <div className="h-2 w-16 bg-muted-foreground/10 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="h-2.5 w-full bg-muted-foreground/10 rounded animate-pulse" />
+          <div className="h-2.5 w-2/3 bg-muted-foreground/10 rounded animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ExecutiveEvalPanel() {
-  const { executiveStates } = useAppStore();
+  const { executiveStates, isHydratingScoutState } = useAppStore();
 
   const executives = Array.from(executiveStates.values());
+
+  // Show skeleton while hydrating and no local data
+  if (isHydratingScoutState && executives.length === 0) {
+    return <ExecutiveEvalSkeleton />;
+  }
 
   if (executives.length === 0) {
     return (

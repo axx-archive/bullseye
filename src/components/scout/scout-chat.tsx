@@ -678,6 +678,149 @@ export function ScoutChat() {
     return () => { cancelled = true; };
   }, [currentProject, clearChat]);
 
+  // Hydrate SCOUT tab state from the database when project changes
+  // Runs in parallel with chat history loading for faster mount
+  useEffect(() => {
+    const projectId = currentProject?.id;
+    if (!projectId) return;
+
+    let cancelled = false;
+    const { setHydratingScoutState } = useAppStore.getState();
+    setHydratingScoutState(true);
+
+    const hydrateScoutState = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/scout-state`);
+        if (!res.ok) throw new Error('Failed to fetch scout state');
+        if (cancelled) return;
+
+        const data: {
+          readerStates: Array<{
+            readerId: string;
+            status: string;
+            progress: number;
+            scores: Record<string, number> | null;
+            recommendation: string | null;
+            keyStrengths: string[];
+            keyConcerns: string[];
+            standoutQuote: string | null;
+            error: string | null;
+            updatedAt: string;
+          }>;
+          focusGroupMessages: Array<{
+            id: string;
+            speakerType: string;
+            readerId: string | null;
+            content: string;
+            topic: string | null;
+            sentiment: string | null;
+            replyToReaderId: string | null;
+            reactionSentiment: string | null;
+            sequenceNumber: number;
+            createdAt: string;
+          }>;
+          executiveEvals: Array<{
+            id: string;
+            executiveId: string;
+            verdict: string;
+            confidence: number;
+            rationale: string;
+            keyFactors: string[];
+            concerns: string[];
+            createdAt: string;
+          }>;
+          scoutPhase: string | null;
+        } = await res.json();
+
+        if (cancelled) return;
+
+        const store = useAppStore.getState();
+
+        // Populate readerStates — DB wins if local is empty or DB has data
+        if (data.readerStates.length > 0) {
+          const hasLocalReaderData = store.readerStates.size > 0;
+          if (!hasLocalReaderData) {
+            const newMap = new Map<string, import('@/lib/agent-sdk/types').ReaderStreamState>();
+            for (const rs of data.readerStates) {
+              newMap.set(rs.readerId, {
+                readerId: rs.readerId,
+                status: rs.status as 'pending' | 'streaming' | 'complete' | 'error',
+                progress: rs.progress,
+                scores: rs.scores ?? undefined,
+                recommendation: rs.recommendation ?? undefined,
+                keyStrengths: rs.keyStrengths,
+                keyConcerns: rs.keyConcerns,
+                standoutQuote: rs.standoutQuote ?? undefined,
+                error: rs.error ?? undefined,
+              });
+            }
+            useAppStore.setState({ readerStates: newMap });
+          }
+        }
+
+        // Populate focusGroupMessages — DB wins if local is empty
+        if (data.focusGroupMessages.length > 0 && store.focusGroupMessages.length === 0) {
+          const READER_NAMES: Record<string, string> = {
+            'reader-maya': 'Maya Chen',
+            'reader-colton': 'Colton Rivers',
+            'reader-devon': 'Devon Park',
+          };
+          const READER_COLORS: Record<string, string> = {
+            'reader-maya': '#30D5C8',
+            'reader-colton': '#FF7F7F',
+            'reader-devon': '#B8A9C9',
+          };
+          const mapped: import('@/lib/agent-sdk/types').FocusGroupUIMessage[] = data.focusGroupMessages.map((msg) => ({
+            id: msg.id,
+            speaker: msg.readerId ? (READER_NAMES[msg.readerId] || msg.readerId) : 'Scout',
+            speakerType: msg.speakerType as 'moderator' | 'reader',
+            readerId: msg.readerId ?? undefined,
+            readerColor: msg.readerId ? READER_COLORS[msg.readerId] : undefined,
+            content: msg.content,
+            topic: msg.topic ?? undefined,
+            timestamp: new Date(msg.createdAt),
+            replyToReaderId: msg.replyToReaderId ?? undefined,
+            reactionSentiment: msg.reactionSentiment as 'agrees' | 'disagrees' | 'builds_on' | undefined,
+          }));
+          useAppStore.setState({ focusGroupMessages: mapped });
+        }
+
+        // Populate executiveStates — DB wins if local is empty
+        if (data.executiveEvals.length > 0 && store.executiveStates.size === 0) {
+          const newMap = new Map<string, import('@/lib/agent-sdk/types').ExecutiveStreamState>();
+          for (const exec of data.executiveEvals) {
+            newMap.set(exec.executiveId, {
+              executiveId: exec.executiveId,
+              executiveName: exec.executiveId, // Will be overridden by display config
+              status: 'complete',
+              verdict: exec.verdict as 'pursue' | 'pass',
+              confidence: exec.confidence,
+              rationale: exec.rationale,
+              keyFactors: exec.keyFactors,
+              concerns: exec.concerns,
+            });
+          }
+          useAppStore.setState({ executiveStates: newMap });
+        }
+
+        // Set rightPanelMode from scoutPhase — only if local is idle (default)
+        if (data.scoutPhase && store.rightPanelMode === 'idle') {
+          useAppStore.setState({ rightPanelMode: data.scoutPhase as import('@/lib/agent-sdk/types').RightPanelPhase });
+        }
+      } catch (err) {
+        console.error('Failed to hydrate scout state:', err);
+      } finally {
+        if (!cancelled) {
+          useAppStore.getState().setHydratingScoutState(false);
+        }
+      }
+    };
+
+    hydrateScoutState();
+
+    return () => { cancelled = true; };
+  }, [currentProject]);
+
   // Auto-send when a pending attachment arrives (e.g., after draft upload)
   // Waits for history loading to complete so clearChat() doesn't conflict
   useEffect(() => {
