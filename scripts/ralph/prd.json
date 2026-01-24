@@ -32,7 +32,7 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "The current step 3 unconditionally says 'Call ingest_script with the script text, metadata, AND projectId/draftId'. But when attachment is present, the route.ts already calls setCurrentScript() and extractScriptMetadata(). Scout calling ingest_script again is redundant and causes double-processing."
     },
     {

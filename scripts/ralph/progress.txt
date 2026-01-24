@@ -6,6 +6,7 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Run `npm run lint -- <filepath>` to lint specific files; `npx tsc --noEmit` for typecheck
 - The eslint rule `react-hooks/refs` forbids assigning ref.current during render — wrap in useEffect instead
 - handleSendMessage has chatMessages in its useCallback deps, making it unstable — always access via ref for effects
+- Scout system prompt is in src/lib/agent-sdk/prompts.ts — FILE UPLOADS section and AUTONOMOUS WORKFLOW must stay consistent
 
 ---
 
@@ -16,4 +17,13 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - handleSendMessage depends on chatMessages via useCallback, so it changes on every message — never use it directly as a useEffect dep for effects that should fire once
   - The eslint react-hooks/refs rule disallows ref.current assignment during render — use a syncing useEffect instead
   - The processingRef pattern (set true before action, false after) prevents React StrictMode or fast state changes from re-triggering effects
+---
+
+## 2026-01-23 - US-002
+- What was implemented: Fixed the AUTONOMOUS WORKFLOW step 3 (Ingest) in the Scout system prompt to be conditional — it now instructs Scout to skip ingest_script when a file was uploaded (indicated by "[UPLOADED SCRIPT FILE: ...]" marker) and only call it for pasted script text. This resolves the contradiction with the FILE UPLOADS section.
+- Files changed: src/lib/agent-sdk/prompts.ts
+- **Learnings for future iterations:**
+  - The Scout system prompt is in src/lib/agent-sdk/prompts.ts as a single template literal export
+  - The FILE UPLOADS section and AUTONOMOUS WORKFLOW section must stay consistent — if one says "don't call X", the workflow steps must reflect that
+  - The "[UPLOADED SCRIPT FILE: ...]" marker in user messages is the signal that pre-ingestion happened
 ---
