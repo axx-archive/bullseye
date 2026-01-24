@@ -139,6 +139,7 @@ model Draft {
   focusSessions         FocusSession[]
   readerMemories        ReaderMemory[]
   executiveEvaluations  ExecutiveEvaluation[]
+  readerAnalysisStates  ReaderAnalysisState[]
 
   @@unique([projectId, draftNumber])
 }
@@ -218,6 +219,40 @@ model ReaderPersona {
   memories              ReaderMemory[]
   focusGroupMessages    FocusGroupMessage[]
   chatMessages          ChatMessage[]
+}
+
+// ============================================
+// READER ANALYSIS STATE (Hot State for UI)
+// ============================================
+
+model ReaderAnalysisState {
+  id                    String              @id @default(cuid())
+  draftId               String
+  readerId              String
+
+  // Analysis status
+  status                String              @default("pending") // pending | streaming | complete | error
+
+  // Progress tracking
+  progress              Int                 @default(0) // 0-100
+
+  // Results (populated during/after analysis)
+  scores                Json?               // { premise, character, dialogue, structure, commerciality, overall }
+  recommendation        String?             // Recommendation value
+  keyStrengths          String[]            @default([])
+  keyConcerns           String[]            @default([])
+  standoutQuote         String?
+
+  // Error tracking
+  error                 String?
+
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  draft                 Draft               @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, readerId])
 }
 
 // ============================================
