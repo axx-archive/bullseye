@@ -296,9 +296,20 @@ export async function POST(req: Request) {
         // Track current tool for status display
         let currentTool: string | null = null;
 
+        // Text suppression: suppress text_delta events emitted while
+        // spawn_readers or run_focus_group are actively executing.
+        // The prompt instructs SCOUT to stay silent during these tools,
+        // but this is the server-side safety net to enforce it.
+        const SUPPRESSED_TOOLS = ['spawn_readers', 'run_focus_group'];
+        let suppressingText = false;
+
         const endCurrentTool = () => {
           if (currentTool) {
             sendEvent({ source: 'system', type: 'tool_end', tool: currentTool });
+            // Deactivate text suppression when the suppressed tool ends
+            if (suppressingText) {
+              suppressingText = false;
+            }
             currentTool = null;
           }
         };
@@ -319,6 +330,13 @@ export async function POST(req: Request) {
                 endCurrentTool(); // End previous tool if still active
                 const toolName = (event.content_block as { name?: string }).name || 'unknown';
                 currentTool = toolName;
+
+                // Activate text suppression for tools where SCOUT should stay silent
+                const baseToolName = toolName.includes('__') ? toolName.split('__').pop()! : toolName;
+                if (SUPPRESSED_TOOLS.includes(baseToolName)) {
+                  suppressingText = true;
+                }
+
                 sendEvent({
                   source: 'system',
                   type: 'tool_start',
@@ -333,6 +351,11 @@ export async function POST(req: Request) {
                 event.delta.type === 'text_delta'
               ) {
                 if (!message.parent_tool_use_id) {
+                  // If text suppression is active (during spawn_readers/run_focus_group),
+                  // discard the text entirely — don't emit and don't buffer for later
+                  if (suppressingText) {
+                    break;
+                  }
                   endCurrentTool();
                   sendEvent({
                     source: 'scout',
