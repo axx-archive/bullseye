@@ -257,13 +257,13 @@ export async function POST(req: Request) {
           prompt,
           options: {
             systemPrompt,
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-opus-4-5-20251101',
             mcpServers: {
               'bullseye-tools': toolServer,
             },
             permissionMode: 'bypassPermissions',
             maxTurns: 20,
-            maxBudgetUsd: 2.0,
+            maxBudgetUsd: 5.0,
             includePartialMessages: true,
             tools: [], // Only use MCP tools, no built-in tools
             disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'WebFetch', 'WebSearch'],
