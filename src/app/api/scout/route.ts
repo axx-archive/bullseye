@@ -151,12 +151,18 @@ export async function POST(req: Request) {
   // Load project context and build budget-aware prompt if projectId is provided
   if (projectId) {
     try {
-      // Fetch latest draft, reader memories, and focus group highlights in parallel
-      const latestDraft = await db.draft.findFirst({
-        where: { projectId },
-        orderBy: { draftNumber: 'desc' },
-        select: { id: true, scriptText: true },
-      });
+      // Fetch latest draft, chat session (for summary), reader memories, and focus group highlights in parallel
+      const [latestDraft, chatSession] = await Promise.all([
+        db.draft.findFirst({
+          where: { projectId },
+          orderBy: { draftNumber: 'desc' },
+          select: { id: true, scriptText: true },
+        }),
+        db.chatSession.findUnique({
+          where: { projectId },
+          select: { conversationSummary: true, summaryMessageCount: true },
+        }),
+      ]);
 
       const [readerMemories, focusMessages] = await Promise.all([
         latestDraft
@@ -208,13 +214,16 @@ export async function POST(req: Request) {
         `${m.role === 'user' ? 'User' : 'Scout'}: ${m.content}`
       );
 
-      // Assemble context within token budget
-      const budgetResult = buildContextBudget({
+      // Assemble context within token budget (async — may call Haiku for summarization)
+      const budgetResult = await buildContextBudget({
         systemPrompt,
         scriptText,
         chatHistory: chatHistoryStrings,
         readerMemories: memoriesText,
         focusGroupHighlights: focusText,
+        existingSummary: chatSession?.conversationSummary,
+        summaryMessageCount: chatSession?.summaryMessageCount,
+        apiKey,
       });
 
       if (budgetResult.metadata.truncated) {
@@ -223,6 +232,24 @@ export async function POST(req: Request) {
           `Total tokens: ~${budgetResult.metadata.totalEstimatedTokens}. ` +
           `Layers: ${JSON.stringify(budgetResult.metadata.layers)}`
         );
+      }
+
+      // Persist new conversation summary if one was generated
+      if (budgetResult.metadata.newSummary) {
+        db.chatSession.upsert({
+          where: { projectId },
+          create: {
+            projectId,
+            conversationSummary: budgetResult.metadata.newSummary,
+            summaryMessageCount: budgetResult.metadata.newSummaryMessageCount,
+          },
+          update: {
+            conversationSummary: budgetResult.metadata.newSummary,
+            summaryMessageCount: budgetResult.metadata.newSummaryMessageCount,
+          },
+        }).catch((err) => {
+          console.error('[Scout] Failed to persist conversation summary:', err);
+        });
       }
 
       // Use the budget-assembled system prompt and override the raw prompt

@@ -559,6 +559,8 @@ model ChatSession {
   id                    String              @id @default(cuid())
   projectId             String              @unique  // One session per project
   scoutPhase            String?             // Current right panel phase: 'idle' | 'analysis' | 'focus_group' | 'reader_chat' | 'executive'
+  conversationSummary   String?             @db.Text  // AI-generated summary of dropped conversation history
+  summaryMessageCount   Int?                // Number of messages summarized (to detect when regeneration is needed)
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
