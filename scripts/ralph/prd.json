@@ -49,7 +49,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Currently streamingTextRef.current accumulates text across ALL turns without reset. The onScoutTextComplete callback just sets isStreaming:false on the message. When the next turn starts, text_delta appends to the same ref, creating one giant concatenated message. Fix by detecting turn boundaries."
     },
     {

@@ -7,6 +7,9 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - The eslint rule `react-hooks/refs` forbids assigning ref.current during render — wrap in useEffect instead
 - handleSendMessage has chatMessages in its useCallback deps, making it unstable — always access via ref for effects
 - Scout system prompt is in src/lib/agent-sdk/prompts.ts — FILE UPLOADS section and AUTONOMOUS WORKFLOW must stay consistent
+- Turn boundaries in Agent SDK streaming: use a turnCompleteRef flag set on text_complete and checked on next text_delta to create new assistant messages
+- When creating new assistant messages mid-stream, also reset streamingTextRef and toolCallsRef so subsequent content is independent
+- onResult/onError should use currentAssistantIdRef.current (not captured assistantId) since the active message may have changed during multi-turn
 
 ---
 
@@ -26,4 +29,14 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - The Scout system prompt is in src/lib/agent-sdk/prompts.ts as a single template literal export
   - The FILE UPLOADS section and AUTONOMOUS WORKFLOW section must stay consistent — if one says "don't call X", the workflow steps must reflect that
   - The "[UPLOADED SCRIPT FILE: ...]" marker in user messages is the signal that pre-ingestion happened
+---
+
+## 2026-01-23 - US-003
+- What was implemented: Fixed multi-turn text concatenation by adding turn boundary detection. When `text_complete` fires, `turnCompleteRef` is set to true. When the next `text_delta` arrives and `turnCompleteRef` is true, a new assistant message placeholder is created with a fresh UUID, and `streamingTextRef` is reset. This ensures each Agent SDK turn renders as its own distinct chat message.
+- Files changed: src/components/scout/scout-chat.tsx
+- **Learnings for future iterations:**
+  - The Agent SDK sends: text_delta → text_complete → (tool calls) → text_delta → text_complete for multi-turn flows
+  - Turn boundary detection pattern: set a flag on text_complete, check it on next text_delta, create new message if flag is set
+  - When starting a new turn mid-stream, reset streamingTextRef, toolCallsRef, and update currentAssistantIdRef to the new message
+  - onResult and onError must reference currentAssistantIdRef.current (dynamic) rather than the initially captured assistantId, since multi-turn creates new messages
 ---
