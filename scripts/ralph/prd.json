@@ -253,7 +253,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "The rate limiter needs a callback or event emitter to notify when queuing happens. Pass the sendEvent callback into the acquire function, or have acquire return a status indicating whether it delayed. The UI indicator should be minimal — not alarming."
     }
   ]

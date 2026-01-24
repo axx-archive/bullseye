@@ -19,6 +19,7 @@ Started: Fri Jan 23 18:07:41 PST 2026
 - Context budget utility (src/lib/agent-sdk/context-budget.ts) is pure — pass data in, get assembled prompt + metadata out. Token estimation: chars / 4.
 - Rate limiter (src/lib/rate-limiter.ts): import `rateLimiter` singleton, call `await rateLimiter.acquire({ estimatedInputTokens })` before API calls, call `rateLimiter.report(actualIn, actualOut)` after completion
 - For streaming API calls: accumulate output text length during streaming, then report tokens as `Math.ceil(outputLength / 4)`. For non-streaming: use `response.usage?.input_tokens` and `response.usage?.output_tokens`
+- EventRouterCallbacks is implemented in 3 places: scout-chat.tsx, pitch-view.tsx, focus-group-panel.tsx — adding a new callback requires updating all consumers (use no-op `() => {}` for components that don't need it)
 
 ---
 
@@ -171,4 +172,14 @@ Started: Fri Jan 23 18:07:41 PST 2026
   - Since readers run in Promise.all, each reader's acquire() call independently gates its own request, naturally staggering them if rate limits are tight
   - Focus group engine has 5 separate API call sites (moderator turns, reader turns, reaction turns, streaming variants) — all need rate limiting
   - Executive engine's evaluateForMultipleExecutives runs executives in parallel via Promise.all — similar to readers, the limiter naturally staggers them
+---
+
+## 2026-01-23 - US-015
+- What was implemented: Added queue_status SSE event type and UI indicator for rate-limited requests. When `rateLimiter.acquire()` delays due to capacity limits, it emits a `queue_status: 'queued'` SSE event via the onQueued callback. When capacity becomes available, it emits `queue_status: 'processing'`. The event-router routes these to a new `onQueueStatus` callback. In scout-chat.tsx, a subtle pulsing indicator (matching existing loading style) appears below messages when queued, and automatically disappears when the next text_delta or tool_start event arrives.
+- Files changed: src/lib/agent-sdk/types.ts, src/lib/agent-sdk/event-router.ts, src/app/api/scout/route.ts, src/components/scout/scout-chat.tsx, src/components/pitch/pitch-view.tsx, src/components/scout/focus-group-panel.tsx
+- **Learnings for future iterations:**
+  - The `EventRouterCallbacks` interface is used in 3 places (scout-chat, pitch-view, focus-group-panel) — adding a new callback requires updating all consumers
+  - The rate limiter's `onQueued`/`onProcessing` callbacks are optional and only fire when the acquire() actually needs to delay — if capacity is immediately available, neither fires
+  - Queue status indicator should be cleared on multiple events (text_delta, tool_start, onResult, onError) to ensure it never gets stuck visible
+  - The pulsing dot pattern (w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse) is consistent with the existing loading history indicator
 ---
