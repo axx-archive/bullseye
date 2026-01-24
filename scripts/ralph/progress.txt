@@ -1,185 +1,30 @@
 # Ralph Progress Log
-Started: Fri Jan 23 18:07:41 PST 2026
+Started: Sat Jan 24 07:57:21 PST 2026
+---
 
 ## Codebase Patterns
-- In scout-chat.tsx, use refs (useRef + useEffect to sync) instead of including unstable callbacks in useEffect dependency arrays
-- Run `npm run lint -- <filepath>` to lint specific files; `npx tsc --noEmit` for typecheck
-- The eslint rule `react-hooks/refs` forbids assigning ref.current during render — wrap in useEffect instead
-- handleSendMessage has chatMessages in its useCallback deps, making it unstable — always access via ref for effects
-- Scout system prompt is in src/lib/agent-sdk/prompts.ts — FILE UPLOADS section and AUTONOMOUS WORKFLOW must stay consistent
-- Turn boundaries in Agent SDK streaming: use a turnCompleteRef flag set on text_complete and checked on next text_delta to create new assistant messages
-- When creating new assistant messages mid-stream, also reset streamingTextRef and toolCallsRef so subsequent content is independent
-- onResult/onError should use currentAssistantIdRef.current (not captured assistantId) since the active message may have changed during multi-turn
-- The eslint rule `react-hooks/set-state-in-effect` disallows synchronous setState in effect bodies — extract an async function and call it instead
-- Chat persistence uses ChatSession (1:1 with Project via unique projectId) and ChatSessionMessage (many per session, ordered by createdAt)
-- Fire-and-forget persistence pattern: use a top-level `persistChatMessage(projectId, data)` helper that wraps fetch().catch(console.error)
-- Prisma client is generated to `src/generated/prisma` — import types from there
-- When resetting project state, all ephemeral state spans AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState — use `resetProjectState()` or inline the full reset in `setCurrentProject`
-- React Query deliverable hooks use `enabled: !!draftId` — clearing `currentDraft` to null automatically disables them without explicit invalidation
-- Context budget utility (src/lib/agent-sdk/context-budget.ts) is pure — pass data in, get assembled prompt + metadata out. Token estimation: chars / 4.
-- Rate limiter (src/lib/rate-limiter.ts): import `rateLimiter` singleton, call `await rateLimiter.acquire({ estimatedInputTokens })` before API calls, call `rateLimiter.report(actualIn, actualOut)` after completion
-- For streaming API calls: accumulate output text length during streaming, then report tokens as `Math.ceil(outputLength / 4)`. For non-streaming: use `response.usage?.input_tokens` and `response.usage?.output_tokens`
-- EventRouterCallbacks is implemented in 3 places: scout-chat.tsx, pitch-view.tsx, focus-group-panel.tsx — adding a new callback requires updating all consumers (use no-op `() => {}` for components that don't need it)
+- The ScoutChat component uses `useAppStore` (Zustand) for all SCOUT state (chatMessages, readerStates, rightPanelMode, etc.)
+- Chat history is loaded via `GET /api/projects/{id}/chat` and persisted via `POST /api/projects/{id}/chat`
+- SSE connections are managed via `createSSEConnection` from `@/lib/agent-sdk/event-router`
+- `pendingScoutAttachment` in Zustand is set by the upload flow to trigger auto-analysis after a draft upload
+- `handleSendMessageRef` pattern is used to avoid stale closures in effects
+- `processingAttachmentRef` prevents double-firing of the attachment effect
+- TypeScript typecheck: `npx tsc --noEmit`; lint: `npx eslint <file>`
+- The project is a Next.js app with Prisma ORM
 
 ---
 
-## 2026-01-23 - US-001
-- What was implemented: Fixed pendingScoutAttachment double-fire by adding a processingRef guard and using a handleSendMessageRef to avoid including the unstable handleSendMessage in the useEffect dependency array
-- Files changed: src/components/scout/scout-chat.tsx
+## 2026-01-24 - US-001
+- **What was implemented**: Fixed the race condition between chat history loading and pendingScoutAttachment auto-send
+- **Files changed**: `src/components/scout/scout-chat.tsx`
+- **Fix details**:
+  - Added `isHistoryLoaded` state (initially `false`)
+  - History loading effect sets `isHistoryLoaded = false` when project changes, then `true` after fetch completes (or immediately if no project)
+  - Attachment auto-send effect now checks `isHistoryLoaded` before firing, preventing it from triggering while `clearChat()` or history fetch is in progress
+  - Added `isHistoryLoaded` to the attachment effect's dependency array so it re-evaluates once history is ready
 - **Learnings for future iterations:**
-  - handleSendMessage depends on chatMessages via useCallback, so it changes on every message — never use it directly as a useEffect dep for effects that should fire once
-  - The eslint react-hooks/refs rule disallows ref.current assignment during render — use a syncing useEffect instead
-  - The processingRef pattern (set true before action, false after) prevents React StrictMode or fast state changes from re-triggering effects
----
-
-## 2026-01-23 - US-002
-- What was implemented: Fixed the AUTONOMOUS WORKFLOW step 3 (Ingest) in the Scout system prompt to be conditional — it now instructs Scout to skip ingest_script when a file was uploaded (indicated by "[UPLOADED SCRIPT FILE: ...]" marker) and only call it for pasted script text. This resolves the contradiction with the FILE UPLOADS section.
-- Files changed: src/lib/agent-sdk/prompts.ts
-- **Learnings for future iterations:**
-  - The Scout system prompt is in src/lib/agent-sdk/prompts.ts as a single template literal export
-  - The FILE UPLOADS section and AUTONOMOUS WORKFLOW section must stay consistent — if one says "don't call X", the workflow steps must reflect that
-  - The "[UPLOADED SCRIPT FILE: ...]" marker in user messages is the signal that pre-ingestion happened
----
-
-## 2026-01-23 - US-003
-- What was implemented: Fixed multi-turn text concatenation by adding turn boundary detection. When `text_complete` fires, `turnCompleteRef` is set to true. When the next `text_delta` arrives and `turnCompleteRef` is true, a new assistant message placeholder is created with a fresh UUID, and `streamingTextRef` is reset. This ensures each Agent SDK turn renders as its own distinct chat message.
-- Files changed: src/components/scout/scout-chat.tsx
-- **Learnings for future iterations:**
-  - The Agent SDK sends: text_delta → text_complete → (tool calls) → text_delta → text_complete for multi-turn flows
-  - Turn boundary detection pattern: set a flag on text_complete, check it on next text_delta, create new message if flag is set
-  - When starting a new turn mid-stream, reset streamingTextRef, toolCallsRef, and update currentAssistantIdRef to the new message
-  - onResult and onError must reference currentAssistantIdRef.current (dynamic) rather than the initially captured assistantId, since multi-turn creates new messages
----
-
-## 2026-01-23 - US-004
-- What was implemented: Added ChatSession and ChatSessionMessage Prisma models for project-scoped chat persistence. ChatSession has a unique projectId constraint (one session per project). ChatSessionMessage stores role, content, agentType, toolCalls (JSON), attachmentName, and attachmentSize. Added cascade delete and Project → ChatSession optional relation. Ran migration successfully.
-- Files changed: prisma/schema.prisma, prisma/migrations/20260124021455_add_chat_session_models/migration.sql
-- **Learnings for future iterations:**
-  - Prisma migration command: `npx prisma migrate dev --name <name>` — generates SQL and applies it
-  - After migration, run `npx prisma generate` to regenerate the client with new model types
-  - The existing ChatMessage model (line 494) is a simpler legacy model — the new ChatSession/ChatSessionMessage models are the proper project-scoped persistence layer
-  - Use `@unique` on projectId in ChatSession to enforce one session per project at the DB level
-  - Use `@@index([sessionId, createdAt])` on ChatSessionMessage for efficient ordered retrieval
----
-
-## 2026-01-23 - US-005
-- What was implemented: Created POST and GET /api/projects/[id]/chat API endpoints for chat persistence. GET loads all messages for a project's chat session ordered by createdAt. POST upserts the ChatSession (creates on first message) and creates a ChatSessionMessage. Both endpoints verify user authentication and project ownership via studioId matching.
-- Files changed: src/app/api/projects/[id]/chat/route.ts (new file)
-- **Learnings for future iterations:**
-  - The project route pattern uses `params: Promise<{ id: string }>` (Next.js 15 async params) — always await params
-  - Use `db.chatSession.upsert` with `where: { projectId }` to atomically create-or-update the session on first message
-  - Project ownership check: fetch project, compare project.studioId to user.studioId
-  - Return 404 (not 403) for projects the user doesn't own — avoids leaking project existence
-  - The select clause on message queries should match the GET response shape for consistency
----
-
-## 2026-01-23 - US-006
-- What was implemented: Added fire-and-forget chat message persistence in scout-chat.tsx. User messages are persisted after being added to the store. Assistant turn content is persisted on onScoutTextComplete. On onResult, the final assistant state with toolCalls is persisted (only if toolCalls exist, since text was already saved by onScoutTextComplete). All persistence calls are guarded by a currentProject?.id check and wrapped in .catch(console.error).
-- Files changed: src/components/scout/scout-chat.tsx
-- **Learnings for future iterations:**
-  - Use a top-level helper function (outside the component) for fire-and-forget persistence to keep callback bodies clean
-  - Be careful about duplicate persistence: onScoutTextComplete fires per turn AND onResult fires at the end — only persist from onResult if there's additional data (toolCalls) beyond what onScoutTextComplete already saved
-  - useAppStore.getState().currentProject?.id is the way to access projectId from inside callbacks without adding it as a dependency
-  - The persistChatMessage helper uses fetch().catch(console.error) pattern — non-blocking, silent failure by design
----
-
-## 2026-01-23 - US-007
-- What was implemented: Added a useEffect in ScoutChat that watches currentProject changes. When the project changes, it clears chatMessages via clearChat(), then fetches GET /api/projects/[id]/chat. DB messages are mapped to StoreChatMessage format and populated into the store. A loading indicator shows while fetching. A prevProjectIdRef prevents redundant fetches when the same project re-renders.
-- Files changed: src/components/scout/scout-chat.tsx
-- **Learnings for future iterations:**
-  - The eslint rule `react-hooks/set-state-in-effect` disallows synchronous setState calls in effect bodies — wrap in an async IIFE or extracted async function to satisfy it
-  - Use prevProjectIdRef pattern to deduplicate effect runs when the dependency (currentProject object) changes identity but the ID stays the same
-  - The GET /api/projects/[id]/chat response shape: { messages: Array<{ id, role, content, agentType, toolCalls, attachmentName, attachmentSize, createdAt }> }
-  - Map DB `agentType` (nullable string) to StoreChatMessage `agentType` (optional 'SCOUT'|'READER') with nullish coalescing to undefined
-  - Use `useAppStore.setState({ chatMessages: mapped })` for bulk-setting messages (same pattern as retry handler)
----
-
-## 2026-01-23 - US-008
-- What was implemented: Added `resetProjectState` action to the Zustand store that clears all project-specific ephemeral state in one call. Modified `setCurrentProject` to automatically trigger this reset when the project ID changes. Added a React Query cache invalidation effect in page.tsx that removes all draft-keyed queries when switching projects, ensuring deliverable/evaluation/focus tabs show fresh data.
-- Files changed: src/stores/app-store.ts, src/app/page.tsx
-- **Learnings for future iterations:**
-  - The `setCurrentProject` setter can use `set((state) => ...)` form to compare prev/new IDs and conditionally include reset state in the return
-  - All ephemeral project state lives across AnalysisState, FocusGroupState, ExecutiveState, and ScoutSessionState interfaces — reset must cover all of them
-  - React Query hooks for deliverables/evaluations/focus use `enabled: !!draftId` so clearing `currentDraft` to null disables them automatically
-  - Use `queryClient.removeQueries({ queryKey: ['drafts'], exact: false })` to clear all draft-related caches regardless of specific draftId
-  - The `prevProjectIdRef` pattern (compare prev vs new ID before acting) prevents redundant resets when the currentProject object changes identity but the ID stays the same
----
-
-## 2026-01-23 - US-009
-- What was implemented: Created src/lib/agent-sdk/context-budget.ts with a `buildContextBudget()` function that assembles Scout's context within the 200K Opus 4.5 token budget. Implements token estimation (chars/4), budget allocation across 5 layers (system 4K, script 80K, chat 50K, memories 20K, focus 10K = 164K total), script truncation (first 40K + last 20K chars with truncation marker), and chat history truncation (most recent messages first). Returns the assembled prompt string and metadata with per-layer token counts and truncation status.
-- Files changed: src/lib/agent-sdk/context-budget.ts (new file)
-- **Learnings for future iterations:**
-  - The context budget utility is pure — no DB calls. The caller (Scout route) fetches data and passes it in.
-  - Token estimation: chars / 4 approximation. Budget: 164K for context, 36K reserved for output + tools.
-  - Script truncation strategy: keep first 40K + last 20K chars when over 320K chars (80K tokens).
-  - Chat history truncation: iterate from most recent backward until budget exhausted, prepend truncation marker.
-  - The function returns both the assembled prompt string and metadata (totalEstimatedTokens, truncated boolean, per-layer breakdown).
----
-
-## 2026-01-23 - US-010
-- What was implemented: Integrated project context injection into the Scout API route. When `projectId` is provided, the route now fetches the project's latest draft, reader memories (narrativeSummary, recommendation, keyStrengths, keyConcerns), and focus group messages (last 20 from latest draft's focus session). This context is formatted and passed to `buildContextBudget()` which assembles it within the 200K token budget. The budget-assembled string becomes the system prompt, and only the latest user message is sent as the query prompt. Context loading failures are caught and logged without blocking the conversation.
-- Files changed: src/app/api/scout/route.ts
-- **Learnings for future iterations:**
-  - The FocusGroupMessage model relates to FocusSession (which relates to Draft) — query via `session: { draftId }` for filtering by draft
-  - Reader memories are per-draft (@@unique([draftId, readerId])) — fetch by latestDraft.id to get current analysis context
-  - When using buildContextBudget, the returned `prompt` string replaces the system prompt entirely (it includes system + script + memories + focus + chat)
-  - The original conversationContext/prompt construction is bypassed when project context is loaded — only lastUserMessage.content is needed as the query prompt
-  - Use Promise.all for parallel DB queries (memories + focus messages) to minimize latency
-  - Focus messages are fetched desc by sequenceNumber then reversed to get chronological order
----
-
-## 2026-01-23 - US-011
-- What was implemented: Migrated Scout orchestration to Opus 4.5. Changed model from `claude-sonnet-4-20250514` to `claude-opus-4-5-20251101` in /api/scout/route.ts. Increased maxBudgetUsd from 2.0 to 5.0 to accommodate Opus 4.5's higher per-token cost for longer analysis runs.
-- Files changed: src/app/api/scout/route.ts
-- **Learnings for future iterations:**
-  - The Agent SDK query() passes `model` as a string directly to Anthropic API — no SDK version changes needed for new model support
-  - Opus 4.5 model ID: `claude-opus-4-5-20251101`
-  - maxBudgetUsd should be increased when switching to more expensive models to avoid premature budget exhaustion during long multi-turn analysis sessions
-  - The Scout route is the only place where the Scout orchestrator model is configured — reader/focus/executive models are in their respective tool files
----
-
-## 2026-01-23 - US-012
-- What was implemented: Migrated all reader, focus group, executive evaluation, reader-chat, and focus question generation flows from `claude-sonnet-4-20250514` to `claude-opus-4-5-20251101`. Updated MODELS constants in `src/lib/agents/index.ts` and `src/lib/agent-sdk/client.ts`. Updated direct model string references in focus-group, executive, reader-chat tool, focus-questions tool, and API routes. Kept all Haiku calls (metadata, memory, studio intelligence) unchanged.
-- Files changed: src/lib/agents/index.ts, src/lib/agent-sdk/client.ts, src/lib/agent-sdk/tools/reader-chat.ts, src/lib/agent-sdk/tools/focus-questions.ts, src/lib/focus-group/index.ts (5 occurrences), src/lib/executive/index.ts (2 occurrences), src/app/api/reader-chat/route.ts, src/app/api/chat/route.ts
-- **Learnings for future iterations:**
-  - The model string is scattered across many files — some use a MODELS constant (agents/index.ts), others use inline strings. Check both patterns when migrating.
-  - `src/lib/agents/index.ts` has a `MODELS` constant used by `runReaderAnalysis`, harmonization, and executive evaluation — updating the constant covers all 3.
-  - `src/lib/agent-sdk/client.ts` has its own `MODELS` constant — update it too for consistency even if not all keys are currently referenced.
-  - Focus group has 5 separate model references across moderator turns, streaming turns, reader response generation, and reaction generation.
-  - Haiku calls to preserve: ingest.ts (metadata extraction), memory.ts, memory/index.ts, studio-intelligence/index.ts
----
-
-## 2026-01-23 - US-013
-- What was implemented: Created `src/lib/rate-limiter.ts` with a `RateLimiter` class implementing sliding-window rate limiting for Anthropic API calls. Tracks three limits: requests per minute (50), input tokens per minute (30K), output tokens per minute (8K). Exposes `acquire(options)` (async, delays with exponential backoff up to 15s when capacity unavailable) and `report(actualInput, actualOutput)` (updates actual token usage after request completes). Includes optional `onQueued`/`onProcessing` callbacks for UI notification. Exports a singleton instance.
-- Files changed: src/lib/rate-limiter.ts (new file)
-- **Learnings for future iterations:**
-  - The rate limiter is a server-side singleton per-process — import `rateLimiter` from `src/lib/rate-limiter`
-  - `acquire()` takes an options object with `estimatedInputTokens` (use chars/4) and optional `onQueued`/`onProcessing` callbacks for SSE event emission
-  - `report()` updates the most recent entry with actual token counts from the API response — call after each request completes
-  - Sliding window purges entries > 60s old on every check — no manual cleanup needed
-  - Exponential backoff starts at 500ms, doubles up to 15s max while waiting for capacity
-  - The `getUsage()` method returns current window stats for debugging/monitoring
----
-
-## 2026-01-23 - US-014
-- What was implemented: Integrated the rate limiter into all Anthropic API call sites. Before each API call, `rateLimiter.acquire({ estimatedInputTokens })` is called (where estimatedInputTokens = total chars / 4). After each response completes, `rateLimiter.report(actualInput, actualOutput)` is called with actual token counts from the API response (or estimated from output length for streaming calls). Integrated into: runReaderAnalysis (agents/index.ts), Scout route (api/scout/route.ts), FocusGroupEngine's generateModeratorTurn/streamModeratorTurn/generateReaderTurn/generateReactionTurn/streamReaderTurn (focus-group/index.ts), ExecutiveEvaluationEngine's evaluateForExecutive/streamEvaluation (executive/index.ts), reader-chat tool (agent-sdk/tools/reader-chat.ts), reader-chat API route (api/reader-chat/route.ts), and focus-questions tool (agent-sdk/tools/focus-questions.ts).
-- Files changed: src/lib/agents/index.ts, src/app/api/scout/route.ts, src/lib/focus-group/index.ts, src/lib/executive/index.ts, src/lib/agent-sdk/tools/reader-chat.ts, src/app/api/reader-chat/route.ts, src/lib/agent-sdk/tools/focus-questions.ts
-- **Learnings for future iterations:**
-  - The rate limiter is already a singleton — just import `{ rateLimiter }` from `@/lib/rate-limiter` (or relative path `../rate-limiter`)
-  - For streaming responses (messages.stream), track output length by accumulating text delta lengths, then estimate tokens as outputLength / 4 for the report call
-  - For non-streaming responses (messages.create), use `response.usage?.input_tokens` and `response.usage?.output_tokens` for accurate reporting
-  - The Scout route uses the Agent SDK `query()` which manages its own internal API calls — we acquire for the initial prompt size before starting, and report after the result event
-  - Since readers run in Promise.all, each reader's acquire() call independently gates its own request, naturally staggering them if rate limits are tight
-  - Focus group engine has 5 separate API call sites (moderator turns, reader turns, reaction turns, streaming variants) — all need rate limiting
-  - Executive engine's evaluateForMultipleExecutives runs executives in parallel via Promise.all — similar to readers, the limiter naturally staggers them
----
-
-## 2026-01-23 - US-015
-- What was implemented: Added queue_status SSE event type and UI indicator for rate-limited requests. When `rateLimiter.acquire()` delays due to capacity limits, it emits a `queue_status: 'queued'` SSE event via the onQueued callback. When capacity becomes available, it emits `queue_status: 'processing'`. The event-router routes these to a new `onQueueStatus` callback. In scout-chat.tsx, a subtle pulsing indicator (matching existing loading style) appears below messages when queued, and automatically disappears when the next text_delta or tool_start event arrives.
-- Files changed: src/lib/agent-sdk/types.ts, src/lib/agent-sdk/event-router.ts, src/app/api/scout/route.ts, src/components/scout/scout-chat.tsx, src/components/pitch/pitch-view.tsx, src/components/scout/focus-group-panel.tsx
-- **Learnings for future iterations:**
-  - The `EventRouterCallbacks` interface is used in 3 places (scout-chat, pitch-view, focus-group-panel) — adding a new callback requires updating all consumers
-  - The rate limiter's `onQueued`/`onProcessing` callbacks are optional and only fire when the acquire() actually needs to delay — if capacity is immediately available, neither fires
-  - Queue status indicator should be cleared on multiple events (text_delta, tool_start, onResult, onError) to ensure it never gets stuck visible
-  - The pulsing dot pattern (w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse) is consistent with the existing loading history indicator
+  - The two key effects in scout-chat.tsx that must coordinate: (1) history loader (watches `currentProject`) and (2) attachment sender (watches `pendingScoutAttachment`)
+  - `clearChat()` is called on every project change — any effect that sends messages must wait for it to complete
+  - For new projects with no history, the fetch returns an empty array quickly, so the `isHistoryLoaded` flag flips fast
+  - The existing `processingAttachmentRef` prevents double-sends but does NOT prevent sends during loading — the new `isHistoryLoaded` state handles that
 ---
