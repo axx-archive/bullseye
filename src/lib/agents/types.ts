@@ -19,14 +19,39 @@ export interface AgentDefinition {
 // READER ANALYSIS OUTPUT SCHEMA
 // ============================================
 
+// Helper to convert numeric score (0-100) to enum rating
+function numericToRating(value: unknown): 'excellent' | 'very_good' | 'good' | 'so_so' | 'not_good' {
+  // If already a valid string, return it
+  if (typeof value === 'string') {
+    const validRatings = ['excellent', 'very_good', 'good', 'so_so', 'not_good'] as const;
+    if (validRatings.includes(value as typeof validRatings[number])) {
+      return value as typeof validRatings[number];
+    }
+  }
+  // Convert numeric to rating
+  const num = typeof value === 'number' ? value : parseFloat(String(value));
+  if (isNaN(num)) return 'good'; // Default fallback
+  if (num >= 85) return 'excellent';
+  if (num >= 70) return 'very_good';
+  if (num >= 55) return 'good';
+  if (num >= 40) return 'so_so';
+  return 'not_good';
+}
+
+// Preprocessor that coerces numeric values to enum strings
+const ratingSchema = z.preprocess(
+  numericToRating,
+  z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good'])
+);
+
 export const ReaderAnalysisSchema = z.object({
   scores: z.object({
-    premise: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
-    character: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
-    dialogue: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
-    structure: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
-    commerciality: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
-    overall: z.enum(['excellent', 'very_good', 'good', 'so_so', 'not_good']),
+    premise: ratingSchema,
+    character: ratingSchema,
+    dialogue: ratingSchema,
+    structure: ratingSchema,
+    commerciality: ratingSchema,
+    overall: ratingSchema,
     premiseNumeric: z.number().min(0).max(100),
     characterNumeric: z.number().min(0).max(100),
     dialogueNumeric: z.number().min(0).max(100),

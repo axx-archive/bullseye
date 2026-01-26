@@ -477,14 +477,19 @@ function MessageBubble({ message, agentName, agentColor }: { message: ChatMessag
               <span>{formatFileSize(message.attachment.size)}</span>
             </div>
           )}
-          {/* Tool call status pills */}
+          <p className="whitespace-pre-wrap">{message.content}</p>
+          {message.isStreaming && (
+            <span className="inline-block w-0.5 h-4 ml-0.5 bg-bullseye-gold animate-pulse" />
+          )}
+          {/* Tool call status pills - positioned BELOW message content with fixed layout */}
           {message.toolCalls && message.toolCalls.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-border/30">
               {message.toolCalls.map((tool) => (
                 <motion.div
                   key={tool.id}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
+                  layout
                   className={cn(
                     'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border',
                     tool.status === 'running'
@@ -501,10 +506,6 @@ function MessageBubble({ message, agentName, agentColor }: { message: ChatMessag
                 </motion.div>
               ))}
             </div>
-          )}
-          <p className="whitespace-pre-wrap">{message.content}</p>
-          {message.isStreaming && (
-            <span className="inline-block w-0.5 h-4 ml-0.5 bg-bullseye-gold animate-pulse" />
           )}
         </div>
       </div>

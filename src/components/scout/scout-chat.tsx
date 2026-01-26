@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/stores/app-store';
 import type { ToolCallStatus, StoreChatMessage } from '@/stores/app-store';
@@ -10,7 +9,6 @@ import { ChatInterface, QuickActions, type ChatMessage, type FileAttachment } fr
 import { createSSEConnection, type EventRouterCallbacks } from '@/lib/agent-sdk/event-router';
 import { draftKeys } from '@/hooks/use-drafts';
 import { studioKeys } from '@/hooks/use-studio';
-import { Target } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 function persistChatMessage(projectId: string, data: {
@@ -827,8 +825,18 @@ export function ScoutChat() {
 
   // Auto-send when a pending attachment arrives (e.g., after draft upload)
   // Waits for history loading to complete so clearChat() doesn't conflict
+  // Deduplication: Skip if the last message already has the same attachment (Fix 3)
   useEffect(() => {
     if (pendingScoutAttachment && !isStreaming && !processingAttachmentRef.current && isHistoryLoaded) {
+      // Check for duplicate: if last user message has the same attachment, skip
+      const currentMessages = useAppStore.getState().chatMessages;
+      const lastUserMessage = [...currentMessages].reverse().find((m) => m.role === 'user');
+      if (lastUserMessage?.attachment?.name === pendingScoutAttachment.filename) {
+        // Already sent this attachment, skip duplicate
+        setPendingScoutAttachment(null);
+        return;
+      }
+
       processingAttachmentRef.current = true;
       const attachment: FileAttachment = {
         file: new File([], pendingScoutAttachment.filename),
@@ -864,6 +872,18 @@ export function ScoutChat() {
 
   const hasMessages = chatMessages.length > 0;
 
+  // UI-only welcome message when chat is empty (not persisted to DB)
+  const welcomeMessage: ChatMessage = {
+    id: 'welcome-message',
+    role: 'assistant',
+    content: "Welcome! Upload a script and I'll have my readers analyze it. You can drag and drop a PDF here or use the attachment button below.",
+    agentType: 'SCOUT',
+    timestamp: new Date(),
+  };
+
+  // Use welcome message when chat is empty, otherwise show actual messages
+  const messagesForDisplay = hasMessages ? displayMessages : [welcomeMessage];
+
   return (
     <div className="h-full flex flex-col">
       {isLoadingHistory && scoutInitPhase === 'idle' ? (
@@ -871,73 +891,6 @@ export function ScoutChat() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="w-1.5 h-1.5 rounded-full bg-bullseye-gold/60 animate-pulse" />
             Loading conversation...
-          </div>
-        </div>
-      ) : scoutInitPhase !== 'idle' && !hasMessages ? (
-        <ScoutInitProgress
-          phase={scoutInitPhase}
-          staleMessage={initStaleMessage}
-          errorMessage={initErrorMessage}
-          onRetry={handleRetry}
-        />
-      ) : !hasMessages ? (
-        <div className="flex-1 flex flex-col items-center justify-center relative">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
-            <Target className="w-[300px] h-[300px] text-bullseye-gold" strokeWidth={0.5} />
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="text-center relative z-10 max-w-md px-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.1, duration: 0.4 }}
-              className="w-12 h-12 rounded-2xl bg-bullseye-gold/10 flex items-center justify-center mx-auto mb-6"
-            >
-              <Target className="w-6 h-6 text-bullseye-gold" />
-            </motion.div>
-
-            <motion.h2
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-              className="text-xl font-semibold tracking-tight mb-3"
-            >
-              What would you like to analyze?
-            </motion.h2>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3, duration: 0.5 }}
-              className="text-sm text-muted-foreground leading-relaxed mb-8"
-            >
-              Upload a script or paste text and Scout will coordinate three readers,
-              then deliver harmonized coverage in real-time.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.5 }}
-            >
-              <QuickActions onAction={handleQuickAction} disabled={isStreaming} />
-            </motion.div>
-          </motion.div>
-
-          <div className="absolute bottom-0 left-0 right-0">
-            <ChatInterface
-              messages={[]}
-              onSendMessage={handleSendMessage}
-              isLoading={isStreaming}
-              activityStatus={activeTool ? getToolDisplayName(activeTool) : null}
-              placeholder="Upload a script or paste text..."
-              className="h-auto"
-            />
           </div>
         </div>
       ) : (
@@ -951,11 +904,11 @@ export function ScoutChat() {
             />
           ) : (
             <ChatInterface
-              messages={displayMessages}
+              messages={messagesForDisplay}
               onSendMessage={handleSendMessage}
               isLoading={isStreaming}
               activityStatus={activeTool ? getToolDisplayName(activeTool) : null}
-              placeholder="Message Scout..."
+              placeholder={hasMessages ? "Message Scout..." : "Upload a script or paste text..."}
               agentName="Scout"
               agentColor="#D4A84B"
             />

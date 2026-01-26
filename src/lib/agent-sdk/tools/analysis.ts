@@ -293,11 +293,11 @@ Overall: ${analysis.overallAssessment}
       data: lastDeliverable,
     });
 
-    // Switch to coverage phase so the UI shows the Coverage tab
+    // Switch to analysis phase so the UI auto-switches to the Analysis tab
     emitEvent({
       source: 'system',
       type: 'phase_change',
-      phase: 'idle', // Reset panel — coverage is shown in main tab
+      phase: 'analysis', // Keep analysis phase active so right panel shows Analysis tab
     });
 
     return {
