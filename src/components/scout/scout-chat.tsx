@@ -237,6 +237,7 @@ export function ScoutChat() {
   }, [flushReaderStates]);
 
   // Clean up stale timer and debounce timer on unmount
+  // Flush any pending reader state updates to ensure no data is lost on tab switch
   useEffect(() => {
     return () => {
       if (initStaleTimerRef.current) {
@@ -244,9 +245,11 @@ export function ScoutChat() {
       }
       if (persistReaderDebounceRef.current) {
         clearTimeout(persistReaderDebounceRef.current);
+        // Flush pending reader states immediately on unmount to prevent data loss
+        flushReaderStates();
       }
     };
-  }, []);
+  }, [flushReaderStates]);
 
   const sendMessageToScout = useCallback((
     content: string,

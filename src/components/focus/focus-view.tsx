@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
 import { useFocusSessions } from '@/hooks/use-studio';
+import { useProject } from '@/hooks/use-projects';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -17,6 +18,9 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { DEFAULT_READERS } from '@/lib/agents/reader-personas';
+import { DraftSelector, getEffectiveDraftId } from '@/components/shared/draft-selector';
+import { HistoricalDraftBanner } from '@/components/shared/historical-draft-banner';
+import type { Draft } from '@/types';
 
 // ============================================
 // TYPES
@@ -95,14 +99,47 @@ function getStatusBadge(status: string) {
 // ============================================
 
 export function FocusView() {
+  const currentProject = useAppStore((s) => s.currentProject);
   const currentDraft = useAppStore((s) => s.currentDraft);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
-  const { data: sessions, isLoading, error } = useFocusSessions(currentDraft?.id ?? null);
+  const focusViewingDraftId = useAppStore((s) => s.focusViewingDraftId);
+  const setFocusViewingDraft = useAppStore((s) => s.setFocusViewingDraft);
+
+  // Fetch project with all drafts
+  const { data: projectWithDrafts } = useProject(currentProject?.id ?? null);
+
+  // Convert API drafts to our Draft type for the selector
+  const drafts: Draft[] = useMemo(() => {
+    if (!projectWithDrafts?.drafts) return [];
+    return projectWithDrafts.drafts.map((d) => ({
+      id: d.id,
+      projectId: projectWithDrafts.id,
+      draftNumber: d.draftNumber,
+      scriptUrl: '',
+      pageCount: d.pageCount ?? undefined,
+      status: d.status as Draft['status'],
+      createdAt: new Date(d.createdAt),
+      updatedAt: new Date(d.updatedAt),
+    }));
+  }, [projectWithDrafts]);
+
+  // Determine which draft to fetch data for
+  const effectiveDraftId = useMemo(() => {
+    return getEffectiveDraftId(drafts, currentDraft?.id ?? null, focusViewingDraftId);
+  }, [drafts, currentDraft?.id, focusViewingDraftId]);
+
+  // Fetch focus sessions for the effective draft
+  const { data: sessions, isLoading, error } = useFocusSessions(effectiveDraftId);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  // Derive selected session — auto-clears if session no longer exists in data
+  // Derive selected session - auto-clears if session no longer exists in data
   const selectedSession = (selectedSessionId && sessions?.find((s) => s.id === selectedSessionId)) ?? null;
+
+  // Determine if we're viewing historical data
+  const isViewingHistorical = Boolean(effectiveDraftId && currentDraft?.id && effectiveDraftId !== currentDraft.id);
+  const viewingDraft = drafts.find((d) => d.id === effectiveDraftId);
+  const currentDraftInfo = drafts.find((d) => d.id === currentDraft?.id);
 
   if (isLoading) {
     return <LoadingSkeleton />;
@@ -119,7 +156,18 @@ export function FocusView() {
   }
 
   if (!sessions || sessions.length === 0) {
-    return <EmptyState onGoToScout={() => setActiveTab('scout')} />;
+    return (
+      <EmptyState
+        onGoToScout={() => setActiveTab('scout')}
+        drafts={drafts}
+        currentDraftId={currentDraft?.id ?? null}
+        focusViewingDraftId={focusViewingDraftId}
+        onSelectDraft={setFocusViewingDraft}
+        isViewingHistorical={isViewingHistorical}
+        viewingDraft={viewingDraft}
+        currentDraftInfo={currentDraftInfo}
+      />
+    );
   }
 
   if (selectedSession) {
@@ -127,24 +175,60 @@ export function FocusView() {
       <SessionTranscript
         session={selectedSession}
         onBack={() => setSelectedSessionId(null)}
+        drafts={drafts}
+        currentDraftId={currentDraft?.id ?? null}
+        focusViewingDraftId={focusViewingDraftId}
+        onSelectDraft={setFocusViewingDraft}
+        isViewingHistorical={isViewingHistorical}
+        viewingDraft={viewingDraft}
+        currentDraftInfo={currentDraftInfo}
       />
     );
   }
 
-  return <SessionList sessions={sessions} onSelect={setSelectedSessionId} />;
+  return (
+    <SessionList
+      sessions={sessions}
+      onSelect={setSelectedSessionId}
+      drafts={drafts}
+      currentDraftId={currentDraft?.id ?? null}
+      focusViewingDraftId={focusViewingDraftId}
+      onSelectDraft={setFocusViewingDraft}
+      isViewingHistorical={isViewingHistorical}
+      viewingDraft={viewingDraft}
+      currentDraftInfo={currentDraftInfo}
+    />
+  );
 }
 
 // ============================================
 // SESSION LIST
 // ============================================
 
+interface DraftVersioningProps {
+  drafts: Draft[];
+  currentDraftId: string | null;
+  focusViewingDraftId: string | null;
+  onSelectDraft: (draftId: string | null) => void;
+  isViewingHistorical: boolean;
+  viewingDraft: Draft | undefined;
+  currentDraftInfo: Draft | undefined;
+}
+
 function SessionList({
   sessions,
   onSelect,
+  drafts,
+  currentDraftId,
+  focusViewingDraftId,
+  onSelectDraft,
+  isViewingHistorical,
+  viewingDraft,
+  currentDraftInfo,
 }: {
   sessions: FocusSession[];
   onSelect: (id: string) => void;
-}) {
+} & DraftVersioningProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="h-16 px-6 border-b border-border flex items-center bg-surface">
@@ -153,10 +237,31 @@ function SessionList({
         <span className="ml-2 text-sm text-muted-foreground">
           ({sessions.length} session{sessions.length !== 1 ? 's' : ''})
         </span>
+        {/* Draft selector in header */}
+        {drafts.length > 1 && (
+          <div className="ml-auto">
+            <DraftSelector
+              drafts={drafts}
+              currentDraftId={currentDraftId}
+              selectedDraftId={focusViewingDraftId}
+              onSelectDraft={onSelectDraft}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-3">
+          {/* Historical draft banner */}
+          {isViewingHistorical && viewingDraft && currentDraftInfo && (
+            <HistoricalDraftBanner
+              viewingDraftNumber={viewingDraft.draftNumber}
+              currentDraftNumber={currentDraftInfo.draftNumber}
+              onViewCurrent={() => onSelectDraft(null)}
+              className="mb-3"
+            />
+          )}
+
           <AnimatePresence initial={false}>
             {sessions.map((session, index) => {
               const statusBadge = getStatusBadge(session.status);
@@ -214,10 +319,17 @@ function SessionList({
 function SessionTranscript({
   session,
   onBack,
+  drafts,
+  currentDraftId,
+  focusViewingDraftId,
+  onSelectDraft,
+  isViewingHistorical,
+  viewingDraft,
+  currentDraftInfo,
 }: {
   session: FocusSession;
   onBack: () => void;
-}) {
+} & DraftVersioningProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -247,11 +359,30 @@ function SessionTranscript({
             {formatDate(session.createdAt)} &middot; {session.messages.length} messages
           </p>
         </div>
+        {/* Draft selector in header */}
+        {drafts.length > 1 && (
+          <DraftSelector
+            drafts={drafts}
+            currentDraftId={currentDraftId}
+            selectedDraftId={focusViewingDraftId}
+            onSelectDraft={onSelectDraft}
+          />
+        )}
       </div>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-4">
+          {/* Historical draft banner */}
+          {isViewingHistorical && viewingDraft && currentDraftInfo && (
+            <HistoricalDraftBanner
+              viewingDraftNumber={viewingDraft.draftNumber}
+              currentDraftNumber={currentDraftInfo.draftNumber}
+              onViewCurrent={() => onSelectDraft(null)}
+              className="mb-3"
+            />
+          )}
+
           <AnimatePresence initial={false}>
             {session.messages.map((message) => (
               <TranscriptMessage key={message.id} message={message} />
@@ -377,18 +508,60 @@ function LoadingSkeleton() {
 // EMPTY STATE
 // ============================================
 
-function EmptyState({ onGoToScout }: { onGoToScout: () => void }) {
+function EmptyState({
+  onGoToScout,
+  drafts,
+  currentDraftId,
+  focusViewingDraftId,
+  onSelectDraft,
+  isViewingHistorical,
+  viewingDraft,
+  currentDraftInfo,
+}: {
+  onGoToScout: () => void;
+} & DraftVersioningProps) {
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center max-w-md">
-        <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold mb-2">No Focus Groups Yet</h2>
-        <p className="text-muted-foreground mb-6">
-          Start a focus group from Scout to watch your readers debate and discuss your screenplay.
-        </p>
-        <Button onClick={onGoToScout} variant="outline">
-          Go to Scout &rarr;
-        </Button>
+    <div className="h-full flex flex-col">
+      {/* Header with draft selector if multiple drafts */}
+      {drafts.length > 1 && (
+        <div className="h-16 px-6 border-b border-border flex items-center bg-surface">
+          <Users className="w-5 h-5 text-primary mr-3" />
+          <h2 className="font-semibold">Focus Groups</h2>
+          <div className="ml-auto">
+            <DraftSelector
+              drafts={drafts}
+              currentDraftId={currentDraftId}
+              selectedDraftId={focusViewingDraftId}
+              onSelectDraft={onSelectDraft}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        {/* Historical draft banner */}
+        {isViewingHistorical && viewingDraft && currentDraftInfo && (
+          <div className="max-w-md w-full mb-6">
+            <HistoricalDraftBanner
+              viewingDraftNumber={viewingDraft.draftNumber}
+              currentDraftNumber={currentDraftInfo.draftNumber}
+              onViewCurrent={() => onSelectDraft(null)}
+            />
+          </div>
+        )}
+
+        <div className="text-center max-w-md">
+          <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold mb-2">No Focus Groups Yet</h2>
+          <p className="text-muted-foreground mb-6">
+            {isViewingHistorical
+              ? `No focus groups were run for Draft ${viewingDraft?.draftNumber ?? '?'}. Try viewing a different draft or run a focus group from Scout.`
+              : 'Start a focus group from Scout to watch your readers debate and discuss your screenplay.'}
+          </p>
+          <Button onClick={onGoToScout} variant="outline">
+            Go to Scout &rarr;
+          </Button>
+        </div>
       </div>
     </div>
   );

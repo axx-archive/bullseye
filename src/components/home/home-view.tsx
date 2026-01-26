@@ -33,7 +33,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import type { EvaluationStatus } from '@/types';
+import { ProjectSwitchModal } from '@/components/shared/project-switch-modal';
+import type { EvaluationStatus, Project } from '@/types';
 
 const FORMAT_LABELS: Record<string, string> = {
   FEATURE: 'Feature',
@@ -169,7 +170,14 @@ function StudioStats({ projects }: { projects: ProjectWithCount[] }) {
 }
 
 export function HomeView() {
-  const { setCurrentProject, setActiveTab } = useAppStore();
+  const {
+    setCurrentProject,
+    setActiveTab,
+    currentProject,
+    isStreaming,
+    skipProjectSwitchConfirm,
+    setSkipProjectSwitchConfirm,
+  } = useAppStore();
   const { data: projects, isLoading, error } = useProjects();
   const { mutate: deleteProject, isPending: isDeleting } = useDeleteProject();
   const { mutate: reorderProjects } = useReorderProjects();
@@ -177,12 +185,51 @@ export function HomeView() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [collapsedStudios, setCollapsedStudios] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // US-002: State for project switch confirmation modal
+  const [projectToSwitchTo, setProjectToSwitchTo] = useState<ProjectWithCount | null>(null);
 
   const studioGroups = projects ? groupProjectsByStudio(projects) : [];
 
+  /**
+   * US-002: Handle project selection with confirmation when switching projects.
+   * - Same project or no current project: switch immediately
+   * - Different project + skipProjectSwitchConfirm: switch immediately
+   * - Different project: show confirmation modal
+   */
   function handleOpenProject(project: ProjectWithCount) {
-    setCurrentProject(project);
+    const currentId = currentProject?.id;
+
+    // Same project - just navigate to Scout tab
+    if (currentId === project.id) {
+      setActiveTab('scout');
+      return;
+    }
+
+    // No current project or user has opted to skip confirmations - switch immediately
+    if (!currentId || skipProjectSwitchConfirm) {
+      setCurrentProject(project);
+      setActiveTab('scout');
+      return;
+    }
+
+    // Different project - show confirmation modal
+    setProjectToSwitchTo(project);
+  }
+
+  /**
+   * US-002/003: Handle confirmation from the switch modal.
+   * If user checked "don't ask again", update the session preference.
+   */
+  function handleConfirmSwitch(skipFutureConfirms: boolean) {
+    if (!projectToSwitchTo) return;
+
+    if (skipFutureConfirms) {
+      setSkipProjectSwitchConfirm(true);
+    }
+
+    setCurrentProject(projectToSwitchTo);
     setActiveTab('scout');
+    setProjectToSwitchTo(null);
   }
 
   function toggleStudioCollapse(studioId: string) {
@@ -295,6 +342,7 @@ export function HomeView() {
                       >
                         <StudioProjectList
                           projects={group.projects}
+                          currentProjectId={currentProject?.id}
                           onOpenProject={handleOpenProject}
                           onDeleteProject={(id) => setDeleteConfirmId(id)}
                           onReorder={(projectIds) => reorderProjects({ projectIds })}
@@ -345,6 +393,18 @@ export function HomeView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* US-002: Project switch confirmation modal */}
+      {projectToSwitchTo && currentProject && (
+        <ProjectSwitchModal
+          open={!!projectToSwitchTo}
+          onClose={() => setProjectToSwitchTo(null)}
+          onConfirm={handleConfirmSwitch}
+          currentProject={currentProject as Project}
+          targetProject={projectToSwitchTo}
+          isStreamActive={isStreaming}
+        />
+      )}
     </>
   );
 }
@@ -369,11 +429,13 @@ function ProjectCardSkeleton() {
 
 function StudioProjectList({
   projects,
+  currentProjectId,
   onOpenProject,
   onDeleteProject,
   onReorder,
 }: {
   projects: ProjectWithCount[];
+  currentProjectId?: string;
   onOpenProject: (project: ProjectWithCount) => void;
   onDeleteProject: (id: string) => void;
   onReorder: (projectIds: string[]) => void;
@@ -413,6 +475,7 @@ function StudioProjectList({
           <DraggableProjectItem
             key={project.id}
             project={project}
+            isCurrentProject={project.id === currentProjectId}
             onOpen={() => onOpenProject(project)}
             onDelete={() => onDeleteProject(project.id)}
             onDragEnd={handleReorderEnd}
@@ -425,11 +488,13 @@ function StudioProjectList({
 
 function DraggableProjectItem({
   project,
+  isCurrentProject,
   onOpen,
   onDelete,
   onDragEnd,
 }: {
   project: ProjectWithCount;
+  isCurrentProject?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onDragEnd: () => void;
@@ -450,6 +515,7 @@ function DraggableProjectItem({
     >
       <ProjectCard
         project={project}
+        isCurrentProject={isCurrentProject}
         onOpen={onOpen}
         onDelete={onDelete}
         showDragHandle
@@ -459,7 +525,21 @@ function DraggableProjectItem({
   );
 }
 
-function ProjectCard({ project, onOpen, onDelete, showDragHandle, onDragHandlePointerDown }: { project: ProjectWithCount; onOpen: () => void; onDelete: () => void; showDragHandle?: boolean; onDragHandlePointerDown?: (e: React.PointerEvent) => void }) {
+function ProjectCard({
+  project,
+  isCurrentProject,
+  onOpen,
+  onDelete,
+  showDragHandle,
+  onDragHandlePointerDown,
+}: {
+  project: ProjectWithCount;
+  isCurrentProject?: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+  showDragHandle?: boolean;
+  onDragHandlePointerDown?: (e: React.PointerEvent) => void;
+}) {
   const draftCount = project._count?.drafts ?? 0;
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.ACTIVE;
   const evalStatus: EvaluationStatus = project.evaluationStatus || 'UNDER_CONSIDERATION';
@@ -517,8 +597,20 @@ function ProjectCard({ project, onOpen, onDelete, showDragHandle, onDragHandlePo
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (!isEditing && (e.key === 'Enter' || e.key === ' ')) onOpen(); }}
-      className="w-full text-left rounded-2xl bg-surface border border-border/50 p-5 hover:border-border hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer relative"
+      className={cn(
+        'w-full text-left rounded-2xl bg-surface p-5 hover:bg-elevated/30 active:scale-[0.98] transition-all duration-200 ease-out group cursor-pointer relative',
+        // US-006: Visual indicator for currently open project
+        isCurrentProject
+          ? 'border-2 border-bullseye-gold/60 ring-1 ring-bullseye-gold/20'
+          : 'border border-border/50 hover:border-border'
+      )}
     >
+      {/* US-006: "Currently Open" badge for the active project */}
+      {isCurrentProject && (
+        <div className="absolute -top-2 left-4 px-2 py-0.5 rounded-full bg-bullseye-gold/15 border border-bullseye-gold/30 text-[9px] font-semibold text-bullseye-gold uppercase tracking-wider">
+          Currently Open
+        </div>
+      )}
       {showDragHandle && (
         <div
           className="absolute left-1 top-1/2 -translate-y-1/2 p-1 cursor-grab active:cursor-grabbing text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity touch-none"

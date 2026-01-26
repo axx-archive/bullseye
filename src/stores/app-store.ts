@@ -206,6 +206,9 @@ interface UIState {
   showCalibration: boolean;
   isStudioConfigOpen: boolean;
   previousTab: TabId | null;
+  // US-003: Session-level preference to skip project switch confirmation modal.
+  // Intentionally NOT persisted to localStorage - resets on page refresh.
+  skipProjectSwitchConfirm: boolean;
 
   toggleSidebar: () => void;
   toggleReaderExpanded: (readerId: string) => void;
@@ -214,13 +217,27 @@ interface UIState {
   collapseAllReaders: () => void;
   openStudioConfig: () => void;
   closeStudioConfig: () => void;
+  setSkipProjectSwitchConfirm: (skip: boolean) => void;
+}
+
+// ============================================
+// DRAFT VERSIONING STATE
+// ============================================
+
+interface DraftVersioningState {
+  // null = auto (most recent draft with data)
+  coverageViewingDraftId: string | null;
+  focusViewingDraftId: string | null;
+
+  setCoverageViewingDraft: (draftId: string | null) => void;
+  setFocusViewingDraft: (draftId: string | null) => void;
 }
 
 // ============================================
 // COMBINED STORE
 // ============================================
 
-interface AppStore extends TabState, StudioState, ProjectState, AnalysisState, FocusGroupState, ExecutiveState, ChatState, ScoutSessionState, UIState {}
+interface AppStore extends TabState, StudioState, ProjectState, AnalysisState, FocusGroupState, ExecutiveState, ChatState, ScoutSessionState, UIState, DraftVersioningState {}
 
 export const useAppStore = create<AppStore>()(
   devtools(
@@ -228,6 +245,11 @@ export const useAppStore = create<AppStore>()(
       (set, get) => ({
         // ============ TAB STATE ============
         activeTab: 'home' as TabId,
+        // IMPORTANT: setActiveTab MUST NOT clear any SCOUT-related state (FR-10).
+        // Only setCurrentProject (when project ID changes) should reset Scout state.
+        // Tab switching preserves all in-memory Zustand state including:
+        // readerStates, focusGroupMessages, executiveStates, rightPanelMode,
+        // chatMessages, currentDraft, etc.
         setActiveTab: (tab) => set({ activeTab: tab }),
 
         // ============ STUDIO STATE ============
@@ -293,7 +315,20 @@ export const useAppStore = create<AppStore>()(
             }
             return { currentProject: project };
           }),
-        setCurrentDraft: (draft) => set({ currentDraft: draft }),
+        setCurrentDraft: (draft) =>
+          set((state) => {
+            const prevId = state.currentDraft?.id ?? null;
+            const newId = draft?.id ?? null;
+            // Reset draft versioning state when current draft changes
+            if (prevId !== newId) {
+              return {
+                currentDraft: draft,
+                coverageViewingDraftId: null,
+                focusViewingDraftId: null,
+              };
+            }
+            return { currentDraft: draft };
+          }),
         addProject: (project) =>
           set((state) => ({ projects: [...state.projects, project] })),
         updateProject: (id, updates) =>
@@ -529,6 +564,8 @@ export const useAppStore = create<AppStore>()(
         showCalibration: true,
         isStudioConfigOpen: false,
         previousTab: null,
+        // US-003: Session preference - NOT persisted, resets on refresh
+        skipProjectSwitchConfirm: false,
 
         toggleSidebar: () =>
           set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -556,6 +593,14 @@ export const useAppStore = create<AppStore>()(
             expandedReaders: state.readerPerspectives.map((p) => p.readerId),
           })),
         collapseAllReaders: () => set({ expandedReaders: [] }),
+        setSkipProjectSwitchConfirm: (skip) => set({ skipProjectSwitchConfirm: skip }),
+
+        // ============ DRAFT VERSIONING STATE ============
+        coverageViewingDraftId: null,
+        focusViewingDraftId: null,
+
+        setCoverageViewingDraft: (draftId) => set({ coverageViewingDraftId: draftId }),
+        setFocusViewingDraft: (draftId) => set({ focusViewingDraftId: draftId }),
       }),
       {
         name: 'bullseye-storage',

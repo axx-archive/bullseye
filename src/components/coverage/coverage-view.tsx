@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/stores/app-store';
 import { useDeliverable } from '@/hooks/use-studio';
+import { useProject } from '@/hooks/use-projects';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ChevronDown,
@@ -17,10 +18,13 @@ import {
 } from 'lucide-react';
 import { HarmonizedScoresDisplay } from '@/components/shared/score-indicator';
 import { ReaderComparison } from '@/components/shared/reader-card';
-import type { DraftDeliverable, ReaderPerspective, HarmonizedScores, ScoutAnalysis, StudioCalibration, CoverageReport, IntakeReport } from '@/types';
+import { DraftSelector, getEffectiveDraftId } from '@/components/shared/draft-selector';
+import { HistoricalDraftBanner } from '@/components/shared/historical-draft-banner';
+import type { DraftDeliverable, ReaderPerspective, HarmonizedScores, ScoutAnalysis, StudioCalibration, CoverageReport, IntakeReport, Draft } from '@/types';
 
 export function CoverageView() {
   const {
+    currentProject,
     currentDraft,
     currentDeliverable: zustandDeliverable,
     readerPerspectives: zustandPerspectives,
@@ -31,14 +35,47 @@ export function CoverageView() {
     expandAllReaders,
     collapseAllReaders,
     setActiveTab,
+    coverageViewingDraftId,
+    setCoverageViewingDraft,
   } = useAppStore();
 
-  const { data: fetchedDeliverable, isLoading, error } = useDeliverable(currentDraft?.id ?? null);
+  // Fetch project with all drafts
+  const { data: projectWithDrafts } = useProject(currentProject?.id ?? null);
+
+  // Convert API drafts to our Draft type for the selector
+  const drafts: Draft[] = useMemo(() => {
+    if (!projectWithDrafts?.drafts) return [];
+    return projectWithDrafts.drafts.map((d) => ({
+      id: d.id,
+      projectId: projectWithDrafts.id,
+      draftNumber: d.draftNumber,
+      scriptUrl: '',
+      pageCount: d.pageCount ?? undefined,
+      status: d.status as Draft['status'],
+      createdAt: new Date(d.createdAt),
+      updatedAt: new Date(d.updatedAt),
+    }));
+  }, [projectWithDrafts]);
+
+  // Determine which draft to fetch data for
+  const effectiveDraftId = useMemo(() => {
+    return getEffectiveDraftId(drafts, currentDraft?.id ?? null, coverageViewingDraftId);
+  }, [drafts, currentDraft?.id, coverageViewingDraftId]);
+
+  // Fetch deliverable for the effective draft
+  const { data: fetchedDeliverable, isLoading, error } = useDeliverable(effectiveDraftId);
 
   const [activeSection, setActiveSection] = useState<'coverage' | 'intake'>('coverage');
 
+  // Determine if we're viewing historical data
+  const isViewingHistorical = effectiveDraftId && currentDraft?.id && effectiveDraftId !== currentDraft.id;
+  const viewingDraft = drafts.find((d) => d.id === effectiveDraftId);
+  const currentDraftInfo = drafts.find((d) => d.id === currentDraft?.id);
+
   // Prefer Zustand deliverable (live/streaming data) over fetched API data
-  const deliverable: DraftDeliverable | null = zustandDeliverable ?? (fetchedDeliverable ? {
+  // But only use Zustand data if viewing the current draft (streaming is only for current)
+  const isCurrentDraft = effectiveDraftId === currentDraft?.id;
+  const deliverable: DraftDeliverable | null = (isCurrentDraft ? zustandDeliverable : null) ?? (fetchedDeliverable ? {
     id: fetchedDeliverable.id,
     draftId: fetchedDeliverable.draftId,
     projectId: '',
@@ -51,7 +88,8 @@ export function CoverageView() {
     studioCalibration: fetchedDeliverable.studioCalibration as StudioCalibration,
   } : null);
 
-  const readerPerspectives: ReaderPerspective[] = zustandPerspectives.length > 0
+  // Reader perspectives: prefer Zustand (streaming) only if viewing current draft
+  const readerPerspectives: ReaderPerspective[] = (isCurrentDraft && zustandPerspectives.length > 0)
     ? zustandPerspectives
     : (deliverable?.readerPerspectives ?? []);
 
@@ -79,6 +117,27 @@ export function CoverageView() {
     <div className="h-full">
       <ScrollArea className="h-full">
         <div className="max-w-4xl mx-auto space-y-6 py-4">
+          {/* Draft selector - only show if multiple drafts exist */}
+          {drafts.length > 1 && (
+            <div className="flex items-center gap-3">
+              <DraftSelector
+                drafts={drafts}
+                currentDraftId={currentDraft?.id ?? null}
+                selectedDraftId={coverageViewingDraftId}
+                onSelectDraft={setCoverageViewingDraft}
+              />
+            </div>
+          )}
+
+          {/* Historical draft banner */}
+          {isViewingHistorical && viewingDraft && currentDraftInfo && (
+            <HistoricalDraftBanner
+              viewingDraftNumber={viewingDraft.draftNumber}
+              currentDraftNumber={currentDraftInfo.draftNumber}
+              onViewCurrent={() => setCoverageViewingDraft(null)}
+            />
+          )}
+
           {/* Title section */}
           <div className="flex items-center justify-between">
             <div>

@@ -51,7 +51,6 @@ export function AppShell({ children }: AppShellProps) {
     currentStudio,
     studios,
     setCurrentStudio,
-    setCurrentProject,
     isStudioConfigOpen,
     openStudioConfig,
     closeStudioConfig,
@@ -62,7 +61,9 @@ export function AppShell({ children }: AppShellProps) {
   const [showUploadModal, setShowUploadModal] = useState(false);
 
   function handleGoHome() {
-    setCurrentProject(null);
+    // US-001: Navigate to Home without clearing project context.
+    // User can browse projects while keeping their current project "warm".
+    // Project context is only cleared when explicitly switching to a different project.
     setActiveTab('home');
   }
 
